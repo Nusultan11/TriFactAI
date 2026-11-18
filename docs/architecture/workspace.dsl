@@ -77,13 +77,13 @@ workspace "TriFact AI" "Multilingual Document & Knowledge Intelligence Platform 
 
                 dataLake = container "Data Lake" "Parquet (zstd), шарды ~1M строк / <=512 MB, партиции source/lang. Слои raw -> clean -> curated -> task -> eval; манифест у каждого источника (ADR-0011)." "Parquet on SSD, DVC" "Storage"
 
-                dataPipeline = container "Data Pipeline" "CPU-стадии DVC: загрузка, курация, сборка task-наборов, заморозка eval. Потоковая колоночная обработка без загрузки набора в RAM." "Python, Polars (lazy/streaming), DuckDB, PyArrow, datatrove, DVC" {
+                dataPipeline = container "Data Pipeline" "CPU-стадии DVC: загрузка, курация, сборка task-наборов, заморозка eval. Потоковая колоночная обработка без загрузки набора в RAM." "Python, Polars (lazy/streaming), DuckDB, PyArrow, numpy/scipy, DVC" {
                     hfLoader = component "Source Loader" "Потоковая загрузка HF -> Parquet-шарды, докачка, проверка числа строк, манифест (revision SHA, лицензия, хеши)." "huggingface_hub, PyArrow"
                     wikidataParser = component "Wikidata Parser" "Потоковый разбор JSON-дампа -> entities(qid, type, labels/aliases kk/ru/en, sitelinks)." "orjson, PyArrow"
                     normalizer = component "Normalizer & LangID" "Векторизованная нормализация и определение языка документов и абзацев." "Polars, fastText / GlotLID"
-                    qualityFilter = component "Quality Filters" "Длина, доля букв, повторы, boilerplate; пороги по ручной выборке." "datatrove"
-                    deduplicator = component "Deduplicator" "Точный хеш + MinHash-LSH внутри и между источниками." "datatrove"
-                    decontaminator = component "Decontaminator" "Удаляет из train-корпусов тексты, пересекающиеся с eval-источниками." "n-gram / MinHash"
+                    qualityFilter = component "Quality Filters" "Длина, доля букв, повторы строк и n-грамм, стоп-слова, boilerplate; пороги по языку и домену, проверены ручной выборкой (ADR-0018)." "Polars"
+                    deduplicator = component "Deduplicator" "Точный хеш + MinHash-LSH 14x9, связные компоненты по всем источникам, приоритет источников (ADR-0019)." "numpy, scipy"
+                    decontaminator = component "Decontaminator" "Удаляет из train-корпусов строки с 13-граммами eval-источников; повторный скан без утечек (ADR-0019)." "numpy"
                     splitter = component "Leakage-safe Splitter" "train/val/test по исходному документу (ADR-0007)." "Polars"
                     nerBuilder = component "NER Builder" "Gold-наборы -> общая схема меток; silver NER из ссылок Wikipedia + типов Wikidata (5-10M предложений)." "Polars, DuckDB"
                     pairBuilder = component "Retrieval Pair Builder" "MS MARCO / mMARCO / MIRACL / KazParC + синтетические запросы; hard negatives." "Polars"

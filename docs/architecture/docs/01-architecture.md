@@ -116,7 +116,7 @@ flowchart TB
 | **Redis** | Очередь задач, кеш эмбеддингов запросов и оценок reranker | Redis 7 |
 | **Object Storage** | Файлы пользователей, DVC remote `local`, артефакты MLflow, GGUF | SeaweedFS (S3 API) |
 | **Data Lake** | Слои raw → clean → curated → task → eval (ADR-0011) | Parquet zstd, DVC |
-| **Data Pipeline** | CPU-стадии DVC: загрузка, курация, task-наборы, eval, KB | Polars, DuckDB, PyArrow, datatrove |
+| **Data Pipeline** | CPU-стадии DVC: загрузка, курация, task-наборы, eval, KB | Polars, DuckDB, PyArrow, numpy/scipy, fastText |
 | **Batch Compute** | Шардированные задания: эмбеддинги, массовая NER, учитель, загрузка индекса (ADR-0014) | PyTorch, vLLM, ONNX Runtime |
 | **Training Jobs** | NER, embedder, reranker, NLI, LoRA LLM; HPO; ≥ 3 сидов | Transformers, PEFT, sentence-transformers, Optuna |
 | **Evaluation Harness** | Метрики, значимость, ablation, нагрузка, гейт | seqeval, ranx, jiwer, Locust |
@@ -132,8 +132,9 @@ flowchart TB
 ```
 data/
   raw/<source>/<lang>/<table>-00000.parquet + raw/<source>/source.yaml  (не меняется; table = part, если таблица одна)
-  clean/<source>/<lang>/...                нормализация, язык, фильтры качества
-  curated/<source>/<lang>/...              дедуп, деконтаминация     + dataset.yaml
+  clean/<source>/<lang>/{part,dropped}-*  нормализация, язык, фильтры качества   + clean/<source>/dataset.yaml, card.md
+  curated/dedup/<source>/<lang>/{part,removed}-*        дедуп внутри и между источниками
+  curated/corpus/<source>/<lang>/{part,contaminated}-*  деконтаминация → итоговый корпус   + dataset.yaml, card.md
   task/
     chunks/<source>/<lang>/...             чанки корпуса (тот же Chunker, что онлайн)
     annotations/<model@ver>/<source>/...   упоминания сущностей корпуса
@@ -147,14 +148,14 @@ data/
 Шард — ~1M строк или ≤ 512 MB, сжатие zstd. Партиции — по `source/lang`, внутри — по таблице. Протокол загрузки raw-слоя, колонки происхождения `_config` / `_split` и методы проверки числа строк — [ADR-0017](../adr/0017-raw-layer-acquisition-protocol.md).
 
 **Манифест источника** `source.yaml`: `hf_id` или `url`, `revision` (SHA коммита или дата дампа), `license` (`license`, `use`, `release`, `evidence`), `downloaded_at`, `code_version`, `inputs` (файлы источника с sha256), `rows` и `bytes` по языкам, `shards: [{path, lang, table, rows, bytes, sha256}]`, `row_checks` (метод, ожидаемое, фактическое), `stats` (время, throughput, пиковая RSS). Проверка целостности: `python -m trifact.lake verify`.
-**Карточка набора** `dataset.yaml`: входы (манифесты и их хеши), `git_sha`, параметры, строки по языкам, отсев по каждой причине, лицензии входов, флаг `release`.
+**Карточка набора** `dataset.yaml`: входы (манифесты и их хеши), `git_sha`, параметры, отпечаток стадии ([ADR-0018](../adr/0018-curation-stages-without-datatrove.md)), строки по языкам и таблицам, отсев по каждой причине, метрики стадии, лицензии входов, флаг `release`. Рядом — человекочитаемая `card.md` (data card). Отброшенные документы не теряются: таблицы `dropped` (причина + первые `curation.dropped_text_chars` символов), `removed` (ссылка на оставленный дубль), `contaminated` (действие и eval-источники).
 
 ### 5.2 Схемы ключевых таблиц (Parquet)
 
 | Таблица | Колонки |
 |---|---|
 | `entities` (raw/wikidata) | `qid, type, p31: list, p279: list, label_{kk,ru,en,mul}, description_{kk,ru,en,mul}, aliases_{kk,ru,en,mul}: list, sitelink_{kkwiki,ruwiki,enwiki}, n_sitelinks, lastrevid` |
-| `documents` (clean/curated) | `doc_id, source, lang, lang_score, title, text, url, n_chars, quality{...}, minhash_cluster` |
+| `documents` (clean/curated) | `doc_id, source, domain, lang, lang_score, src_lang, para_lang: list, title, text, url, n_chars, n_words, признаки качества, minhash_cluster, dup_count, decontaminated_lines` |
 | `chunks` | `chunk_id, doc_id, source, lang, ordinal, section, char_start, char_end, text, n_tokens` |
 | `vectors` | `chunk_id, dense: fixed_size_list<f16>, sparse_idx: list<u32>, sparse_val: list<f16>` |
 | `annotations` | `chunk_id, start, end, surface, type, score, qid, model_version` |
@@ -180,11 +181,13 @@ gold ─► validate ─► split ─┬─► build_eval (заморожен)
                            └─► build_nli   (+ [batch] teacher: kk-перевод XNLI)
 ```
 
+- **Раннер стадий** `trifact.data.curation` ([ADR-0018](../adr/0018-curation-stages-without-datatrove.md)): единица работы — входной шард, маркеры готовности, отпечаток параметров/кода/входов, `curation.workers` процессов с ограничением потоков Polars. Каждая стадия пишет `dataset.yaml`, `card.md` и отчёт (`reports/<стадия>.json`) с отсевом, throughput и пиковой RSS.
 - **Нормализация** (общий модуль `trifact.ingestion.normalize`): NFC, казахские буквы `ә ғ қ ң ө ұ ү һ і`, гомоглифы латиница/кириллица, мусорные символы. Векторизована на Polars.
-- **Определение языка**: fastText lid.176 и GlotLID сравниваются на ручной выборке (kk vs ky/tt/ru). Язык определяется для документа и для абзаца.
-- **Фильтры качества** (datatrove): длина, доля букв, повторы строк и n-грамм, boilerplate. Пороги подбираются по ручной выборке ≥ 500 документов на язык.
-- **Дедупликация**: точный хеш + MinHash-LSH (порог `params.yaml: curation.minhash`) внутри источников и между ними.
-- **Деконтаминация**: тексты, пересекающиеся с eval-источниками по 13-граммам и MinHash, удаляются из train-слоёв.
+- **Определение языка**: fastText lid.176 и GlotLID сравнены на ручной выборке (kk vs ky/tt/ru), выбор по macro-F1 — `reports/langid.json`, модель — `curation.langid.model`. Язык определяется для документа (`lang`, `lang_score`) и для каждого абзаца (`para_lang`).
+- **Фильтры качества** (`trifact.data.quality`, выражения Polars): длина, слова, доля букв, замены `�`, повторы строк и n-грамм, средняя длина слова, маркеры списков, многоточия, стоп-слова, boilerplate-строки источника (частотные строки, найденные первым проходом). Пороги `curation.quality` разрешаются как default → язык → домен; подобраны и проверены ручной выборкой 500 документов на язык (`reports/quality_review.json`).
+- **Дедупликация** (`trifact.data.dedup`): точный хеш + MinHash-LSH 14×9 над словесными 5-граммами, связные компоненты по всем источникам сразу; оставляется документ приоритетного источника ([ADR-0019](../adr/0019-dedup-and-decontamination-policy.md)).
+- **Деконтаминация** (`trifact.data.decontaminate`): строки, содержащие 13-грамму eval-источника, удаляются; документ удаляется целиком, если грама пересекает строки или удалено > 50% символов; шаблонные грамы (> 100 документов) игнорируются; повторный скан выхода обязан дать 0 утечек ([ADR-0019](../adr/0019-dedup-and-decontamination-policy.md)).
+- **Статистика** (`trifact.data.corpus_stats`): воронка raw → clean → dedup → corpus, объёмы по источнику/языку/домену, гистограмма длин, доля документов со смешанными абзацами, фертильность токенизаторов XLM-R, Qwen3, Qwen3.5 (`reports/corpus_stats.json`).
 - **Валидация gold**: валидность BIO, допустимые метки, `answer_start` указывает на `answer_text`, баланс языков и классов.
 - **Сплиты**: по исходному документу. Тест замораживается до любого обучения ([ADR-0007](../adr/0007-leakage-safe-splits.md)).
 - **Silver и синтетика**: фильтры, бюджет и родословная лицензий — в [ADR-0015](../adr/0015-silver-and-synthetic-data.md).
