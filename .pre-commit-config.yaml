@@ -1,0 +1,27 @@
+# Checks of AGENTS.md §5.1 before every commit. Tools come from uv.lock (`uv sync --extra ml --extra dev`),
+# so pre-commit and CI use the same versions. Install once: uv run pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --no-sync ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run --no-sync ruff format --check
+        language: system
+        types: [python]
+      - id: mypy-core
+        name: mypy src/trifact/core
+        entry: uv run --no-sync mypy src/trifact/core
+        language: system
+        pass_filenames: false
+        files: ^src/trifact/core/
+      - id: pytest
+        name: pytest -q
+        entry: uv run --no-sync pytest -q
+        language: system
+        pass_filenames: false
+        types_or: [python, yaml]

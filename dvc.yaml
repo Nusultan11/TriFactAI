@@ -2,20 +2,20 @@
 # Batch jobs (trifact.batch.*) are sharded and idempotent and may run on a cloud GPU (ADR-0014).
 stages:
   # ------------------------------------------------ stage 1: acquisition
-  acquire:
+  acquire:   # resumable: outs are persistent, finished files are skipped on re-run (ADR-0017)
     foreach: [wikipedia, fineweb2_kk, multidomain_kk, kazparc, kaznerd, wikiann, wikineural, nerel,
-              squad_v2, sberquad, kazqad, ms_marco, mmarco_ru, miracl, ru_hnp, xnli]
+              squad_v2, sberquad, kazqad, ms_marco, mmarco_ru, miracl, miracl_corpus, ru_hnp, xnli]
     do:
       cmd: python -m trifact.data.acquire --source ${item}
-      deps: [src/trifact/data/acquire.py]
+      deps: [src/trifact/data/acquire.py, src/trifact/lake]
       params: ["sources.${item}", lake]
-      outs: ["data/raw/${item}"]
+      outs: [{"data/raw/${item}": {persist: true}}]
 
   wikidata:
     cmd: python -m trifact.data.wikidata
-    deps: [src/trifact/data/wikidata.py]
+    deps: [src/trifact/data/wikidata.py, src/trifact/lake]
     params: [sources.wikidata, lake]
-    outs: [data/raw/wikidata]
+    outs: [{data/raw/wikidata: {persist: true}}]
 
   # ------------------------------------------------ stage 2: curation
   clean:

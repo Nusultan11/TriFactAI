@@ -17,26 +17,174 @@ lake:                       # ADR-0011
   shard_max_mb: 512
   compression: zstd
   peak_ram_gb: 10
+  downloads: data/.cache/downloads   # resumable download staging, outside DVC outs
+  acquire_workers: 4                 # files downloaded and converted in parallel
 
-# Pin `revision` to a commit SHA after the first download (stage 1). license: TO_VERIFY blocks use until decided.
+# Sources of the raw layer (ADR-0011, ADR-0017). `revision`: commit SHA (HF) or dump date (URL) of the first
+# download. `files` maps repository paths (glob) to lang/table; the split comes from the path unless given.
+# `license.use` decides whether a source may be acquired at all (blocked = never); `release` propagates to
+# derived sets (ADR-0015). Evidence for every decision: docs/research/datasets.md §7.
 sources:
-  wikipedia:      {hf_id: wikimedia/wikipedia, configs: [20231101.kk, 20231101.ru, 20231101.en], revision: main, license: CC-BY-SA-3.0, role: corpus}
-  fineweb2_kk:    {hf_id: HuggingFaceFW/fineweb-2, configs: [kaz_Cyrl], revision: main, license: ODC-By, role: corpus}
-  multidomain_kk: {hf_id: kz-transformers/multidomain-kazakh-dataset, revision: main, license: Apache-2.0, role: corpus}
-  kazparc:        {hf_id: issai/kazparc, revision: main, license: TO_VERIFY, gated: true, role: parallel}
-  kaznerd:        {hf_id: issai/kaznerd, revision: main, license: CC-BY-4.0, gated: true, role: ner}
-  wikiann:        {hf_id: unimelb-nlp/wikiann, configs: [kk, ru, en], revision: main, license: TO_VERIFY, role: ner}
-  wikineural:     {hf_id: Babelscape/wikineural, revision: main, license: TO_VERIFY, role: ner}
-  nerel:          {hf_id: iluvvatar/NEREL, revision: main, license: TO_VERIFY, role: ner}
-  squad_v2:       {hf_id: rajpurkar/squad_v2, revision: main, license: CC-BY-SA-4.0, role: qa}
-  sberquad:       {hf_id: kuznetsoffandrey/sberquad, revision: main, license: TO_VERIFY, role: qa}
-  kazqad:         {hf_id: issai/kazqad, configs: [kazqad, nq-translate-kk, nq-original-en], revision: main, license: CC-BY-SA-4.0, gated: true, role: qa}
-  ms_marco:       {hf_id: microsoft/ms_marco, revision: main, license: TO_VERIFY, role: retrieval}
-  mmarco_ru:      {hf_id: unicamp-dl/mmarco, configs: [russian], revision: main, license: TO_VERIFY, role: retrieval}
-  miracl:         {hf_id: miracl/miracl, configs: [ru, en], revision: main, license: Apache-2.0, role: retrieval}
-  ru_hnp:         {hf_id: deepvk/ru-HNP, revision: main, license: TO_VERIFY, role: retrieval}
-  xnli:           {hf_id: facebook/xnli, configs: [ru, en], revision: main, license: CC-BY-NC-4.0, role: nli}
-  wikidata:       {url: https://dumps.wikimedia.org/wikidatawiki/entities/latest-all.json.bz2, license: CC0, role: kb}
+  wikipedia:
+    hf_id: wikimedia/wikipedia
+    revision: b04c8d1ceb2f5cd4588862100d08de323dccfbaa
+    role: corpus
+    license: {license: CC-BY-SA-3.0 AND GFDL, use: allowed, release: true, evidence: "HF card, Wikimedia terms; checked 2026-11-18"}
+    files:
+      - {glob: "20231101.kk/*.parquet", lang: kk, config: 20231101.kk}
+      - {glob: "20231101.ru/*.parquet", lang: ru, config: 20231101.ru}
+      - {glob: "20231101.en/*.parquet", lang: en, config: 20231101.en}
+  fineweb2_kk:
+    hf_id: HuggingFaceFW/fineweb-2
+    revision: af9c13333eb981300149d5ca60a8e9d659b276b9
+    role: corpus
+    license: {license: ODC-By-1.0, use: allowed, release: true, evidence: "HF card (ODC-By + CommonCrawl ToU); checked 2026-11-18"}
+    files:
+      - {glob: "data/kaz_Cyrl/*/*.parquet", lang: kk, config: kaz_Cyrl}
+  multidomain_kk:
+    hf_id: kz-transformers/multidomain-kazakh-dataset
+    revision: 7a1fcdf9830b1c34b44b3038aafb672447f41890
+    role: corpus
+    license: {license: Apache-2.0, use: allowed, release: false, evidence: "HF card apache-2.0; checked 2026-11-18",
+              note: "aggregates CC100, OSCAR, news and books; the card licence does not clear third-party text, derived text is not released"}
+    files:
+      - {glob: "*.csv", lang: kk, split: train}
+  kazparc:
+    hf_id: issai/kazparc
+    revision: 41df65bd299ae0b5f2222d86f3db2f4fdd44e8e6
+    role: parallel
+    gated: true
+    license: {license: CC-BY-4.0, use: allowed, release: true, evidence: "authors: arXiv:2403.19399 abstract and ISSAI release page; checked 2026-11-18",
+              note: "HF card has no licence field; licence taken from the authors' publication"}
+    files:
+      - {glob: "kazparc/01_*.csv", lang: multi, table: entries, config: kazparc_raw, split: train}
+      - {glob: "kazparc/[01][0-9]_kazparc_*_*_*.csv", lang: multi, table: pairs, config: kazparc}
+      - {glob: "sync/20_*.csv", lang: multi, table: sync_entries, config: sync_raw, split: train}
+      - {glob: "sync/[23][0-9]_sync_*_*_*.csv", lang: multi, table: sync_pairs, config: sync}
+  kaznerd:
+    hf_id: issai/kaznerd
+    revision: 48703dd057d083c30394acc89334876a009d200d
+    role: ner
+    gated: true
+    license: {license: CC-BY-4.0, use: allowed, release: true, evidence: "HF card; checked 2026-11-18"}
+    files:
+      - {glob: "*.arrow", lang: kk, config: KazNERD}
+  wikiann:
+    hf_id: unimelb-nlp/wikiann
+    revision: f0a3be6dc5564c0cc4150bb660144800a1f539d4
+    role: ner
+    license: {license: unknown (text CC-BY-SA-3.0), use: research_only, release: false,
+              evidence: "HF card 'unknown'; github.com/afshinrahimi/mmner is Apache-2.0 code, data on Dropbox without licence; checked 2026-11-18",
+              note: "no explicit data licence from the publisher: train/eval only until confirmed"}
+    files:
+      - {glob: "kk/*.parquet", lang: kk, config: kk}
+      - {glob: "ru/*.parquet", lang: ru, config: ru}
+      - {glob: "en/*.parquet", lang: en, config: en}
+  wikineural:
+    hf_id: Babelscape/wikineural
+    revision: 74c9b9dca034bb1606a6769457983904bd976803
+    role: ner
+    license: {license: CC-BY-NC-SA-4.0, use: research_only, release: false, evidence: "HF card; checked 2026-11-18"}
+    files:
+      - {glob: "data/*_ru-*.parquet", lang: ru, config: default, meta_split: "{split}_ru"}
+      - {glob: "data/*_en-*.parquet", lang: en, config: default, meta_split: "{split}_en"}
+  nerel:
+    hf_id: iluvvatar/NEREL
+    revision: b8bbfeb80905e6d66dc06a47ec6e37b502ea6c69
+    role: ner
+    license: {license: unknown, use: research_only, release: false,
+              evidence: "no licence in HF card or github.com/nerel-ds/NEREL; the RANLP 2021 paper is CC-BY-4.0; checked 2026-11-18",
+              note: "authors call the data freely available: train/eval only until a data licence is confirmed"}
+    files:
+      - {glob: "data/*.jsonl", lang: ru}
+      - {glob: "ent_types.jsonl", lang: ru, table: ent_types}
+      - {glob: "rel_types.jsonl", lang: ru, table: rel_types}
+  squad_v2:
+    hf_id: rajpurkar/squad_v2
+    revision: 3ffb306f725f7d2ce8394bc1873b24868140c412
+    role: qa
+    license: {license: CC-BY-SA-4.0, use: allowed, release: true, evidence: "HF card; checked 2026-11-18"}
+    files:
+      - {glob: "squad_v2/*.parquet", lang: en, config: squad_v2}
+  sberquad:
+    hf_id: kuznetsoffandrey/sberquad
+    revision: deb870ee29b280657470f2c3851e9b23899fdbc3
+    role: qa
+    license: {license: unknown, use: research_only, release: false,
+              evidence: "HF card 'unknown', TFDS 'No known license', arXiv:1912.09723; checked 2026-11-18"}
+    files:
+      - {glob: "sberquad/*.parquet", lang: ru, config: sberquad}
+  kazqad:
+    hf_id: issai/kazqad
+    revision: 2e43ff9596a8e075c3cd0ba3ab7584a74afca6bc
+    role: qa
+    gated: true
+    license: {license: CC-BY-SA-4.0, use: allowed, release: true, evidence: "HF card; checked 2026-11-18"}
+    files:
+      - {glob: "kazqad/*.jsonl.gz", lang: kk, config: kazqad}
+      - {glob: "nq-translate-kk/*.jsonl.gz", lang: kk, config: nq-translate-kk, split: train}
+      - {glob: "nq-original-en/*.jsonl.gz", lang: en, config: nq-original-en, split: train}
+  ms_marco:
+    hf_id: microsoft/ms_marco
+    revision: a47ee7aae8d7d466ba15f9f0bfac3b3681087b3a
+    role: retrieval
+    license: {license: MS MARCO terms (non-commercial research), use: research_only, release: false,
+              evidence: "microsoft.github.io/msmarco/Notice; checked 2026-11-18"}
+    files:
+      - {glob: "v1.1/*.parquet", lang: en, config: v1.1}
+      - {glob: "v2.1/*.parquet", lang: en, config: v2.1}
+  mmarco_ru:
+    hf_id: unicamp-dl/mmarco
+    revision: 6d039c4638c0ba3e46a9cb7b498b145e7edc6230
+    role: retrieval
+    license: {license: MS MARCO terms (non-commercial research), use: research_only, release: false,
+              evidence: "translation of MS MARCO; repo code Apache-2.0, data inherits MS MARCO terms; checked 2026-11-18"}
+    files:
+      - {glob: "data/google/collections/russian_collection.tsv", lang: ru, table: collection, columns: [pid, text]}
+      - {glob: "data/google/queries/*/russian_queries.*.tsv", lang: ru, table: queries, columns: [qid, text]}
+      - {glob: "data/triples.train.ids.small.tsv", lang: multi, table: triples, split: train, columns: [qid, pos_pid, neg_pid]}
+  miracl:
+    hf_id: miracl/miracl
+    revision: 5be20db9509754dadad47689368639fcec739c00
+    role: retrieval
+    license: {license: Apache-2.0, use: allowed, release: true, evidence: "HF card; checked 2026-11-18"}
+    files:
+      - {glob: "miracl-v1.0-ru/topics/*.tsv", lang: ru, table: topics, columns: [qid, query]}
+      - {glob: "miracl-v1.0-en/topics/*.tsv", lang: en, table: topics, columns: [qid, query]}
+      - {glob: "miracl-v1.0-ru/qrels/*.tsv", lang: ru, table: qrels, columns: [qid, q0, docid, relevance]}
+      - {glob: "miracl-v1.0-en/qrels/*.tsv", lang: en, table: qrels, columns: [qid, q0, docid, relevance]}
+  miracl_corpus:
+    hf_id: miracl/miracl-corpus
+    revision: d921ec7e349ce0d28daf30b2da9da5ee698bef0d
+    role: retrieval
+    license: {license: Apache-2.0 (text CC-BY-SA-3.0 Wikipedia), use: allowed, release: true, evidence: "HF card; checked 2026-11-18"}
+    files:
+      - {glob: "miracl-corpus-v1.0-ru/*.jsonl.gz", lang: ru, split: train}
+      - {glob: "miracl-corpus-v1.0-en/*.jsonl.gz", lang: en, split: train}
+  ru_hnp:
+    hf_id: deepvk/ru-HNP
+    revision: f43fca040b2635de6163b2b4ed16e5e5907f20f8
+    role: retrieval
+    license: {license: Apache-2.0, use: allowed, release: true, evidence: "HF card; checked 2026-11-18",
+              note: "pairs generated by gpt-3.5-turbo from Wikipedia"}
+    files:
+      - {glob: "*.parquet", lang: ru, config: default}
+  xnli:
+    hf_id: facebook/xnli
+    revision: b8dd5d7af51114dbda02c0e3f6133f332186418e
+    role: nli
+    license: {license: CC-BY-NC-4.0, use: research_only, release: false, evidence: "HF card, XNLI paper; checked 2026-11-18"}
+    files:
+      - {glob: "ru/*.parquet", lang: ru, config: ru}
+      - {glob: "en/*.parquet", lang: en, config: en}
+  wikidata:
+    url: https://dumps.wikimedia.org/wikidatawiki/entities/20261116/wikidata-20261116-all.json.bz2
+    checksum_url: https://dumps.wikimedia.org/wikidatawiki/entities/20261116/wikidata-20261116-sha1sums.txt
+    revision: "20261116"
+    role: kb
+    connections: 3          # dumps.wikimedia.org gives ~1.4 MB/s per connection and limits parallel connections
+    workers: 12             # parse processes
+    license: {license: CC0-1.0, use: allowed, release: true, evidence: "wikidata.org/wiki/Wikidata:Licensing; checked 2026-11-18"}
 
 curation:
   langid: {candidates: [lid176, glotlid], min_score: 0.65}
