@@ -18,26 +18,47 @@ stages:
     outs: [{data/raw/wikidata: {persist: true}}]
 
   # ------------------------------------------------ stage 2: curation
+  # Curation stages are resumable (fingerprinted output, finished shards kept, ADR-0014): outs are
+  # persistent so that an interrupted `dvc repro` continues instead of starting over.
+  eval_langid:   # lid.176 vs GlotLID on the reviewed paragraph sample (ROADMAP 2.2)
+    cmd: python -m trifact.evaluation.eval_langid score
+    deps: [src/trifact/evaluation/eval_langid.py, src/trifact/ingestion/langdetect.py, data/review/langid]
+    params: [curation.langid, evaluation.bootstrap_samples, seed]
+    metrics: [{reports/langid.json: {cache: false}}]
+
   clean:
     cmd: python -m trifact.data.clean
-    deps: [src/trifact/data/clean.py, src/trifact/ingestion/normalize.py, data/raw/wikipedia, data/raw/fineweb2_kk, data/raw/multidomain_kk]
-    params: [curation.langid, curation.quality, lake]
-    outs: [data/clean]
+    deps: [src/trifact/data/clean.py, src/trifact/data/quality.py, src/trifact/data/curation.py,
+           src/trifact/ingestion/normalize.py, src/trifact/ingestion/langdetect.py, src/trifact/lake,
+           data/raw/wikipedia, data/raw/fineweb2_kk, data/raw/multidomain_kk]
+    params: [curation.langid, curation.quality, curation.boilerplate, curation.dropped_text_chars,
+             curation.domains, curation.sources, scale.full.corpus_docs, lake]
+    outs: [{data/clean: {persist: true}}]
     metrics: [{reports/clean.json: {cache: false}}]
 
   dedup:
     cmd: python -m trifact.data.dedup
-    deps: [src/trifact/data/dedup.py, data/clean]
-    params: [curation.minhash]
-    outs: [data/curated/dedup]
+    deps: [src/trifact/data/dedup.py, src/trifact/data/hashing.py, src/trifact/data/curation.py, src/trifact/lake,
+           data/clean]
+    params: [curation.minhash, curation.sources, lake, seed]
+    outs: [{data/curated/dedup: {persist: true}}]
     metrics: [{reports/dedup.json: {cache: false}}]
 
   decontaminate:
     cmd: python -m trifact.data.decontaminate
-    deps: [src/trifact/data/decontaminate.py, data/curated/dedup, data/raw/kazqad, data/raw/sberquad, data/raw/squad_v2, data/raw/miracl]
-    params: [curation.decontamination]
-    outs: [data/curated/corpus]
+    deps: [src/trifact/data/decontaminate.py, src/trifact/data/hashing.py, src/trifact/data/curation.py,
+           src/trifact/ingestion/normalize.py, src/trifact/lake, data/curated/dedup,
+           data/raw/kazqad, data/raw/sberquad, data/raw/squad_v2, data/raw/xnli, data/raw/kaznerd,
+           data/raw/wikiann, data/raw/wikineural, data/raw/nerel, data/raw/miracl, data/raw/miracl_corpus]
+    params: [curation.decontamination, lake]
+    outs: [{data/curated/corpus: {persist: true}}]
     metrics: [{reports/decontamination.json: {cache: false}}]
+
+  corpus_stats:  # lengths, languages, domains, tokenizer fertility (ROADMAP 2.6)
+    cmd: python -m trifact.data.corpus_stats
+    deps: [src/trifact/data/corpus_stats.py, data/curated/corpus]
+    params: [curation.stats, seed]
+    metrics: [{reports/corpus_stats.json: {cache: false}}]
 
   # ------------------------------------------------ stage 3: task datasets
   validate:
