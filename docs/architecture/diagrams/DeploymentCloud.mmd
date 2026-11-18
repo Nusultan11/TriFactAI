@@ -1,0 +1,49 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Deployment View: TriFact AI - Cloud"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 286 ["GPU cloud provider"]
+      style 286 fill:#ffffff,stroke:#444444,color:#ffffff
+
+      287["<div style='font-weight: bold'>Object Storage bucket</div><div style='font-size: 70%; margin-top: 0px'>[Infrastructure Node: S3-compatible]</div><div style='font-size: 80%; margin-top:10px'>DVC remote 'cloud': входные<br />шарды, результаты заданий,<br />чекпойнты.</div>"]
+      style 287 fill:#ffffff,stroke:#444444,color:#ffffff
+      subgraph 288 ["GPU instance"]
+        style 288 fill:#ffffff,stroke:#444444,color:#ffffff
+
+        289["<div style='font-weight: bold'>Batch Compute</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, PyTorch, vLLM, ONNX Runtime]</div><div style='font-size: 80%; margin-top:10px'>Шардированные идемпотентные<br />GPU/CPU-задания с чекпойнтом<br />на шард: эмбеддинги корпуса,<br />массовая NER-разметка,<br />учитель-LLM, загрузка индекса<br />(ADR-0014).</div>"]
+        style 289 fill:#548235,stroke:#3a5b25,color:#ffffff
+        290["<div style='font-weight: bold'>Training Jobs</div><div style='font-size: 70%; margin-top: 0px'>[Container: PyTorch, Transformers, PEFT, sentence-transformers, Optuna]</div><div style='font-size: 80%; margin-top:10px'>Обучение NER, embedder,<br />reranker, NLI и<br />LoRA-адаптеров LLM; HPO и >=3<br />сидов.</div>"]
+        style 290 fill:#548235,stroke:#3a5b25,color:#ffffff
+      end
+
+    end
+
+    subgraph 293 ["Serving VM (опционально)"]
+      style 293 fill:#ffffff,stroke:#444444,color:#ffffff
+
+      294["<div style='font-weight: bold'>API</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>REST + SSE: рабочие<br />пространства, документы,<br />вопросы, сущности, фидбек.<br />Оркестрирует онлайн-пайплайн<br />ответа.</div>"]
+      style 294 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      295["<div style='font-weight: bold'>Inference Service</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI, PyTorch / ONNX Runtime]</div><div style='font-size: 80%; margin-top:10px'>Онлайн-хостинг<br />encoder-моделей: эмбеддинги,<br />reranker, NER, NLI.<br />Динамический батчинг.</div>"]
+      style 295 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      297["<div style='font-weight: bold'>LLM Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: llama.cpp server (локально, GGUF) / vLLM (GPU-сервер), OpenAI-compatible API]</div><div style='font-size: 80%; margin-top:10px'>Grounded generation на<br />KK/RU/EN: базовая модель +<br />LoRA-адаптер, стриминг.</div>"]
+      style 297 fill:#c55a11,stroke:#893e0b,color:#ffffff
+      299[("<div style='font-weight: bold'>Qdrant</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant 1.20]</div><div style='font-size: 80%; margin-top:10px'>Коллекции: corpus_chunks<br />(десятки миллионов,<br />квантизация, on-disk,<br />read-only, alias на версию<br />эмбеддера) и workspace_chunks<br />(пользовательские документы,<br />tenant = workspace_id).</div>")]
+      style 299 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      302[("<div style='font-weight: bold'>PostgreSQL</div><div style='font-size: 70%; margin-top: 0px'>[Container: PostgreSQL 16]</div><div style='font-size: 80%; margin-top:10px'>Состояние приложения:<br />workspaces, documents, chunks<br />и mentions пользовательских<br />документов, журнал<br />запросов/ответов/вердиктов,<br />фидбек; база сущностей<br />kb_entities/kb_aliases<br />(миллионы строк).</div>")]
+      style 302 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      304["<div style='font-weight: bold'>Redis</div><div style='font-size: 70%; margin-top: 0px'>[Container: Redis 7]</div><div style='font-size: 80%; margin-top:10px'>Очередь задач обработки<br />документов и кеш запросов.</div>"]
+      style 304 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+    end
+
+    289-. "<div>Читает шарды, пишет векторы /<br />аннотации / синтетику</div><div style='font-size: 70%'>[S3 API]</div>" .->287
+    290-. "<div>Читает task-наборы, пишет<br />чекпойнты и адаптеры</div><div style='font-size: 70%'>[S3 API]</div>" .->287
+    294-. "<div>Сущности запроса</div><div style='font-size: 70%'>[HTTP]</div>" .->295
+    294-. "<div>chat/completions (stream)</div><div style='font-size: 70%'>[HTTP]</div>" .->297
+    289-. "<div>Bulk upload в<br />corpus_chunks__<embedder>,<br />alias</div><div style='font-size: 70%'>[gRPC]</div>" .->299
+    294-. "<div>Prefetch dense + sparse, RRF;<br />две коллекции</div><div style='font-size: 70%'>[gRPC]</div>" .->299
+    294-. "<div>Читает/пишет</div><div style='font-size: 70%'>[SQL]</div>" .->302
+    294-. "<div>Ставит задачу<br />process_document</div><div style='font-size: 70%'>[Redis]</div>" .->304
+
+  end

@@ -1,0 +1,129 @@
+# Single source of truth for data, training and evaluation parameters (DVC + MLflow).
+# Architecture: docs/architecture/docs/01-architecture.md. Experiments are overrides of these keys, never script copies.
+seed: 42
+languages: [kk, ru, en]
+
+scale:
+  profile: pilot            # pilot | full — same code, different volumes (architecture §1)
+  pilot:   {corpus_chunks: 150000,   ner_sentences: 80000,   sft_examples: 24000,   retrieval_pairs: 10000,    eval_examples: 3000}
+  full:    {corpus_chunks: 35000000, ner_sentences: 10000000, sft_examples: 2000000, retrieval_pairs: 20000000, eval_examples: 50000}
+  min_kk_share: 0.30        # in SFT and eval
+  index_steps: [1000000, 10000000, 35000000]   # RET-S scale ladder
+
+lake:                       # ADR-0011
+  root: data
+  layers: [raw, clean, curated, task, eval]
+  shard_rows: 1000000
+  shard_max_mb: 512
+  compression: zstd
+  peak_ram_gb: 10
+
+# Pin `revision` to a commit SHA after the first download (stage 1). license: TO_VERIFY blocks use until decided.
+sources:
+  wikipedia:      {hf_id: wikimedia/wikipedia, configs: [20231101.kk, 20231101.ru, 20231101.en], revision: main, license: CC-BY-SA-3.0, role: corpus}
+  fineweb2_kk:    {hf_id: HuggingFaceFW/fineweb-2, configs: [kaz_Cyrl], revision: main, license: ODC-By, role: corpus}
+  multidomain_kk: {hf_id: kz-transformers/multidomain-kazakh-dataset, revision: main, license: Apache-2.0, role: corpus}
+  kazparc:        {hf_id: issai/kazparc, revision: main, license: TO_VERIFY, gated: true, role: parallel}
+  kaznerd:        {hf_id: issai/kaznerd, revision: main, license: CC-BY-4.0, gated: true, role: ner}
+  wikiann:        {hf_id: unimelb-nlp/wikiann, configs: [kk, ru, en], revision: main, license: TO_VERIFY, role: ner}
+  wikineural:     {hf_id: Babelscape/wikineural, revision: main, license: TO_VERIFY, role: ner}
+  nerel:          {hf_id: iluvvatar/NEREL, revision: main, license: TO_VERIFY, role: ner}
+  squad_v2:       {hf_id: rajpurkar/squad_v2, revision: main, license: CC-BY-SA-4.0, role: qa}
+  sberquad:       {hf_id: kuznetsoffandrey/sberquad, revision: main, license: TO_VERIFY, role: qa}
+  kazqad:         {hf_id: issai/kazqad, configs: [kazqad, nq-translate-kk, nq-original-en], revision: main, license: CC-BY-SA-4.0, gated: true, role: qa}
+  ms_marco:       {hf_id: microsoft/ms_marco, revision: main, license: TO_VERIFY, role: retrieval}
+  mmarco_ru:      {hf_id: unicamp-dl/mmarco, configs: [russian], revision: main, license: TO_VERIFY, role: retrieval}
+  miracl:         {hf_id: miracl/miracl, configs: [ru, en], revision: main, license: Apache-2.0, role: retrieval}
+  ru_hnp:         {hf_id: deepvk/ru-HNP, revision: main, license: TO_VERIFY, role: retrieval}
+  xnli:           {hf_id: facebook/xnli, configs: [ru, en], revision: main, license: CC-BY-NC-4.0, role: nli}
+  wikidata:       {url: https://dumps.wikimedia.org/wikidatawiki/entities/latest-all.json.bz2, license: CC0, role: kb}
+
+curation:
+  langid: {candidates: [lid176, glotlid], min_score: 0.65}
+  quality: {min_chars: 200, min_alpha_ratio: 0.6, max_dup_line_ratio: 0.3}   # thresholds tuned on manual sample (stage 2)
+  minhash: {num_perm: 128, bands: 16, threshold: 0.8}
+  decontamination: {ngram: 13}
+
+split:
+  by: source_document       # ADR-0007
+  val: 0.1
+  test: 0.1
+
+chunking:
+  max_tokens: 350
+  overlap_tokens: 50
+
+ner:
+  base_model: FacebookAI/xlm-roberta-base
+  labels: configs/labels.yaml
+  curriculum: [silver, gold]
+  epochs: 5
+  lr: 3.0e-5
+  batch_size: 32
+  max_length: 256
+  seeds: [42, 43, 44]
+
+linking:
+  kb_min_labels: 1          # entity kept if it has a label in at least one of kk/ru/en
+  candidates_k: 20
+
+retrieval:
+  embedder: BAAI/bge-m3
+  embedder_challengers: [intfloat/multilingual-e5-large-instruct, Qwen/Qwen3-Embedding-0.6B]
+  reranker: BAAI/bge-reranker-v2-m3
+  reranker_challengers: [Qwen/Qwen3-Reranker-0.6B]
+  prefetch_k: 100
+  candidates_k: 50
+  rrf_k: 60
+  context_k: 8
+  hard_negatives_per_query: 4
+  corpus_index:             # ADR-0013
+    vectors_on_disk: true
+    datatype: float16
+    quantization: binary    # none | scalar | binary | turbo — RET-S
+    rescore: true
+    oversampling: 3.0
+    hnsw: {m: 16, ef_construct: 128, on_disk: false}
+    mrl_dim: null           # Qwen3-Embedding only: 256 | 512 | 1024
+
+sft:
+  mix: {answerable: 0.60, cross_lingual: 0.25, unanswerable: 0.15}
+
+teacher:                    # ADR-0015, cloud vLLM
+  model: Qwen/Qwen3.5-35B-A3B
+  filters: {round_trip_top_k: 10, min_nli_entail: 0.7}
+
+llm:                        # ADR-0012
+  base_model: Qwen/Qwen3.5-2B
+  candidates: [Qwen/Qwen3.5-0.8B, Qwen/Qwen3.5-4B, Qwen/Qwen3.5-9B]
+  control_baseline: Qwen/Qwen3-1.7B
+  lora: {dtype: bf16, r: 16, alpha: 32, dropout: 0.05,
+         target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]}
+  thinking: false
+  epochs: 2
+  lr: 2.0e-4
+  max_seq_len: 4096
+  serve_quant: Q4_K_M
+
+verification:
+  nli_model: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
+  nli_challengers: [MoritzLaurer/bge-m3-zeroshot-v2.0]
+  nei_ratio_threshold: 0.3
+
+evaluation:
+  bootstrap_samples: 1000
+  ci: 0.95
+  human_verified_min: 3000
+  real_docs_min: 50
+
+promotion:                  # ADR-0009, architecture §10
+  ner_kk_f1_min_gain: 0.03
+  ner_other_max_drop: 0.01
+  retrieval_no_direction_worse: true
+  faithfulness_min: 0.85
+  worst_direction_max_gap: 0.10
+  e2e_p95_latency_s: 6.0
+
+cloud:                      # ADR-0014; provider chosen in stage 1
+  dvc_remote: cloud
+  budget_usd: 0             # must be set and approved before any cloud run

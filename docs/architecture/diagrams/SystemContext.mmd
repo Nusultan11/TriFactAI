@@ -1,0 +1,29 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["System Context View: TriFact AI"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    1["<div style='font-weight: bold'>Пользователь</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Студент или исследователь:<br />загружает документы KK/RU/EN,<br />задаёт вопросы на любом из<br />трёх языков, проверяет<br />источники.</div>"]
+    style 1 fill:#1f4e79,stroke:#153654,color:#ffffff
+    2["<div style='font-weight: bold'>ML-инженер</div><div style='font-size: 70%; margin-top: 0px'>[Person]</div><div style='font-size: 80%; margin-top:10px'>Собирает и курирует данные,<br />обучает и оценивает модели,<br />продвигает champion-версии.</div>"]
+    style 2 fill:#1f4e79,stroke:#153654,color:#ffffff
+    3["<div style='font-weight: bold'>Hugging Face Hub</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Датасеты (Wikipedia,<br />FineWeb-2, KazNERD, KazQAD,<br />WikiANN, MS MARCO, MIRACL,<br />XNLI, ...) и базовые модели<br />(XLM-R, BGE-M3, Qwen3.5,<br />Qwen3-Embedding/Reranker).</div>"]
+    style 3 fill:#7f7f7f,stroke:#585858,color:#ffffff
+    4["<div style='font-weight: bold'>Wikimedia Dumps</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>JSON-дамп Wikidata (100M+<br />сущностей, CC0) для базы<br />сущностей и silver-NER.</div>"]
+    style 4 fill:#7f7f7f,stroke:#585858,color:#ffffff
+    5["<div style='font-weight: bold'>Cloud GPU</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Арендуемые GPU 24-80 GB:<br />обучение, массовые<br />эмбеддинги, учитель-LLM для<br />синтетики.</div>"]
+    style 5 fill:#7f7f7f,stroke:#585858,color:#ffffff
+    6["<div style='font-weight: bold'>Cloud Object Storage</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>S3-совместимый бакет для<br />обмена данными с облачными<br />GPU-заданиями (DVC remote<br />'cloud').</div>"]
+    style 6 fill:#7f7f7f,stroke:#585858,color:#ffffff
+    7["<div style='font-weight: bold'>TriFact AI</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Извлечение сущностей,<br />межъязыковой гибридный поиск,<br />ответы со ссылками и проверка<br />утверждений по документам на<br />трёх языках.</div>"]
+    style 7 fill:#2e75b6,stroke:#20517f,color:#ffffff
+
+    7-. "<div>Скачивает датасеты (revision<br />SHA)</div><div style='font-size: 70%'>[HTTPS]</div>" .->3
+    7-. "<div>Скачивает JSON-дамп</div><div style='font-size: 70%'>[HTTPS]</div>" .->4
+    7-. "<div>Обмен с GPU-заданиями</div><div style='font-size: 70%'>[dvc push/pull (remote cloud)]</div>" .->6
+    7-. "<div>Выполняется на</div><div style='font-size: 70%'>[SSH / job API]</div>" .->5
+    1-. "<div>Загружает документы, задаёт<br />вопросы</div><div style='font-size: 70%'>[HTTPS]</div>" .->7
+    2-. "<div>Запускает стадии</div><div style='font-size: 70%'>[dvc repro]</div>" .->7
+
+  end

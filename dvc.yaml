@@ -1,0 +1,185 @@
+# Offline ML pipeline; see docs/architecture/docs/01-architecture.md §5.3 and §9.
+# Batch jobs (trifact.batch.*) are sharded and idempotent and may run on a cloud GPU (ADR-0014).
+stages:
+  # ------------------------------------------------ stage 1: acquisition
+  acquire:
+    foreach: [wikipedia, fineweb2_kk, multidomain_kk, kazparc, kaznerd, wikiann, wikineural, nerel,
+              squad_v2, sberquad, kazqad, ms_marco, mmarco_ru, miracl, ru_hnp, xnli]
+    do:
+      cmd: python -m trifact.data.acquire --source ${item}
+      deps: [src/trifact/data/acquire.py]
+      params: ["sources.${item}", lake]
+      outs: ["data/raw/${item}"]
+
+  wikidata:
+    cmd: python -m trifact.data.wikidata
+    deps: [src/trifact/data/wikidata.py]
+    params: [sources.wikidata, lake]
+    outs: [data/raw/wikidata]
+
+  # ------------------------------------------------ stage 2: curation
+  clean:
+    cmd: python -m trifact.data.clean
+    deps: [src/trifact/data/clean.py, src/trifact/ingestion/normalize.py, data/raw/wikipedia, data/raw/fineweb2_kk, data/raw/multidomain_kk]
+    params: [curation.langid, curation.quality, lake]
+    outs: [data/clean]
+    metrics: [{reports/clean.json: {cache: false}}]
+
+  dedup:
+    cmd: python -m trifact.data.dedup
+    deps: [src/trifact/data/dedup.py, data/clean]
+    params: [curation.minhash]
+    outs: [data/curated/dedup]
+    metrics: [{reports/dedup.json: {cache: false}}]
+
+  decontaminate:
+    cmd: python -m trifact.data.decontaminate
+    deps: [src/trifact/data/decontaminate.py, data/curated/dedup, data/raw/kazqad, data/raw/sberquad, data/raw/squad_v2, data/raw/miracl]
+    params: [curation.decontamination]
+    outs: [data/curated/corpus]
+    metrics: [{reports/decontamination.json: {cache: false}}]
+
+  # ------------------------------------------------ stage 3: task datasets
+  validate:
+    cmd: python -m trifact.data.validate
+    deps: [src/trifact/data/validate.py, data/raw/kaznerd, data/raw/wikiann, data/raw/nerel, data/raw/squad_v2, data/raw/sberquad, data/raw/kazqad]
+    metrics: [{reports/data_quality.json: {cache: false}}]
+
+  split:
+    cmd: python -m trifact.data.split
+    deps: [src/trifact/data/split.py, reports/data_quality.json]
+    params: [seed, split]
+    outs: [data/task/splits]
+
+  build_eval:
+    cmd: python -m trifact.data.build_eval
+    deps: [src/trifact/data/build_eval.py, data/task/splits]
+    params: [scale, evaluation]
+    outs: [data/eval]            # frozen, ADR-0007
+
+  build_ner:
+    cmd: python -m trifact.data.build_ner
+    deps: [src/trifact/data/build_ner.py, configs/labels.yaml, data/task/splits, data/curated/corpus, data/raw/wikidata]
+    params: [scale, ner.labels]
+    outs: [data/task/ner]
+
+  build_pairs:
+    cmd: python -m trifact.data.build_pairs
+    deps: [src/trifact/data/build_pairs.py, data/task/splits, data/task/chunks, data/raw/ms_marco, data/raw/mmarco_ru, data/raw/kazparc]
+    params: [scale, retrieval.hard_negatives_per_query, teacher.filters]
+    outs: [data/task/retrieval]
+
+  build_sft:
+    cmd: python -m trifact.data.build_sft
+    deps: [src/trifact/data/build_sft.py, configs/prompts/grounded_answer.md, data/task/splits, data/task/chunks]
+    params: [scale, sft, teacher]
+    outs: [data/task/sft]
+
+  build_nli:
+    cmd: python -m trifact.data.build_nli
+    deps: [src/trifact/data/build_nli.py, data/raw/xnli]
+    params: [teacher.filters]
+    outs: [data/task/nli]
+
+  # ------------------------------------------------ corpus chunks, KB and index
+  chunk_corpus:
+    cmd: python -m trifact.data.chunk_corpus
+    deps: [src/trifact/data/chunk_corpus.py, src/trifact/ingestion/chunker.py, data/curated/corpus]
+    params: [scale.profile, chunking]
+    outs: [data/task/chunks]
+
+  build_kb:
+    cmd: python -m trifact.data.build_kb
+    deps: [src/trifact/data/build_kb.py, data/raw/wikidata, data/raw/wikipedia]
+    params: [linking]
+    outs: [data/task/kb]
+
+  embed_corpus:
+    cmd: python -m trifact.batch.embed_corpus
+    deps: [src/trifact/batch/embed_corpus.py, data/task/chunks]
+    params: [retrieval.embedder]
+    outs: [data/task/vectors]
+
+  index_corpus:
+    cmd: python -m trifact.batch.index_corpus
+    deps: [src/trifact/batch/index_corpus.py, data/task/vectors]
+    params: [retrieval.corpus_index]
+    metrics: [{reports/index.json: {cache: false}}]
+
+  # ------------------------------------------------ stage 4: document processing
+  eval_docproc:
+    cmd: python -m trifact.evaluation.eval_docproc
+    deps: [src/trifact/evaluation/eval_docproc.py, src/trifact/ingestion, data/eval]
+    metrics: [{reports/docproc.json: {cache: false}}]
+
+  # ------------------------------------------------ stage 5: extraction
+  train_ner:
+    cmd: python -m trifact.training.train_ner
+    deps: [src/trifact/training/train_ner.py, data/task/ner]
+    params: [ner]
+    outs: [models/ner]
+
+  eval_ner:
+    cmd: python -m trifact.evaluation.eval_ner
+    deps: [src/trifact/evaluation/eval_ner.py, models/ner, data/eval]
+    metrics: [{reports/ner.json: {cache: false}}]
+
+  annotate_corpus:
+    cmd: python -m trifact.batch.annotate_corpus
+    deps: [src/trifact/batch/annotate_corpus.py, models/ner, data/task/chunks, data/task/kb]
+    outs: [data/task/annotations]
+
+  # ------------------------------------------------ stage 6: retrieval
+  train_retriever:
+    cmd: python -m trifact.training.train_retriever
+    deps: [src/trifact/training/train_retriever.py, data/task/retrieval]
+    params: [retrieval]
+    outs: [models/retriever]
+
+  train_reranker:
+    cmd: python -m trifact.training.train_reranker
+    deps: [src/trifact/training/train_reranker.py, data/task/retrieval]
+    params: [retrieval]
+    outs: [models/reranker]
+
+  eval_retrieval:
+    cmd: python -m trifact.evaluation.eval_retrieval
+    deps: [src/trifact/evaluation/eval_retrieval.py, models/retriever, models/reranker, data/eval, reports/index.json]
+    metrics: [{reports/retrieval.json: {cache: false}}]
+
+  # ------------------------------------------------ stage 7: generation (cloud GPU, ADR-0012)
+  train_llm:
+    cmd: python -m trifact.training.train_llm
+    deps: [src/trifact/training/train_llm.py, data/task/sft]
+    params: [llm]
+    outs: [models/llm_adapter]
+
+  eval_generation:
+    cmd: python -m trifact.evaluation.eval_generation
+    deps: [src/trifact/evaluation/eval_generation.py, models/llm_adapter, data/eval]
+    params: [verification]
+    metrics: [{reports/generation.json: {cache: false}}]
+
+  # ------------------------------------------------ stage 8: verification
+  train_nli:
+    cmd: python -m trifact.training.train_nli
+    deps: [src/trifact/training/train_nli.py, data/task/nli]
+    params: [verification]
+    outs: [models/nli]
+
+  eval_verification:
+    cmd: python -m trifact.evaluation.eval_verification
+    deps: [src/trifact/evaluation/eval_verification.py, models/nli, data/eval]
+    metrics: [{reports/verification.json: {cache: false}}]
+
+  # ------------------------------------------------ stage 9: end-to-end + gate
+  eval_e2e:
+    cmd: python -m trifact.evaluation.eval_e2e
+    deps: [src/trifact/evaluation/eval_e2e.py, reports/ner.json, reports/retrieval.json, reports/generation.json, reports/verification.json, data/eval]
+    metrics: [{reports/e2e.json: {cache: false}}]
+
+  gate:
+    cmd: python -m trifact.evaluation.gate
+    deps: [src/trifact/evaluation/gate.py, reports/e2e.json]
+    params: [promotion, evaluation]
+    metrics: [{reports/gate.json: {cache: false}}]

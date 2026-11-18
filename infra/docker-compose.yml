@@ -1,0 +1,112 @@
+# TriFact AI local stack (RTX 3050 4 GB). See docs/architecture/docs/01-architecture.md §13.
+#   Infrastructure only:      docker compose -f infra/docker-compose.yml up -d
+#   + application services:   docker compose -f infra/docker-compose.yml --profile app up -d
+#   + local LLM (needs GGUF): docker compose -f infra/docker-compose.yml --profile llm up -d
+
+name: trifact
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: infra/Dockerfile
+  env_file: [../.env]
+  depends_on: [postgres, qdrant, redis, s3]
+  restart: unless-stopped
+
+services:
+  # ------------------------------------------------------------ storage
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: trifact
+      POSTGRES_PASSWORD: trifact
+      POSTGRES_DB: trifact
+    ports: ["5432:5432"]
+    volumes: [pg_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trifact"]
+      interval: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.20.1
+    ports: ["6333:6333", "6334:6334"]
+    volumes: [qdrant_data:/qdrant/storage]
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  s3:   # S3-compatible object storage: raw uploads, DVC remote (ADR-0010)
+    image: chrislusf/seaweedfs:4.52
+    command: server -dir=/data -s3 -s3.port=9000
+    ports: ["9000:9000"]
+    volumes: [s3_data:/data]
+
+  # ------------------------------------------------------------ MLOps
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.18.0
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts --serve-artifacts
+    ports: ["5000:5000"]
+    volumes: [mlflow_data:/mlflow]
+
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    volumes: [./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:13.0.13
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports: ["3001:3000"]
+    depends_on: [prometheus]
+
+  # ------------------------------------------------------------ application
+  api:
+    <<: *app
+    profiles: [app]
+    command: uvicorn trifact.api.main:app --host 0.0.0.0 --port 8000
+    ports: ["8000:8000"]
+
+  worker:
+    <<: *app
+    profiles: [app]
+    command: arq trifact.worker.tasks.WorkerSettings
+
+  inference:
+    <<: *app
+    profiles: [app]
+    command: uvicorn trifact.inference.main:app --host 0.0.0.0 --port 8001
+    ports: ["8001:8001"]
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]
+
+  llm:  # Qwen3.5-2B + merged LoRA, GGUF Q4_K_M (ADR-0012)
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    profiles: [llm]
+    command: >
+      -m /models/trifact-llm-Q4_K_M.gguf --alias trifact-llm
+      --host 0.0.0.0 --port 8080 -c 8192 -ngl 99 --metrics
+    volumes: [../models/gguf:/models:ro]
+    ports: ["8080:8080"]
+    deploy:
+      resources:
+        reservations:
+          devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]
+
+volumes:
+  pg_data:
+  qdrant_data:
+  s3_data:
+  mlflow_data:
+  grafana_data:

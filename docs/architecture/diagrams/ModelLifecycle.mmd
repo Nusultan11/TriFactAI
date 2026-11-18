@@ -1,0 +1,50 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Dynamic View: TriFact AI"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 7 ["TriFact AI"]
+      style 7 fill:#ffffff,stroke:#20517f,color:#20517f
+
+      subgraph group1 ["Data & ML Platform"]
+        style group1 fill:#ffffff,stroke:#cccccc,color:#cccccc,stroke-dasharray:5
+
+        44["<div style='font-weight: bold'>Data Lake</div><div style='font-size: 70%; margin-top: 0px'>[Container: Parquet on SSD, DVC]</div><div style='font-size: 80%; margin-top:10px'>Parquet (zstd), шарды ~1M<br />строк / <=512 MB, партиции<br />source/lang. Слои raw -><br />clean -> curated -> task -><br />eval; манифест у каждого<br />источника (ADR-0011).</div>"]
+        style 44 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        45["<div style='font-weight: bold'>Data Pipeline</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, Polars (lazy/streaming), DuckDB, PyArrow, datatrove, DVC]</div><div style='font-size: 80%; margin-top:10px'>CPU-стадии DVC: загрузка,<br />курация, сборка task-наборов,<br />заморозка eval. Потоковая<br />колоночная обработка без<br />загрузки набора в RAM.</div>"]
+        style 45 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        60["<div style='font-weight: bold'>Batch Compute</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, PyTorch, vLLM, ONNX Runtime]</div><div style='font-size: 80%; margin-top:10px'>Шардированные идемпотентные<br />GPU/CPU-задания с чекпойнтом<br />на шард: эмбеддинги корпуса,<br />массовая NER-разметка,<br />учитель-LLM, загрузка индекса<br />(ADR-0014).</div>"]
+        style 60 fill:#548235,stroke:#3a5b25,color:#ffffff
+        66["<div style='font-weight: bold'>Training Jobs</div><div style='font-size: 70%; margin-top: 0px'>[Container: PyTorch, Transformers, PEFT, sentence-transformers, Optuna]</div><div style='font-size: 80%; margin-top:10px'>Обучение NER, embedder,<br />reranker, NLI и<br />LoRA-адаптеров LLM; HPO и >=3<br />сидов.</div>"]
+        style 66 fill:#548235,stroke:#3a5b25,color:#ffffff
+        67["<div style='font-weight: bold'>Evaluation Harness</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, seqeval, ranx, Locust]</div><div style='font-size: 80%; margin-top:10px'>Офлайн-метрики по языкам и 9<br />направлениям, значимость,<br />ablation, гейт продвижения<br />(ADR-0009).</div>"]
+        style 67 fill:#548235,stroke:#3a5b25,color:#ffffff
+        76["<div style='font-weight: bold'>MLflow</div><div style='font-size: 70%; margin-top: 0px'>[Container: MLflow 3]</div><div style='font-size: 80%; margin-top:10px'>Трекинг экспериментов (git<br />SHA, DVC-хеши, конфиг,<br />метрики по языкам, железо) и<br />Model Registry (champion /<br />challenger).</div>"]
+        style 76 fill:#7030a0,stroke:#4e2170,color:#ffffff
+      end
+
+      subgraph group2 ["Serving"]
+        style group2 fill:#ffffff,stroke:#cccccc,color:#cccccc,stroke-dasharray:5
+
+        32["<div style='font-weight: bold'>Inference Service</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI, PyTorch / ONNX Runtime]</div><div style='font-size: 80%; margin-top:10px'>Онлайн-хостинг<br />encoder-моделей: эмбеддинги,<br />reranker, NER, NLI.<br />Динамический батчинг.</div>"]
+        style 32 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        41[("<div style='font-weight: bold'>Qdrant</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant 1.20]</div><div style='font-size: 80%; margin-top:10px'>Коллекции: corpus_chunks<br />(десятки миллионов,<br />квантизация, on-disk,<br />read-only, alias на версию<br />эмбеддера) и workspace_chunks<br />(пользовательские документы,<br />tenant = workspace_id).</div>")]
+        style 41 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      end
+
+    end
+
+    6["<div style='font-weight: bold'>Cloud Object Storage</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>S3-совместимый бакет для<br />обмена данными с облачными<br />GPU-заданиями (DVC remote<br />'cloud').</div>"]
+    style 6 fill:#7f7f7f,stroke:#585858,color:#ffffff
+
+    45-. "<div>1. raw -> clean -> curated -><br />task -> eval</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    44-. "<div>2. dvc push (remote cloud)</div><div style='font-size: 70%'>[dvc push/pull (remote cloud)]</div>" .->6
+    60-. "<div>3. Векторы, аннотации,<br />синтетика</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    66-. "<div>4. Читает task-наборы</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    66-. "<div>5. Регистрирует challenger</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+    67-. "<div>6. Гейт: challenger -><br />champion</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+    60-. "<div>7. Новая коллекция корпуса,<br />переключение alias</div><div style='font-size: 70%'>[gRPC]</div>" .->41
+    32-. "<div>8. Загружает champion</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+
+  end

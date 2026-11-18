@@ -1,0 +1,48 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Component View: TriFact AI - Inference Service"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 7 ["TriFact AI"]
+      style 7 fill:#ffffff,stroke:#20517f,color:#20517f
+
+      subgraph 32 ["Inference Service"]
+        style 32 fill:#ffffff,stroke:#2f4f89,color:#2f4f89
+
+        33["<div style='font-weight: bold'>Embedding Endpoint</div><div style='font-size: 70%; margin-top: 0px'>[Component: BGE-M3 / Qwen3-Embedding / mE5]</div><div style='font-size: 80%; margin-top:10px'>Dense + sparse векторы<br />запросов и чанков<br />пользователя.</div>"]
+        style 33 fill:#8faadc,stroke:#64769a,color:#000000
+        34["<div style='font-weight: bold'>Rerank Endpoint</div><div style='font-size: 70%; margin-top: 0px'>[Component: bge-reranker-v2-m3 / Qwen3-Reranker]</div><div style='font-size: 80%; margin-top:10px'>Релевантность (query, chunk).</div>"]
+        style 34 fill:#8faadc,stroke:#64769a,color:#000000
+        35["<div style='font-weight: bold'>NER Endpoint</div><div style='font-size: 70%; margin-top: 0px'>[Component: XLM-R (fine-tuned, ONNX int8)]</div><div style='font-size: 80%; margin-top:10px'>Token classification.</div>"]
+        style 35 fill:#8faadc,stroke:#64769a,color:#000000
+        36["<div style='font-weight: bold'>NLI Endpoint</div><div style='font-size: 70%; margin-top: 0px'>[Component: mDeBERTa-xnli / bge-m3-zeroshot (fine-tuned kk)]</div><div style='font-size: 80%; margin-top:10px'>entailment / contradiction /<br />neutral.</div>"]
+        style 36 fill:#8faadc,stroke:#64769a,color:#000000
+        37["<div style='font-weight: bold'>Dynamic Batcher</div><div style='font-size: 70%; margin-top: 0px'>[Component: asyncio]</div><div style='font-size: 80%; margin-top:10px'>Собирает запросы в батчи по<br />длине, ограничивает очередь.</div>"]
+        style 37 fill:#8faadc,stroke:#64769a,color:#000000
+        38["<div style='font-weight: bold'>Model Loader</div><div style='font-size: 70%; margin-top: 0px'>[Component: mlflow]</div><div style='font-size: 80%; margin-top:10px'>Загружает версии моделей по<br />alias 'champion' из MLflow<br />Model Registry.</div>"]
+        style 38 fill:#8faadc,stroke:#64769a,color:#000000
+      end
+
+      22["<div style='font-weight: bold'>Ingestion Worker</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, arq]</div><div style='font-size: 80%; margin-top:10px'>Асинхронная обработка<br />загруженных документов:<br />парсинг, OCR, нормализация,<br />язык, чанки, NER, linking,<br />индексация.</div>"]
+      style 22 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      76["<div style='font-weight: bold'>MLflow</div><div style='font-size: 70%; margin-top: 0px'>[Container: MLflow 3]</div><div style='font-size: 80%; margin-top:10px'>Трекинг экспериментов (git<br />SHA, DVC-хеши, конфиг,<br />метрики по языкам, железо) и<br />Model Registry (champion /<br />challenger).</div>"]
+      style 76 fill:#7030a0,stroke:#4e2170,color:#ffffff
+      9["<div style='font-weight: bold'>API</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>REST + SSE: рабочие<br />пространства, документы,<br />вопросы, сущности, фидбек.<br />Оркестрирует онлайн-пайплайн<br />ответа.</div>"]
+      style 9 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+    end
+
+    9-. "<div>Сущности запроса</div><div style='font-size: 70%'>[HTTP]</div>" .->35
+    9-. "<div>Эмбеддинг запроса</div><div style='font-size: 70%'>[HTTP]</div>" .->33
+    9-. "<div>Оценки пар</div><div style='font-size: 70%'>[HTTP]</div>" .->34
+    9-. "<div>claim vs evidence</div><div style='font-size: 70%'>[HTTP]</div>" .->36
+    22-. "<div>Token classification</div><div style='font-size: 70%'>[HTTP]</div>" .->35
+    22-. "<div>Векторы чанков</div><div style='font-size: 70%'>[HTTP]</div>" .->33
+    33-. "<div>Запросы в батч</div><div style='font-size: 70%'>[in-process]</div>" .->37
+    34-. "<div>Пары в батч</div><div style='font-size: 70%'>[in-process]</div>" .->37
+    35-. "<div>Чанки в батч</div><div style='font-size: 70%'>[in-process]</div>" .->37
+    36-. "<div>Пары в батч</div><div style='font-size: 70%'>[in-process]</div>" .->37
+    37-. "<div>Загруженные модели</div><div style='font-size: 70%'>[in-process]</div>" .->38
+    38-. "<div>Версия 'champion' и её веса</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+
+  end

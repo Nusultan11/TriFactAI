@@ -1,0 +1,71 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Dynamic View: TriFact AI - API"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 7 ["TriFact AI"]
+      style 7 fill:#ffffff,stroke:#20517f,color:#20517f
+
+      subgraph 32 ["Inference Service"]
+        style 32 fill:#ffffff,stroke:#2f4f89,color:#2f4f89
+
+        33["<div style='font-weight: bold'>Embedding Endpoint</div><div style='font-size: 70%; margin-top: 0px'>[Component: BGE-M3 / Qwen3-Embedding / mE5]</div><div style='font-size: 80%; margin-top:10px'>Dense + sparse векторы<br />запросов и чанков<br />пользователя.</div>"]
+        style 33 fill:#8faadc,stroke:#64769a,color:#000000
+        34["<div style='font-weight: bold'>Rerank Endpoint</div><div style='font-size: 70%; margin-top: 0px'>[Component: bge-reranker-v2-m3 / Qwen3-Reranker]</div><div style='font-size: 80%; margin-top:10px'>Релевантность (query, chunk).</div>"]
+        style 34 fill:#8faadc,stroke:#64769a,color:#000000
+        36["<div style='font-weight: bold'>NLI Endpoint</div><div style='font-size: 70%; margin-top: 0px'>[Component: mDeBERTa-xnli / bge-m3-zeroshot (fine-tuned kk)]</div><div style='font-size: 80%; margin-top:10px'>entailment / contradiction /<br />neutral.</div>"]
+        style 36 fill:#8faadc,stroke:#64769a,color:#000000
+      end
+
+      subgraph 9 ["API"]
+        style 9 fill:#ffffff,stroke:#2f4f89,color:#2f4f89
+
+        11["<div style='font-weight: bold'>Ask Router</div><div style='font-size: 70%; margin-top: 0px'>[Component: FastAPI router, SSE]</div><div style='font-size: 80%; margin-top:10px'>Вопрос, язык ответа, scope<br />(documents | corpus | all);<br />стрим ответа с цитатами.</div>"]
+        style 11 fill:#8faadc,stroke:#64769a,color:#000000
+        13["<div style='font-weight: bold'>Query Service</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python, asyncio]</div><div style='font-size: 80%; margin-top:10px'>Оркестратор: анализ запроса<br />-> retrieval -> rerank -><br />generation -> verification -><br />журнал.</div>"]
+        style 13 fill:#8faadc,stroke:#64769a,color:#000000
+        15["<div style='font-weight: bold'>Hybrid Retriever</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python, qdrant-client]</div><div style='font-size: 80%; margin-top:10px'>Dense + sparse поиск в Qdrant<br />(prefetch + RRF на сервере),<br />слияние результатов двух<br />коллекций.</div>"]
+        style 15 fill:#8faadc,stroke:#64769a,color:#000000
+        16["<div style='font-weight: bold'>Reranker Client</div><div style='font-size: 70%; margin-top: 0px'>[Component: HTTP client]</div><div style='font-size: 80%; margin-top:10px'>Переранжирование top-N<br />кандидатов cross-encoder'ом,<br />кеш оценок.</div>"]
+        style 16 fill:#8faadc,stroke:#64769a,color:#000000
+        17["<div style='font-weight: bold'>Grounded Prompt Builder</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python, Jinja]</div><div style='font-size: 80%; margin-top:10px'>Контекст с [chunk_id], язык<br />ответа, инструкция отвечать<br />только по доказательствам.</div>"]
+        style 17 fill:#8faadc,stroke:#64769a,color:#000000
+        18["<div style='font-weight: bold'>Generator Client</div><div style='font-size: 70%; margin-top: 0px'>[Component: HTTP client]</div><div style='font-size: 80%; margin-top:10px'>Стриминговый вызов LLM через<br />OpenAI-совместимый API.</div>"]
+        style 18 fill:#8faadc,stroke:#64769a,color:#000000
+        19["<div style='font-weight: bold'>Evidence Verifier</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python]</div><div style='font-size: 80%; margin-top:10px'>Разбиение на утверждения,<br />проверка ссылок,<br />NLI-вердикты, политика отказа<br />(ADR-0008).</div>"]
+        style 19 fill:#8faadc,stroke:#64769a,color:#000000
+        21["<div style='font-weight: bold'>Repositories</div><div style='font-size: 70%; margin-top: 0px'>[Component: SQLAlchemy]</div><div style='font-size: 80%; margin-top:10px'>Документы, чанки, сущности,<br />журнал запросов и ответов.</div>"]
+        style 21 fill:#8faadc,stroke:#64769a,color:#000000
+      end
+
+      39["<div style='font-weight: bold'>LLM Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: llama.cpp server (локально, GGUF) / vLLM (GPU-сервер), OpenAI-compatible API]</div><div style='font-size: 80%; margin-top:10px'>Grounded generation на<br />KK/RU/EN: базовая модель +<br />LoRA-адаптер, стриминг.</div>"]
+      style 39 fill:#c55a11,stroke:#893e0b,color:#ffffff
+      41[("<div style='font-weight: bold'>Qdrant</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant 1.20]</div><div style='font-size: 80%; margin-top:10px'>Коллекции: corpus_chunks<br />(десятки миллионов,<br />квантизация, on-disk,<br />read-only, alias на версию<br />эмбеддера) и workspace_chunks<br />(пользовательские документы,<br />tenant = workspace_id).</div>")]
+      style 41 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      8["<div style='font-weight: bold'>Web App</div><div style='font-size: 70%; margin-top: 0px'>[Container: Next.js, TypeScript]</div><div style='font-size: 80%; margin-top:10px'>Загрузка документов, статусы,<br />чат со стримингом, карточки<br />сущностей, подсветка<br />подтверждающих фрагментов.</div>"]
+      style 8 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+    end
+
+    8["<div style='font-weight: bold'>Web App</div><div style='font-size: 70%; margin-top: 0px'>[Container: Next.js, TypeScript]</div><div style='font-size: 80%; margin-top:10px'>Загрузка документов, статусы,<br />чат со стримингом, карточки<br />сущностей, подсветка<br />подтверждающих фрагментов.</div>"]
+    style 8 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+    39["<div style='font-weight: bold'>LLM Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: llama.cpp server (локально, GGUF) / vLLM (GPU-сервер), OpenAI-compatible API]</div><div style='font-size: 80%; margin-top:10px'>Grounded generation на<br />KK/RU/EN: базовая модель +<br />LoRA-адаптер, стриминг.</div>"]
+    style 39 fill:#c55a11,stroke:#893e0b,color:#ffffff
+    41[("<div style='font-weight: bold'>Qdrant</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant 1.20]</div><div style='font-size: 80%; margin-top:10px'>Коллекции: corpus_chunks<br />(десятки миллионов,<br />квантизация, on-disk,<br />read-only, alias на версию<br />эмбеддера) и workspace_chunks<br />(пользовательские документы,<br />tenant = workspace_id).</div>")]
+    style 41 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+
+    8-. "<div>1. Вопрос (kk), answer_lang =<br />kk, scope = all</div><div style='font-size: 70%'>[SSE/HTTPS]</div>" .->11
+    11-. "<div>2. Передаёт вопрос</div><div style='font-size: 70%'>[in-process]</div>" .->13
+    13-. "<div>3. Кандидаты</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    15-. "<div>4. Dense + sparse вектор<br />запроса</div><div style='font-size: 70%'>[HTTP]</div>" .->33
+    15-. "<div>5. workspace_chunks ||<br />corpus_chunks: prefetch + RRF<br />-> top-50</div><div style='font-size: 70%'>[gRPC]</div>" .->41
+    13-. "<div>6. Переранжирование</div><div style='font-size: 70%'>[in-process]</div>" .->16
+    16-. "<div>7. top-50 -> top-8</div><div style='font-size: 70%'>[HTTP]</div>" .->34
+    13-. "<div>8. Контекст с [chunk_id]</div><div style='font-size: 70%'>[in-process]</div>" .->17
+    13-. "<div>9. Генерация</div><div style='font-size: 70%'>[in-process]</div>" .->18
+    18-. "<div>10. Ответ на kk со ссылками<br />[chunk_id] или отказ</div><div style='font-size: 70%'>[HTTP]</div>" .->39
+    13-. "<div>11. Проверка</div><div style='font-size: 70%'>[in-process]</div>" .->19
+    19-. "<div>12. Каждое утверждение vs<br />цитируемый фрагмент</div><div style='font-size: 70%'>[HTTP]</div>" .->36
+    13-. "<div>13. Запрос, ответ, вердикты,<br />версии моделей, латентность</div><div style='font-size: 70%'>[in-process]</div>" .->21
+
+  end

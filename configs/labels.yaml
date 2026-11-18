@@ -1,0 +1,17 @@
+# Label schema for the trained NER model (ADR-0006).
+# DATE is produced by the rule-based extractor (trifact.extraction.dates), not by the model.
+core_labels: [PER, ORG, LOC]
+
+wikiann:            # already PER / ORG / LOC
+  PER: PER
+  ORG: ORG
+  LOC: LOC
+
+kaznerd:            # 25 classes -> core; everything not listed maps to O
+  PERSON: PER
+  ORGANISATION: ORG
+  GPE: LOC
+  LOCATION: LOC
+  FACILITY: LOC     # experiment: compare with FACILITY -> O
+  # DATE is kept separately to evaluate the rule-based date extractor
+  # Full 25-class schema is used only in experiment NER-3

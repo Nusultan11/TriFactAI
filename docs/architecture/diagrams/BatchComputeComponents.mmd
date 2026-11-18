@@ -1,0 +1,54 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Component View: TriFact AI - Batch Compute"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    3["<div style='font-weight: bold'>Hugging Face Hub</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Датасеты (Wikipedia,<br />FineWeb-2, KazNERD, KazQAD,<br />WikiANN, MS MARCO, MIRACL,<br />XNLI, ...) и базовые модели<br />(XLM-R, BGE-M3, Qwen3.5,<br />Qwen3-Embedding/Reranker).</div>"]
+    style 3 fill:#7f7f7f,stroke:#585858,color:#ffffff
+    5["<div style='font-weight: bold'>Cloud GPU</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Арендуемые GPU 24-80 GB:<br />обучение, массовые<br />эмбеддинги, учитель-LLM для<br />синтетики.</div>"]
+    style 5 fill:#7f7f7f,stroke:#585858,color:#ffffff
+    6["<div style='font-weight: bold'>Cloud Object Storage</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>S3-совместимый бакет для<br />обмена данными с облачными<br />GPU-заданиями (DVC remote<br />'cloud').</div>"]
+    style 6 fill:#7f7f7f,stroke:#585858,color:#ffffff
+
+    subgraph 7 ["TriFact AI"]
+      style 7 fill:#ffffff,stroke:#20517f,color:#20517f
+
+      subgraph 60 ["Batch Compute"]
+        style 60 fill:#ffffff,stroke:#3a5b25,color:#3a5b25
+
+        61["<div style='font-weight: bold'>Shard Runner</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python]</div><div style='font-size: 80%; margin-top:10px'>Раздаёт шарды, пропускает<br />готовые (_SUCCESS), пишет<br />метрики throughput и пиковую<br />память.</div>"]
+        style 61 fill:#8faadc,stroke:#64769a,color:#000000
+        62["<div style='font-weight: bold'>Embed Corpus Job</div><div style='font-size: 70%; margin-top: 0px'>[Component: sentence-transformers / FlagEmbedding]</div><div style='font-size: 80%; margin-top:10px'>Dense + sparse векторы для<br />десятков миллионов чанков<br />(fp16, сортировка по длине).</div>"]
+        style 62 fill:#8faadc,stroke:#64769a,color:#000000
+        63["<div style='font-weight: bold'>Annotate Corpus Job</div><div style='font-size: 70%; margin-top: 0px'>[Component: ONNX Runtime int8]</div><div style='font-size: 80%; margin-top:10px'>Массовая NER + linking<br />champion-моделью -> аннотации<br />в lake.</div>"]
+        style 63 fill:#8faadc,stroke:#64769a,color:#000000
+        64["<div style='font-weight: bold'>Teacher Generation Job</div><div style='font-size: 70%; margin-top: 0px'>[Component: vLLM, Qwen3.5-35B-A3B]</div><div style='font-size: 80%; margin-top:10px'>Синтетические запросы,<br />grounded QA, kk-перевод NLI<br />учителем.</div>"]
+        style 64 fill:#8faadc,stroke:#64769a,color:#000000
+        65["<div style='font-weight: bold'>Index Loader</div><div style='font-size: 70%; margin-top: 0px'>[Component: qdrant-client]</div><div style='font-size: 80%; margin-top:10px'>Bulk upload в новую коллекцию<br />Qdrant, HNSW после загрузки,<br />переключение alias после<br />гейта.</div>"]
+        style 65 fill:#8faadc,stroke:#64769a,color:#000000
+      end
+
+      41[("<div style='font-weight: bold'>Qdrant</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant 1.20]</div><div style='font-size: 80%; margin-top:10px'>Коллекции: corpus_chunks<br />(десятки миллионов,<br />квантизация, on-disk,<br />read-only, alias на версию<br />эмбеддера) и workspace_chunks<br />(пользовательские документы,<br />tenant = workspace_id).</div>")]
+      style 41 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      44["<div style='font-weight: bold'>Data Lake</div><div style='font-size: 70%; margin-top: 0px'>[Container: Parquet on SSD, DVC]</div><div style='font-size: 80%; margin-top:10px'>Parquet (zstd), шарды ~1M<br />строк / <=512 MB, партиции<br />source/lang. Слои raw -><br />clean -> curated -> task -><br />eval; манифест у каждого<br />источника (ADR-0011).</div>"]
+      style 44 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      76["<div style='font-weight: bold'>MLflow</div><div style='font-size: 70%; margin-top: 0px'>[Container: MLflow 3]</div><div style='font-size: 80%; margin-top:10px'>Трекинг экспериментов (git<br />SHA, DVC-хеши, конфиг,<br />метрики по языкам, железо) и<br />Model Registry (champion /<br />challenger).</div>"]
+      style 76 fill:#7030a0,stroke:#4e2170,color:#ffffff
+    end
+
+    44-. "<div>Обмен с GPU-заданиями</div><div style='font-size: 70%'>[dvc push/pull (remote cloud)]</div>" .->6
+    61-. "<div>Шард чанков</div><div style='font-size: 70%'>[in-process]</div>" .->62
+    61-. "<div>Шард чанков</div><div style='font-size: 70%'>[in-process]</div>" .->63
+    61-. "<div>Шард заданий генерации</div><div style='font-size: 70%'>[in-process]</div>" .->64
+    61-. "<div>Читает шарды, пишет результат<br />+ _SUCCESS</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    61-. "<div>Вход/выход облачных запусков</div><div style='font-size: 70%'>[S3 API]</div>" .->6
+    61-. "<div>Throughput, память, стоимость</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+    61-. "<div>Выполняется на</div><div style='font-size: 70%'>[SSH / job API]</div>" .->5
+    64-. "<div>Веса учителя</div><div style='font-size: 70%'>[HTTPS]</div>" .->3
+    62-. "<div>Веса champion/challenger<br />эмбеддера</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+    63-. "<div>Веса champion NER</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+    65-. "<div>Читает векторы и payload</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    65-. "<div>Bulk upload в<br />corpus_chunks__<embedder>,<br />alias</div><div style='font-size: 70%'>[gRPC]</div>" .->41
+
+  end

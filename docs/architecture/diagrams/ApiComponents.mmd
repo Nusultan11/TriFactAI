@@ -1,0 +1,82 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Component View: TriFact AI - API"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 7 ["TriFact AI"]
+      style 7 fill:#ffffff,stroke:#20517f,color:#20517f
+
+      subgraph 9 ["API"]
+        style 9 fill:#ffffff,stroke:#2f4f89,color:#2f4f89
+
+        10["<div style='font-weight: bold'>Documents Router</div><div style='font-size: 70%; margin-top: 0px'>[Component: FastAPI router]</div><div style='font-size: 80%; margin-top:10px'>Загрузка файлов, статус<br />обработки, список и удаление<br />документов рабочего<br />пространства.</div>"]
+        style 10 fill:#8faadc,stroke:#64769a,color:#000000
+        11["<div style='font-weight: bold'>Ask Router</div><div style='font-size: 70%; margin-top: 0px'>[Component: FastAPI router, SSE]</div><div style='font-size: 80%; margin-top:10px'>Вопрос, язык ответа, scope<br />(documents | corpus | all);<br />стрим ответа с цитатами.</div>"]
+        style 11 fill:#8faadc,stroke:#64769a,color:#000000
+        12["<div style='font-weight: bold'>Entities Router</div><div style='font-size: 70%; margin-top: 0px'>[Component: FastAPI router]</div><div style='font-size: 80%; margin-top:10px'>Поиск сущностей, карточка<br />QID, документы и фрагменты с<br />упоминаниями.</div>"]
+        style 12 fill:#8faadc,stroke:#64769a,color:#000000
+        13["<div style='font-weight: bold'>Query Service</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python, asyncio]</div><div style='font-size: 80%; margin-top:10px'>Оркестратор: анализ запроса<br />-> retrieval -> rerank -><br />generation -> verification -><br />журнал.</div>"]
+        style 13 fill:#8faadc,stroke:#64769a,color:#000000
+        14["<div style='font-weight: bold'>Query Analyzer</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python]</div><div style='font-size: 80%; margin-top:10px'>Язык вопроса, сущности<br />запроса (мягкий сигнал,<br />ADR-0004).</div>"]
+        style 14 fill:#8faadc,stroke:#64769a,color:#000000
+        15["<div style='font-weight: bold'>Hybrid Retriever</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python, qdrant-client]</div><div style='font-size: 80%; margin-top:10px'>Dense + sparse поиск в Qdrant<br />(prefetch + RRF на сервере),<br />слияние результатов двух<br />коллекций.</div>"]
+        style 15 fill:#8faadc,stroke:#64769a,color:#000000
+        16["<div style='font-weight: bold'>Reranker Client</div><div style='font-size: 70%; margin-top: 0px'>[Component: HTTP client]</div><div style='font-size: 80%; margin-top:10px'>Переранжирование top-N<br />кандидатов cross-encoder'ом,<br />кеш оценок.</div>"]
+        style 16 fill:#8faadc,stroke:#64769a,color:#000000
+        17["<div style='font-weight: bold'>Grounded Prompt Builder</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python, Jinja]</div><div style='font-size: 80%; margin-top:10px'>Контекст с [chunk_id], язык<br />ответа, инструкция отвечать<br />только по доказательствам.</div>"]
+        style 17 fill:#8faadc,stroke:#64769a,color:#000000
+        18["<div style='font-weight: bold'>Generator Client</div><div style='font-size: 70%; margin-top: 0px'>[Component: HTTP client]</div><div style='font-size: 80%; margin-top:10px'>Стриминговый вызов LLM через<br />OpenAI-совместимый API.</div>"]
+        style 18 fill:#8faadc,stroke:#64769a,color:#000000
+        19["<div style='font-weight: bold'>Evidence Verifier</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python]</div><div style='font-size: 80%; margin-top:10px'>Разбиение на утверждения,<br />проверка ссылок,<br />NLI-вердикты, политика отказа<br />(ADR-0008).</div>"]
+        style 19 fill:#8faadc,stroke:#64769a,color:#000000
+        20["<div style='font-weight: bold'>Query Cache</div><div style='font-size: 70%; margin-top: 0px'>[Component: Redis]</div><div style='font-size: 80%; margin-top:10px'>Кеш эмбеддингов запросов и<br />оценок reranker.</div>"]
+        style 20 fill:#8faadc,stroke:#64769a,color:#000000
+        21["<div style='font-weight: bold'>Repositories</div><div style='font-size: 70%; margin-top: 0px'>[Component: SQLAlchemy]</div><div style='font-size: 80%; margin-top:10px'>Документы, чанки, сущности,<br />журнал запросов и ответов.</div>"]
+        style 21 fill:#8faadc,stroke:#64769a,color:#000000
+      end
+
+      32["<div style='font-weight: bold'>Inference Service</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI, PyTorch / ONNX Runtime]</div><div style='font-size: 80%; margin-top:10px'>Онлайн-хостинг<br />encoder-моделей: эмбеддинги,<br />reranker, NER, NLI.<br />Динамический батчинг.</div>"]
+      style 32 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      39["<div style='font-weight: bold'>LLM Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: llama.cpp server (локально, GGUF) / vLLM (GPU-сервер), OpenAI-compatible API]</div><div style='font-size: 80%; margin-top:10px'>Grounded generation на<br />KK/RU/EN: базовая модель +<br />LoRA-адаптер, стриминг.</div>"]
+      style 39 fill:#c55a11,stroke:#893e0b,color:#ffffff
+      40[("<div style='font-weight: bold'>PostgreSQL</div><div style='font-size: 70%; margin-top: 0px'>[Container: PostgreSQL 16]</div><div style='font-size: 80%; margin-top:10px'>Состояние приложения:<br />workspaces, documents, chunks<br />и mentions пользовательских<br />документов, журнал<br />запросов/ответов/вердиктов,<br />фидбек; база сущностей<br />kb_entities/kb_aliases<br />(миллионы строк).</div>")]
+      style 40 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      41[("<div style='font-weight: bold'>Qdrant</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant 1.20]</div><div style='font-size: 80%; margin-top:10px'>Коллекции: corpus_chunks<br />(десятки миллионов,<br />квантизация, on-disk,<br />read-only, alias на версию<br />эмбеддера) и workspace_chunks<br />(пользовательские документы,<br />tenant = workspace_id).</div>")]
+      style 41 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      42["<div style='font-weight: bold'>Redis</div><div style='font-size: 70%; margin-top: 0px'>[Container: Redis 7]</div><div style='font-size: 80%; margin-top:10px'>Очередь задач обработки<br />документов и кеш запросов.</div>"]
+      style 42 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      43["<div style='font-weight: bold'>Object Storage</div><div style='font-size: 70%; margin-top: 0px'>[Container: SeaweedFS (S3 API)]</div><div style='font-size: 80%; margin-top:10px'>Исходные файлы пользователей,<br />DVC remote 'local', артефакты<br />MLflow, GGUF/веса для<br />сервинга.</div>"]
+      style 43 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      8["<div style='font-weight: bold'>Web App</div><div style='font-size: 70%; margin-top: 0px'>[Container: Next.js, TypeScript]</div><div style='font-size: 80%; margin-top:10px'>Загрузка документов, статусы,<br />чат со стримингом, карточки<br />сущностей, подсветка<br />подтверждающих фрагментов.</div>"]
+      style 8 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+    end
+
+    13-. "<div>Контекст</div><div style='font-size: 70%'>[in-process]</div>" .->17
+    13-. "<div>Генерация</div><div style='font-size: 70%'>[in-process]</div>" .->18
+    13-. "<div>Проверка утверждений</div><div style='font-size: 70%'>[in-process]</div>" .->19
+    13-. "<div>Журнал запроса и ответа</div><div style='font-size: 70%'>[in-process]</div>" .->21
+    14-. "<div>Сущности запроса</div><div style='font-size: 70%'>[HTTP]</div>" .->32
+    15-. "<div>Эмбеддинг запроса из кеша</div><div style='font-size: 70%'>[in-process]</div>" .->20
+    15-. "<div>Эмбеддинг запроса</div><div style='font-size: 70%'>[HTTP]</div>" .->32
+    15-. "<div>Prefetch dense + sparse, RRF;<br />две коллекции</div><div style='font-size: 70%'>[gRPC]</div>" .->41
+    16-. "<div>Кеш оценок</div><div style='font-size: 70%'>[in-process]</div>" .->20
+    16-. "<div>Оценки пар</div><div style='font-size: 70%'>[HTTP]</div>" .->32
+    18-. "<div>chat/completions (stream)</div><div style='font-size: 70%'>[HTTP]</div>" .->39
+    19-. "<div>claim vs evidence</div><div style='font-size: 70%'>[HTTP]</div>" .->32
+    20-. "<div>GET/SET</div><div style='font-size: 70%'>[Redis]</div>" .->42
+    21-. "<div>Читает/пишет</div><div style='font-size: 70%'>[SQL]</div>" .->40
+    39-. "<div>GGUF / LoRA-адаптер champion</div><div style='font-size: 70%'>[S3 API]</div>" .->43
+    8-. "<div>Загрузка и статусы</div><div style='font-size: 70%'>[JSON/HTTPS]</div>" .->10
+    8-. "<div>Вопросы, стрим ответа</div><div style='font-size: 70%'>[SSE/HTTPS]</div>" .->11
+    8-. "<div>Сущности</div><div style='font-size: 70%'>[JSON/HTTPS]</div>" .->12
+    10-. "<div>Сохраняет исходный файл</div><div style='font-size: 70%'>[S3 API]</div>" .->43
+    10-. "<div>Создаёт запись документа</div><div style='font-size: 70%'>[in-process]</div>" .->21
+    10-. "<div>Ставит задачу<br />process_document</div><div style='font-size: 70%'>[Redis]</div>" .->42
+    12-. "<div>Читает сущности и упоминания</div><div style='font-size: 70%'>[in-process]</div>" .->21
+    11-. "<div>Передаёт вопрос</div><div style='font-size: 70%'>[in-process]</div>" .->13
+    13-. "<div>Анализ запроса</div><div style='font-size: 70%'>[in-process]</div>" .->14
+    13-. "<div>Кандидаты (top-50)</div><div style='font-size: 70%'>[in-process]</div>" .->15
+    13-. "<div>top-50 -> top-8</div><div style='font-size: 70%'>[in-process]</div>" .->16
+
+  end

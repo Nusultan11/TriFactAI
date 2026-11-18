@@ -1,0 +1,51 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": { "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}" }
+    },
+    "shrimp": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "mcp-shrimp-task-manager"],
+      "env": {
+        "DATA_DIR": "C:/Users/nurs/TrifactAI/.shrimp",
+        "TEMPLATES_USE": "en",
+        "ENABLE_GUI": "false"
+      }
+    },
+    "structurizr": {
+      "type": "http",
+      "url": "https://mcp.structurizr.com/mcp"
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "exa": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp"
+    },
+    "huggingface": {
+      "type": "http",
+      "url": "https://huggingface.co/mcp?login"
+    },
+    "mlflow": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "mlflow[mcp]>=3.5", "mlflow", "mcp", "run"],
+      "env": { "MLFLOW_TRACKING_URI": "http://127.0.0.1:5000" }
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@playwright/mcp@latest"]
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "claude-code", "--project", "C:/Users/nurs/TrifactAI"]
+    }
+  }
+}

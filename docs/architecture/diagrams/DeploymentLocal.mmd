@@ -1,0 +1,88 @@
+graph TB
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Deployment View: TriFact AI - Local"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 237 ["Developer laptop"]
+      style 237 fill:#ffffff,stroke:#444444,color:#ffffff
+
+      subgraph 238 ["docker compose"]
+        style 238 fill:#ffffff,stroke:#444444,color:#ffffff
+
+        239["<div style='font-weight: bold'>Web App</div><div style='font-size: 70%; margin-top: 0px'>[Container: Next.js, TypeScript]</div><div style='font-size: 80%; margin-top:10px'>Загрузка документов, статусы,<br />чат со стримингом, карточки<br />сущностей, подсветка<br />подтверждающих фрагментов.</div>"]
+        style 239 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        240["<div style='font-weight: bold'>API</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>REST + SSE: рабочие<br />пространства, документы,<br />вопросы, сущности, фидбек.<br />Оркестрирует онлайн-пайплайн<br />ответа.</div>"]
+        style 240 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        242["<div style='font-weight: bold'>Ingestion Worker</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, arq]</div><div style='font-size: 80%; margin-top:10px'>Асинхронная обработка<br />загруженных документов:<br />парсинг, OCR, нормализация,<br />язык, чанки, NER, linking,<br />индексация.</div>"]
+        style 242 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        243["<div style='font-weight: bold'>Inference Service</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI, PyTorch / ONNX Runtime]</div><div style='font-size: 80%; margin-top:10px'>Онлайн-хостинг<br />encoder-моделей: эмбеддинги,<br />reranker, NER, NLI.<br />Динамический батчинг.</div>"]
+        style 243 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        subgraph 246 ["llama.cpp server"]
+          style 246 fill:#ffffff,stroke:#444444,color:#ffffff
+
+          247["<div style='font-weight: bold'>LLM Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: llama.cpp server (локально, GGUF) / vLLM (GPU-сервер), OpenAI-compatible API]</div><div style='font-size: 80%; margin-top:10px'>Grounded generation на<br />KK/RU/EN: базовая модель +<br />LoRA-адаптер, стриминг.</div>"]
+          style 247 fill:#c55a11,stroke:#893e0b,color:#ffffff
+        end
+
+        249[("<div style='font-weight: bold'>PostgreSQL</div><div style='font-size: 70%; margin-top: 0px'>[Container: PostgreSQL 16]</div><div style='font-size: 80%; margin-top:10px'>Состояние приложения:<br />workspaces, documents, chunks<br />и mentions пользовательских<br />документов, журнал<br />запросов/ответов/вердиктов,<br />фидбек; база сущностей<br />kb_entities/kb_aliases<br />(миллионы строк).</div>")]
+        style 249 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        252[("<div style='font-weight: bold'>Qdrant</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant 1.20]</div><div style='font-size: 80%; margin-top:10px'>Коллекции: corpus_chunks<br />(десятки миллионов,<br />квантизация, on-disk,<br />read-only, alias на версию<br />эмбеддера) и workspace_chunks<br />(пользовательские документы,<br />tenant = workspace_id).</div>")]
+        style 252 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        255["<div style='font-weight: bold'>Redis</div><div style='font-size: 70%; margin-top: 0px'>[Container: Redis 7]</div><div style='font-size: 80%; margin-top:10px'>Очередь задач обработки<br />документов и кеш запросов.</div>"]
+        style 255 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        258["<div style='font-weight: bold'>Object Storage</div><div style='font-size: 70%; margin-top: 0px'>[Container: SeaweedFS (S3 API)]</div><div style='font-size: 80%; margin-top:10px'>Исходные файлы пользователей,<br />DVC remote 'local', артефакты<br />MLflow, GGUF/веса для<br />сервинга.</div>"]
+        style 258 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        262["<div style='font-weight: bold'>MLflow</div><div style='font-size: 70%; margin-top: 0px'>[Container: MLflow 3]</div><div style='font-size: 80%; margin-top:10px'>Трекинг экспериментов (git<br />SHA, DVC-хеши, конфиг,<br />метрики по языкам, железо) и<br />Model Registry (champion /<br />challenger).</div>"]
+        style 262 fill:#7030a0,stroke:#4e2170,color:#ffffff
+        264["<div style='font-weight: bold'>Prometheus</div><div style='font-size: 70%; margin-top: 0px'>[Container: Prometheus]</div><div style='font-size: 80%; margin-top:10px'>Метрики API, воркера,<br />моделей, Qdrant: латентность<br />по стадиям, ошибки, очередь,<br />качество.</div>"]
+        style 264 fill:#7030a0,stroke:#4e2170,color:#ffffff
+        270["<div style='font-weight: bold'>Grafana</div><div style='font-size: 70%; margin-top: 0px'>[Container: Grafana]</div><div style='font-size: 80%; margin-top:10px'>Дашборды Service и Quality,<br />алерты.</div>"]
+        style 270 fill:#7030a0,stroke:#4e2170,color:#ffffff
+      end
+
+      subgraph 273 ["uv venv"]
+        style 273 fill:#ffffff,stroke:#444444,color:#ffffff
+
+        274["<div style='font-weight: bold'>Data Lake</div><div style='font-size: 70%; margin-top: 0px'>[Container: Parquet on SSD, DVC]</div><div style='font-size: 80%; margin-top:10px'>Parquet (zstd), шарды ~1M<br />строк / <=512 MB, партиции<br />source/lang. Слои raw -><br />clean -> curated -> task -><br />eval; манифест у каждого<br />источника (ADR-0011).</div>"]
+        style 274 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        276["<div style='font-weight: bold'>Data Pipeline</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, Polars (lazy/streaming), DuckDB, PyArrow, datatrove, DVC]</div><div style='font-size: 80%; margin-top:10px'>CPU-стадии DVC: загрузка,<br />курация, сборка task-наборов,<br />заморозка eval. Потоковая<br />колоночная обработка без<br />загрузки набора в RAM.</div>"]
+        style 276 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+        279["<div style='font-weight: bold'>Evaluation Harness</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, seqeval, ranx, Locust]</div><div style='font-size: 80%; margin-top:10px'>Офлайн-метрики по языкам и 9<br />направлениям, значимость,<br />ablation, гейт продвижения<br />(ADR-0009).</div>"]
+        style 279 fill:#548235,stroke:#3a5b25,color:#ffffff
+      end
+
+    end
+
+    239-. "<div>Загрузка и статусы</div><div style='font-size: 70%'>[JSON/HTTPS]</div>" .->240
+    240-. "<div>Сущности запроса</div><div style='font-size: 70%'>[HTTP]</div>" .->243
+    242-. "<div>Token classification</div><div style='font-size: 70%'>[HTTP]</div>" .->243
+    240-. "<div>chat/completions (stream)</div><div style='font-size: 70%'>[HTTP]</div>" .->247
+    240-. "<div>Читает/пишет</div><div style='font-size: 70%'>[SQL]</div>" .->249
+    242-. "<div>Кандидаты из kb_aliases</div><div style='font-size: 70%'>[SQL]</div>" .->249
+    240-. "<div>Prefetch dense + sparse, RRF;<br />две коллекции</div><div style='font-size: 70%'>[gRPC]</div>" .->252
+    242-. "<div>Upsert в workspace_chunks</div><div style='font-size: 70%'>[gRPC]</div>" .->252
+    240-. "<div>Ставит задачу<br />process_document</div><div style='font-size: 70%'>[Redis]</div>" .->255
+    242-. "<div>Забирает задачи</div><div style='font-size: 70%'>[Redis]</div>" .->255
+    240-. "<div>Сохраняет исходный файл</div><div style='font-size: 70%'>[S3 API]</div>" .->258
+    242-. "<div>Читает исходный файл</div><div style='font-size: 70%'>[S3 API]</div>" .->258
+    247-. "<div>GGUF / LoRA-адаптер champion</div><div style='font-size: 70%'>[S3 API]</div>" .->258
+    243-. "<div>Версия 'champion' и её веса</div><div style='font-size: 70%'>[HTTP]</div>" .->262
+    264-. "<div>Скрейпит /metrics</div><div style='font-size: 70%'>[HTTP]</div>" .->240
+    264-. "<div>Скрейпит /metrics</div><div style='font-size: 70%'>[HTTP]</div>" .->242
+    264-. "<div>Скрейпит /metrics</div><div style='font-size: 70%'>[HTTP]</div>" .->243
+    264-. "<div>Скрейпит /metrics</div><div style='font-size: 70%'>[HTTP]</div>" .->247
+    264-. "<div>Скрейпит /metrics</div><div style='font-size: 70%'>[HTTP]</div>" .->252
+    270-. "<div>Метрики качества из журнала<br />ответов</div><div style='font-size: 70%'>[SQL]</div>" .->249
+    270-. "<div>PromQL</div><div style='font-size: 70%'>[HTTP]</div>" .->264
+    274-. "<div>Версии шардов</div><div style='font-size: 70%'>[dvc push (remote local)]</div>" .->258
+    276-. "<div>kb_entities, kb_aliases</div><div style='font-size: 70%'>[COPY]</div>" .->249
+    276-. "<div>raw-шарды + манифест</div><div style='font-size: 70%'>[Parquet]</div>" .->274
+    279-. "<div>Прогон теста и нагрузка</div><div style='font-size: 70%'>[HTTP]</div>" .->240
+    279-. "<div>NLI на eval</div><div style='font-size: 70%'>[HTTP]</div>" .->243
+    279-. "<div>Генерация на eval</div><div style='font-size: 70%'>[HTTP]</div>" .->247
+    279-. "<div>Поиск по каждому методу<br />отдельно</div><div style='font-size: 70%'>[gRPC]</div>" .->252
+    279-. "<div>Метрики, решение, alias<br />champion</div><div style='font-size: 70%'>[HTTP]</div>" .->262
+    279-. "<div>Бенчмарк документов</div><div style='font-size: 70%'>[Parquet]</div>" .->274
+
+  end

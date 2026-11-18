@@ -1,0 +1,65 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Component View: TriFact AI - Evaluation Harness"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    subgraph 7 ["TriFact AI"]
+      style 7 fill:#ffffff,stroke:#20517f,color:#20517f
+
+      subgraph 67 ["Evaluation Harness"]
+        style 67 fill:#ffffff,stroke:#3a5b25,color:#3a5b25
+
+        68["<div style='font-weight: bold'>DocProc Eval</div><div style='font-size: 70%; margin-top: 0px'>[Component: jiwer]</div><div style='font-size: 80%; margin-top:10px'>CER/WER, порядок чтения,<br />таблицы, страниц/с.</div>"]
+        style 68 fill:#8faadc,stroke:#64769a,color:#000000
+        69["<div style='font-weight: bold'>NER Eval</div><div style='font-size: 70%; margin-top: 0px'>[Component: seqeval]</div><div style='font-size: 80%; margin-top:10px'>Entity-level P/R/F1 по языку<br />и типу; linking accuracy@1.</div>"]
+        style 69 fill:#8faadc,stroke:#64769a,color:#000000
+        70["<div style='font-weight: bold'>Retrieval Eval</div><div style='font-size: 70%; margin-top: 0px'>[Component: ranx]</div><div style='font-size: 80%; margin-top:10px'>Recall@5/10, nDCG@10, MRR по<br />9 направлениям; кривые<br />масштаба 1M/10M/35M.</div>"]
+        style 70 fill:#8faadc,stroke:#64769a,color:#000000
+        71["<div style='font-weight: bold'>Generation Eval</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python + NLI]</div><div style='font-size: 80%; margin-top:10px'>Answer EM/F1, faithfulness,<br />citation accuracy, refusal<br />P/R.</div>"]
+        style 71 fill:#8faadc,stroke:#64769a,color:#000000
+        72["<div style='font-weight: bold'>Verification Eval</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python]</div><div style='font-size: 80%; margin-top:10px'>Точность вердиктов, ECE,<br />калибровка порогов.</div>"]
+        style 72 fill:#8faadc,stroke:#64769a,color:#000000
+        73["<div style='font-weight: bold'>End-to-End Eval</div><div style='font-size: 70%; margin-top: 0px'>[Component: Python, Locust]</div><div style='font-size: 80%; margin-top:10px'>Полный пайплайн через API,<br />ablation, нагрузочные тесты.</div>"]
+        style 73 fill:#8faadc,stroke:#64769a,color:#000000
+        74["<div style='font-weight: bold'>Significance</div><div style='font-size: 70%; margin-top: 0px'>[Component: numpy]</div><div style='font-size: 80%; margin-top:10px'>Bootstrap CI, сравнение<br />сидов.</div>"]
+        style 74 fill:#8faadc,stroke:#64769a,color:#000000
+        75["<div style='font-weight: bold'>Promotion Gate</div><div style='font-size: 70%; margin-top: 0px'>[Component: mlflow]</div><div style='font-size: 80%; margin-top:10px'>Проверяет пороги на<br />замороженном тесте, ставит<br />alias 'champion'.</div>"]
+        style 75 fill:#8faadc,stroke:#64769a,color:#000000
+      end
+
+      32["<div style='font-weight: bold'>Inference Service</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI, PyTorch / ONNX Runtime]</div><div style='font-size: 80%; margin-top:10px'>Онлайн-хостинг<br />encoder-моделей: эмбеддинги,<br />reranker, NER, NLI.<br />Динамический батчинг.</div>"]
+      style 32 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      39["<div style='font-weight: bold'>LLM Server</div><div style='font-size: 70%; margin-top: 0px'>[Container: llama.cpp server (локально, GGUF) / vLLM (GPU-сервер), OpenAI-compatible API]</div><div style='font-size: 80%; margin-top:10px'>Grounded generation на<br />KK/RU/EN: базовая модель +<br />LoRA-адаптер, стриминг.</div>"]
+      style 39 fill:#c55a11,stroke:#893e0b,color:#ffffff
+      41[("<div style='font-weight: bold'>Qdrant</div><div style='font-size: 70%; margin-top: 0px'>[Container: Qdrant 1.20]</div><div style='font-size: 80%; margin-top:10px'>Коллекции: corpus_chunks<br />(десятки миллионов,<br />квантизация, on-disk,<br />read-only, alias на версию<br />эмбеддера) и workspace_chunks<br />(пользовательские документы,<br />tenant = workspace_id).</div>")]
+      style 41 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      44["<div style='font-weight: bold'>Data Lake</div><div style='font-size: 70%; margin-top: 0px'>[Container: Parquet on SSD, DVC]</div><div style='font-size: 80%; margin-top:10px'>Parquet (zstd), шарды ~1M<br />строк / <=512 MB, партиции<br />source/lang. Слои raw -><br />clean -> curated -> task -><br />eval; манифест у каждого<br />источника (ADR-0011).</div>"]
+      style 44 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      76["<div style='font-weight: bold'>MLflow</div><div style='font-size: 70%; margin-top: 0px'>[Container: MLflow 3]</div><div style='font-size: 80%; margin-top:10px'>Трекинг экспериментов (git<br />SHA, DVC-хеши, конфиг,<br />метрики по языкам, железо) и<br />Model Registry (champion /<br />challenger).</div>"]
+      style 76 fill:#7030a0,stroke:#4e2170,color:#ffffff
+      9["<div style='font-weight: bold'>API</div><div style='font-size: 70%; margin-top: 0px'>[Container: Python, FastAPI]</div><div style='font-size: 80%; margin-top:10px'>REST + SSE: рабочие<br />пространства, документы,<br />вопросы, сущности, фидбек.<br />Оркестрирует онлайн-пайплайн<br />ответа.</div>"]
+      style 9 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+    end
+
+    9-. "<div>Сущности запроса</div><div style='font-size: 70%'>[HTTP]</div>" .->32
+    9-. "<div>Prefetch dense + sparse, RRF;<br />две коллекции</div><div style='font-size: 70%'>[gRPC]</div>" .->41
+    9-. "<div>chat/completions (stream)</div><div style='font-size: 70%'>[HTTP]</div>" .->39
+    32-. "<div>Версия 'champion' и её веса</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+    68-. "<div>Бенчмарк документов</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    69-. "<div>Замороженный eval</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    70-. "<div>Поиск по каждому методу<br />отдельно</div><div style='font-size: 70%'>[gRPC]</div>" .->41
+    70-. "<div>Замороженный eval</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    71-. "<div>Генерация на eval</div><div style='font-size: 70%'>[HTTP]</div>" .->39
+    72-. "<div>NLI на eval</div><div style='font-size: 70%'>[HTTP]</div>" .->32
+    73-. "<div>Прогон теста и нагрузка</div><div style='font-size: 70%'>[HTTP]</div>" .->9
+    69-. "<div>Метрики по примерам</div><div style='font-size: 70%'>[in-process]</div>" .->74
+    70-. "<div>Метрики по запросам</div><div style='font-size: 70%'>[in-process]</div>" .->74
+    71-. "<div>Метрики по примерам</div><div style='font-size: 70%'>[in-process]</div>" .->74
+    73-. "<div>Метрики по примерам</div><div style='font-size: 70%'>[in-process]</div>" .->74
+    72-. "<div>Метрики по примерам</div><div style='font-size: 70%'>[in-process]</div>" .->74
+    68-. "<div>Метрики по документам</div><div style='font-size: 70%'>[in-process]</div>" .->74
+    74-. "<div>CI и дельты</div><div style='font-size: 70%'>[in-process]</div>" .->75
+    75-. "<div>Метрики, решение, alias<br />champion</div><div style='font-size: 70%'>[HTTP]</div>" .->76
+
+  end

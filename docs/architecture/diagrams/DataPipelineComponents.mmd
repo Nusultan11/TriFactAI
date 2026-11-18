@@ -1,0 +1,73 @@
+graph LR
+  linkStyle default fill:#ffffff
+
+  subgraph diagram ["Component View: TriFact AI - Data Pipeline"]
+    style diagram fill:#ffffff,stroke:#ffffff
+
+    3["<div style='font-weight: bold'>Hugging Face Hub</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>Датасеты (Wikipedia,<br />FineWeb-2, KazNERD, KazQAD,<br />WikiANN, MS MARCO, MIRACL,<br />XNLI, ...) и базовые модели<br />(XLM-R, BGE-M3, Qwen3.5,<br />Qwen3-Embedding/Reranker).</div>"]
+    style 3 fill:#7f7f7f,stroke:#585858,color:#ffffff
+    4["<div style='font-weight: bold'>Wikimedia Dumps</div><div style='font-size: 70%; margin-top: 0px'>[Software System]</div><div style='font-size: 80%; margin-top:10px'>JSON-дамп Wikidata (100M+<br />сущностей, CC0) для базы<br />сущностей и silver-NER.</div>"]
+    style 4 fill:#7f7f7f,stroke:#585858,color:#ffffff
+
+    subgraph 7 ["TriFact AI"]
+      style 7 fill:#ffffff,stroke:#20517f,color:#20517f
+
+      subgraph 45 ["Data Pipeline"]
+        style 45 fill:#ffffff,stroke:#2f4f89,color:#2f4f89
+
+        46["<div style='font-weight: bold'>Source Loader</div><div style='font-size: 70%; margin-top: 0px'>[Component: huggingface_hub, PyArrow]</div><div style='font-size: 80%; margin-top:10px'>Потоковая загрузка HF -><br />Parquet-шарды, докачка,<br />проверка числа строк,<br />манифест (revision SHA,<br />лицензия, хеши).</div>"]
+        style 46 fill:#8faadc,stroke:#64769a,color:#000000
+        47["<div style='font-weight: bold'>Wikidata Parser</div><div style='font-size: 70%; margin-top: 0px'>[Component: orjson, PyArrow]</div><div style='font-size: 80%; margin-top:10px'>Потоковый разбор JSON-дампа<br />-> entities(qid, type,<br />labels/aliases kk/ru/en,<br />sitelinks).</div>"]
+        style 47 fill:#8faadc,stroke:#64769a,color:#000000
+        48["<div style='font-weight: bold'>Normalizer & LangID</div><div style='font-size: 70%; margin-top: 0px'>[Component: Polars, fastText / GlotLID]</div><div style='font-size: 80%; margin-top:10px'>Векторизованная нормализация<br />и определение языка<br />документов и абзацев.</div>"]
+        style 48 fill:#8faadc,stroke:#64769a,color:#000000
+        49["<div style='font-weight: bold'>Quality Filters</div><div style='font-size: 70%; margin-top: 0px'>[Component: datatrove]</div><div style='font-size: 80%; margin-top:10px'>Длина, доля букв, повторы,<br />boilerplate; пороги по ручной<br />выборке.</div>"]
+        style 49 fill:#8faadc,stroke:#64769a,color:#000000
+        50["<div style='font-weight: bold'>Deduplicator</div><div style='font-size: 70%; margin-top: 0px'>[Component: datatrove]</div><div style='font-size: 80%; margin-top:10px'>Точный хеш + MinHash-LSH<br />внутри и между источниками.</div>"]
+        style 50 fill:#8faadc,stroke:#64769a,color:#000000
+        51["<div style='font-weight: bold'>Decontaminator</div><div style='font-size: 70%; margin-top: 0px'>[Component: n-gram / MinHash]</div><div style='font-size: 80%; margin-top:10px'>Удаляет из train-корпусов<br />тексты, пересекающиеся с<br />eval-источниками.</div>"]
+        style 51 fill:#8faadc,stroke:#64769a,color:#000000
+        52["<div style='font-weight: bold'>Leakage-safe Splitter</div><div style='font-size: 70%; margin-top: 0px'>[Component: Polars]</div><div style='font-size: 80%; margin-top:10px'>train/val/test по исходному<br />документу (ADR-0007).</div>"]
+        style 52 fill:#8faadc,stroke:#64769a,color:#000000
+        53["<div style='font-weight: bold'>NER Builder</div><div style='font-size: 70%; margin-top: 0px'>[Component: Polars, DuckDB]</div><div style='font-size: 80%; margin-top:10px'>Gold-наборы -> общая схема<br />меток; silver NER из ссылок<br />Wikipedia + типов Wikidata<br />(5-10M предложений).</div>"]
+        style 53 fill:#8faadc,stroke:#64769a,color:#000000
+        54["<div style='font-weight: bold'>Retrieval Pair Builder</div><div style='font-size: 70%; margin-top: 0px'>[Component: Polars]</div><div style='font-size: 80%; margin-top:10px'>MS MARCO / mMARCO / MIRACL /<br />KazParC + синтетические<br />запросы; hard negatives.</div>"]
+        style 54 fill:#8faadc,stroke:#64769a,color:#000000
+        55["<div style='font-weight: bold'>SFT Builder</div><div style='font-size: 70%; margin-top: 0px'>[Component: Polars]</div><div style='font-size: 80%; margin-top:10px'>Фильтры синтетического<br />grounded QA<br />(NLI-согласованность, ответ в<br />контексте, дубли), состав<br />смеси.</div>"]
+        style 55 fill:#8faadc,stroke:#64769a,color:#000000
+        56["<div style='font-weight: bold'>NLI Builder</div><div style='font-size: 70%; margin-top: 0px'>[Component: Polars]</div><div style='font-size: 80%; margin-top:10px'>XNLI ru/en + kk-перевод с<br />фильтрацией.</div>"]
+        style 56 fill:#8faadc,stroke:#64769a,color:#000000
+        57["<div style='font-weight: bold'>Eval Builder</div><div style='font-size: 70%; margin-top: 0px'>[Component: Polars]</div><div style='font-size: 80%; margin-top:10px'>Замороженный eval 30-50k по 9<br />направлениям; хеш фиксируется<br />до обучения.</div>"]
+        style 57 fill:#8faadc,stroke:#64769a,color:#000000
+        58["<div style='font-weight: bold'>Corpus Chunker</div><div style='font-size: 70%; margin-top: 0px'>[Component: trifact.ingestion]</div><div style='font-size: 80%; margin-top:10px'>curated -> чанки корпуса тем<br />же Chunker, что и онлайн.</div>"]
+        style 58 fill:#8faadc,stroke:#64769a,color:#000000
+        59["<div style='font-weight: bold'>KB Builder</div><div style='font-size: 70%; margin-top: 0px'>[Component: DuckDB, psycopg COPY]</div><div style='font-size: 80%; margin-top:10px'>Сущности и алиасы kk/ru/en +<br />приоры из ссылок Wikipedia -><br />PostgreSQL (COPY).</div>"]
+        style 59 fill:#8faadc,stroke:#64769a,color:#000000
+      end
+
+      40[("<div style='font-weight: bold'>PostgreSQL</div><div style='font-size: 70%; margin-top: 0px'>[Container: PostgreSQL 16]</div><div style='font-size: 80%; margin-top:10px'>Состояние приложения:<br />workspaces, documents, chunks<br />и mentions пользовательских<br />документов, журнал<br />запросов/ответов/вердиктов,<br />фидбек; база сущностей<br />kb_entities/kb_aliases<br />(миллионы строк).</div>")]
+      style 40 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+      44["<div style='font-weight: bold'>Data Lake</div><div style='font-size: 70%; margin-top: 0px'>[Container: Parquet on SSD, DVC]</div><div style='font-size: 80%; margin-top:10px'>Parquet (zstd), шарды ~1M<br />строк / <=512 MB, партиции<br />source/lang. Слои raw -><br />clean -> curated -> task -><br />eval; манифест у каждого<br />источника (ADR-0011).</div>"]
+      style 44 fill:#4472c4,stroke:#2f4f89,color:#ffffff
+    end
+
+    46-. "<div>Скачивает датасеты (revision<br />SHA)</div><div style='font-size: 70%'>[HTTPS]</div>" .->3
+    46-. "<div>raw-шарды + манифест</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    47-. "<div>Скачивает JSON-дамп</div><div style='font-size: 70%'>[HTTPS]</div>" .->4
+    47-. "<div>raw/wikidata</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    48-. "<div>Нормализованные документы с<br />языком</div><div style='font-size: 70%'>[in-process]</div>" .->49
+    49-. "<div>Прошедшие фильтры</div><div style='font-size: 70%'>[in-process]</div>" .->50
+    50-. "<div>Уникальные документы</div><div style='font-size: 70%'>[in-process]</div>" .->51
+    51-. "<div>curated-слой + отчёт качества</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    48-. "<div>Читает raw</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    52-. "<div>Сплиты gold-наборов</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    53-. "<div>task/ner</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    54-. "<div>task/retrieval</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    55-. "<div>task/sft</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    56-. "<div>task/nli</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    57-. "<div>eval (заморожен, хеш)</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    58-. "<div>curated -> chunks</div><div style='font-size: 70%'>[Parquet]</div>" .->44
+    59-. "<div>Читает wikidata + ссылки<br />Wikipedia</div><div style='font-size: 70%'>[DuckDB]</div>" .->44
+    59-. "<div>kb_entities, kb_aliases</div><div style='font-size: 70%'>[COPY]</div>" .->40
+
+  end

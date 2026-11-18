@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Secrets / local
+.env
+
+# Data and models are tracked by DVC, not git
+/data/
+/models/
+/mlruns/
+/reports/*.json
+
+# Task manager state, local tools
+.shrimp/
+
+# Node
+web/node_modules/
+web/.next/
+
+# Local agent settings (backed up by scripts/backup.py)
+.agents/settings.local.json
