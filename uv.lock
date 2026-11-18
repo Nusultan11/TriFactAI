@@ -784,25 +784,6 @@ wheels = [
 ]
 
 [[package]]
-name = "datatrove"
-version = "0.10.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "dill" },
-    { name = "fsspec" },
-    { name = "huggingface-hub" },
-    { name = "humanize" },
-    { name = "loguru" },
-    { name = "multiprocess" },
-    { name = "numpy" },
-    { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/f1/40d6747643299dde1178202b0bf72bfc9ea6e5277c5027bf1630a936d2f9/datatrove-0.10.1.tar.gz", hash = "sha256:609e8e00138ee2f316a1d1d3464a8302565e2a4d937a48be7254be50b7196f5c", size = 17326836, upload-time = "2026-09-30T08:20:46.254Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/ad/7c40658bf7fe45f335d63f267d9f0ca7262b127514f65915d0dfa328b932/datatrove-0.10.1-py3-none-any.whl", hash = "sha256:b0846fc28482b25c9dbeaa09445066ff68266b58d762e9344c64fe5f6d92d14c", size = 17357820, upload-time = "2026-09-30T08:20:43.235Z" },
-]
-
-[[package]]
 name = "dateparser"
 version = "1.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1844,15 +1825,6 @@ wheels = [
 ]
 
 [[package]]
-name = "humanize"
-version = "4.17.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d0/a7/5391f6db94bf16289ca63ce2632eef2eba7b9991e701016ac66f04539d47/humanize-4.17.0.tar.gz", hash = "sha256:1d6a36c453dbfbb3f0b34601d2e0b4ce5d48d780305cd45714843f0068fde6ac", size = 90688, upload-time = "2026-11-12T12:33:34.37Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/74/bb970f876202aa0e8c4a1e9904f0b3482e73c752512962b7e957091d5acf/humanize-4.17.0-py3-none-any.whl", hash = "sha256:02d0899527760efe18011944f882df4970943b4cdff7b5a0ba7fed43a576ef98", size = 133715, upload-time = "2026-11-12T12:33:32.955Z" },
-]
-
-[[package]]
 name = "hydra-core"
 version = "1.3.8"
 source = { registry = "https://pypi.org/simple" }
@@ -2184,19 +2156,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4c/72/22b6449e15bec4cc86c62b659e6c625ab777d01e87aaec717ecef440f87a/llvmlite-0.50.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d501e5103076b9a14be885d2574dc2f6793171aa54a853d1244e011d476f1399", size = 59696588, upload-time = "2026-09-29T18:43:04.763Z" },
     { url = "https://files.pythonhosted.org/packages/64/70/f395702c20b514363061055b5bdebe3513e544139e6d412a5c86e8ea0b30/llvmlite-0.50.0-cp312-cp312-win_amd64.whl", hash = "sha256:c20595cc3a76e3c85140fdafbf9246c732ddf8e0e646ba2f4e4881f87567300d", size = 41865553, upload-time = "2026-09-29T18:43:08.29Z" },
     { url = "https://files.pythonhosted.org/packages/a6/86/9cde7ac29e183e994dd2d67c998752c66ff6d714ca61837428e1896c3cc9/llvmlite-0.50.0-cp312-cp312-win_arm64.whl", hash = "sha256:4b78a8b669eda09ca1ff4c1a75003023912092974d3e771d1da0777f1b383bdf", size = 37441845, upload-time = "2026-09-29T18:43:12.054Z" },
-]
-
-[[package]]
-name = "loguru"
-version = "0.8.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
-    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/61/ce/b5bb93d4d9fc7a067f69140b3bb3782f6ad6360bc76e99b6e3d386cb1320/loguru-0.8.0.tar.gz", hash = "sha256:fb3e4623288e37700a0577f6e0ce776cc1860b5d95c657d67f07a2476b304867", size = 71232, upload-time = "2026-11-11T18:50:26.248Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/00/9ee7c8da7342b1a5524bca9d036f89e7d1d1e5a6345c9623763eeeac941f/loguru-0.8.0-py3-none-any.whl", hash = "sha256:e0fba09d6f76ba2d2f4bd1757122942f5a670c702e988b5efaeab99dacba0069", size = 69409, upload-time = "2026-11-11T18:50:24.148Z" },
 ]
 
 [[package]]
@@ -4449,7 +4408,6 @@ ml = [
     { name = "accelerate" },
     { name = "bitsandbytes" },
     { name = "datasets" },
-    { name = "datatrove" },
     { name = "duckdb" },
     { name = "dvc", extra = ["s3"] },
     { name = "fasttext-predict" },
@@ -4467,8 +4425,10 @@ ml = [
     { name = "psutil" },
     { name = "pyarrow" },
     { name = "ranx" },
+    { name = "scipy" },
     { name = "sentence-transformers" },
     { name = "seqeval" },
+    { name = "tokenizers" },
     { name = "torch" },
     { name = "transformers" },
 ]
@@ -4493,7 +4453,6 @@ requires-dist = [
     { name = "bitsandbytes", marker = "extra == 'ml'", specifier = ">=0.44" },
     { name = "boto3", marker = "extra == 'serving'", specifier = ">=1.35" },
     { name = "datasets", marker = "extra == 'ml'", specifier = ">=3.0" },
-    { name = "datatrove", marker = "extra == 'ml'", specifier = ">=0.5" },
     { name = "dateparser", marker = "extra == 'ingestion'", specifier = ">=1.2" },
     { name = "docling", marker = "extra == 'ingestion'", specifier = ">=2.10" },
     { name = "duckdb", marker = "extra == 'ml'", specifier = ">=1.3" },
@@ -4528,9 +4487,11 @@ requires-dist = [
     { name = "qdrant-client", marker = "extra == 'serving'", specifier = ">=1.12" },
     { name = "ranx", marker = "extra == 'ml'", specifier = ">=0.3.20" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "scipy", marker = "extra == 'ml'", specifier = ">=1.14" },
     { name = "sentence-transformers", marker = "extra == 'ml'", specifier = ">=3.2" },
     { name = "seqeval", marker = "extra == 'ml'", specifier = ">=1.2.2" },
     { name = "sqlalchemy", marker = "extra == 'serving'", specifier = ">=2.0" },
+    { name = "tokenizers", marker = "extra == 'ml'", specifier = ">=0.21" },
     { name = "torch", marker = "extra == 'ml'", specifier = ">=2.4" },
     { name = "transformers", marker = "extra == 'ml'", specifier = ">=4.57" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6" },
@@ -4826,15 +4787,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a4/34/4dd12fc8bb7d61c91467ec3efe415ffa7d5456f799954b40c5bbaeae470e/werkzeug-3.1.9.tar.gz", hash = "sha256:55ca7c70a75689be937aa27f8ff4b018f06ff4838fc73045560bf0f5a1291060", size = 940188, upload-time = "2026-09-27T18:33:41.637Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a1/38/df03f564f43cec2684823f3cccae1a652ee7face1cbaa76fb223096e64d7/werkzeug-3.1.9-py3-none-any.whl", hash = "sha256:6392e50c78460ba618e5b21f08a71f59c99ce99cdc6cf6e3dd7e6ccca8754fab", size = 228700, upload-time = "2026-09-27T18:33:39.685Z" },
-]
-
-[[package]]
-name = "win32-setctime"
-version = "1.2.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1a/e4/f0f252c65f9bf7c4042b1f707ef338d49f799da582234e1d3e6e2cfca291/win32_setctime-1.2.1.tar.gz", hash = "sha256:077b35471bf1ff1d71e165c919ddc0cecf51b8e1802f5d820d33a96e2f6717dd", size = 4983, upload-time = "2026-10-25T18:21:32.318Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/df/5593480bc1e932eeae28e4fa182ab68174edd0d77409ced3b6491d02d1d5/win32_setctime-1.2.1-py3-none-any.whl", hash = "sha256:a9edc685b35414bec69392c866ed82456ad125ac4a6a4b703ec1d8b462d4f477", size = 4215, upload-time = "2026-10-25T18:21:30.939Z" },
 ]
 
 [[package]]
