@@ -521,9 +521,14 @@ def acquire(
     manifest_path = src / "source.yaml"
     if manifest_path.exists() and not (work / "plan.json").exists():
         m = SourceManifest.read(src)
-        if m.revision == revision and not m.partial and limit is None:
+        same_files = [i.path for i in m.inputs] == [p.path for p in planned]
+        if m.revision == revision and same_files and not m.partial and limit is None:
             problems = verify_source(src, deep=False)
             if not problems:
+                if m.license != lic:  # a revised decision needs no re-download
+                    log.info("%s: license decision changed to %s, manifest updated", name, lic.use.value)
+                    m.license = lic
+                    m.write(src)
                 log.info("%s: already acquired at %s, manifest verified", name, revision[:12])
                 return m, []
         log.info("%s: existing data does not match the plan, re-acquiring", name)
@@ -587,7 +592,6 @@ def acquire(
     meta_method = "hf_dataset_info"
     if not meta:
         meta, meta_method = server_counts(repo), "hf_datasets_server"
-    rows = sum(d.rows for d in done.values())
     manifest = SourceManifest(
         name=name,
         role=spec["role"],
@@ -612,7 +616,9 @@ def acquire(
         ],
         shards=shards,
         row_checks=row_checks(planned, done, meta, meta_method, limit is not None),
-        stats=mon.stats(rows, sum(p.size for p in todo), workers),
+        stats=mon.stats(
+            sum(done[p.idx].rows for p in todo), sum(p.size for p in todo), workers
+        ),  # this run only
     )
     manifest.write(src)
     shutil.rmtree(work)

@@ -19,7 +19,9 @@ built for corpora of tens of millions of records.
 
 ```bash
 cp .env.example .env
-uv venv && uv pip install -e ".[serving,ingestion,ml,dev]"
-docker compose -f infra/docker-compose.yml up -d     # Postgres, Qdrant, Redis, S3, MLflow, Prometheus, Grafana
-dvc repro acquire                                    # needs HF_TOKEN for gated KazNERD / KazQAD / KazParC
+uv sync --extra ml --extra dev && uv run pre-commit install   # versions pinned in uv.lock
+docker compose -f infra/docker-compose.yml up -d --wait       # Postgres, Qdrant, Redis, S3 (+buckets), MLflow, Prometheus, Grafana
+uv run dvc pull                                               # raw layer from the `local` remote, or rebuild:
+uv run dvc repro acquire wikidata                             # needs HF_TOKEN for gated KazNERD / KazQAD / KazParC
+uv run python -m trifact.lake verify                          # sha256 + row checks of every raw source
 ```

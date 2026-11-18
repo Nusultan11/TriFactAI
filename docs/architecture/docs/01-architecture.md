@@ -6,7 +6,7 @@ TriFact AI — мультиязычная (KK / RU / EN) платформа. О�
 |---|---|
 | Модель C4 (источник истины для диаграмм) | [`../workspace.dsl`](../workspace.dsl) |
 | Диаграммы, экспортированные из модели | [`../diagrams/`](../diagrams/) |
-| Архитектурные решения | [`../adr/`](../adr/) (ADR-0001 … 0016) |
+| Архитектурные решения | [`../adr/`](../adr/) (ADR-0001 … 0017) |
 | Этапы и критерии готовности | [`../../ROADMAP.md`](../../ROADMAP.md) |
 | Каталоги моделей и данных | [`../../research/models.md`](../../research/models.md), [`../../research/datasets.md`](../../research/datasets.md) |
 
@@ -131,7 +131,7 @@ flowchart TB
 
 ```
 data/
-  raw/<source>/<lang>/part-00000.parquet   + raw/<source>/source.yaml   (не меняется)
+  raw/<source>/<lang>/<table>-00000.parquet + raw/<source>/source.yaml  (не меняется; table = part, если таблица одна)
   clean/<source>/<lang>/...                нормализация, язык, фильтры качества
   curated/<source>/<lang>/...              дедуп, деконтаминация     + dataset.yaml
   task/
@@ -144,15 +144,16 @@ data/
   eval/<suite>/...                         заморожен, sha256 в eval/MANIFEST.yaml (ADR-0007)
 ```
 
-Шард — ~1M строк или ≤ 512 MB, сжатие zstd. Партиции — по `source/lang`.
+Шард — ~1M строк или ≤ 512 MB, сжатие zstd. Партиции — по `source/lang`, внутри — по таблице. Протокол загрузки raw-слоя, колонки происхождения `_config` / `_split` и методы проверки числа строк — [ADR-0017](../adr/0017-raw-layer-acquisition-protocol.md).
 
-**Манифест источника** `source.yaml`: `hf_id`, `config`, `revision` (SHA коммита), `license` и `license_decision`, `downloaded_at`, `rows` и `bytes` по языкам, `shards: [{path, rows, sha256}]`.
+**Манифест источника** `source.yaml`: `hf_id` или `url`, `revision` (SHA коммита или дата дампа), `license` (`license`, `use`, `release`, `evidence`), `downloaded_at`, `code_version`, `inputs` (файлы источника с sha256), `rows` и `bytes` по языкам, `shards: [{path, lang, table, rows, bytes, sha256}]`, `row_checks` (метод, ожидаемое, фактическое), `stats` (время, throughput, пиковая RSS). Проверка целостности: `python -m trifact.lake verify`.
 **Карточка набора** `dataset.yaml`: входы (манифесты и их хеши), `git_sha`, параметры, строки по языкам, отсев по каждой причине, лицензии входов, флаг `release`.
 
 ### 5.2 Схемы ключевых таблиц (Parquet)
 
 | Таблица | Колонки |
 |---|---|
+| `entities` (raw/wikidata) | `qid, type, p31: list, p279: list, label_{kk,ru,en,mul}, description_{kk,ru,en,mul}, aliases_{kk,ru,en,mul}: list, sitelink_{kkwiki,ruwiki,enwiki}, n_sitelinks, lastrevid` |
 | `documents` (clean/curated) | `doc_id, source, lang, lang_score, title, text, url, n_chars, quality{...}, minhash_cluster` |
 | `chunks` | `chunk_id, doc_id, source, lang, ordinal, section, char_start, char_end, text, n_tokens` |
 | `vectors` | `chunk_id, dense: fixed_size_list<f16>, sparse_idx: list<u32>, sparse_val: list<f16>` |
@@ -452,7 +453,7 @@ Payload: `chunk_id, document_id, lang, page, section, text, entity_ids[], entity
 
 ## 11. MLOps
 
-- **MLflow**: по эксперименту на направление (`docproc`, `ner`, `retrieval`, `generation`, `verification`, `e2e`, `batch`). В каждом run: git SHA, DVC-хеши входов, полный конфиг, метрики по языкам и направлениям, время, железо, стоимость.
+- **MLflow**: по эксперименту на направление (`data`, `docproc`, `ner`, `retrieval`, `generation`, `verification`, `e2e`, `batch`). В `data` пишутся загрузки и разбор источников. В каждом run: git SHA, DVC-хеши входов, полный конфиг, метрики по языкам и направлениям, время, железо, стоимость.
 - **Registry**: модели `trifact-ner`, `trifact-embedder`, `trifact-reranker`, `trifact-nli`, `trifact-llm-adapter`; alias `champion` / `challenger`. Inference и LLM читают `champion` при старте. Откат — перенос alias. Для эмбеддера alias коллекции Qdrant и alias модели переключаются вместе.
 - **Качество кода**: проверки перед коммитом — [AGENTS §5](../../../AGENTS.md). Архитектурные тесты (`tests/test_architecture.py`) проверяют, что `trifact.core` ни от чего не зависит, что все команды `dvc.yaml` указывают на существующие модули и что все ADR упомянуты в документации.
 
@@ -478,6 +479,8 @@ Grafana: дашборды «Service» и «Quality», алерты на p95, р�
 | Эмбеддер (fp16) + reranker (fp16) | GPU | ~2.2 GB VRAM; при нехватке reranker уходит на CPU (ONNX int8) |
 | NER (ONNX int8), NLI | CPU | ~2 GB RAM |
 | PostgreSQL, Qdrant (workspace + подмножество корпуса), Redis, SeaweedFS, MLflow, Prometheus, Grafana | CPU | ~4–6 GB RAM |
+
+У каждого сервиса инфраструктуры есть healthcheck; `docker compose up -d --wait` возвращается, когда все сервисы `healthy`. Одноразовый `s3-init` создаёт бакеты §8.3. Remote `local` для DVC — бакет `trifact-dvc` (`http://localhost:9000`).
 
 **Cloud**: GPU-инстанс для Batch Compute и Training (24–80 GB), S3-бакет как remote `cloud`. Опционально Serving VM (32–64 GB RAM, GPU 16–24 GB) для полного корпуса 35M и vLLM.
 
@@ -524,7 +527,7 @@ dvc.yaml  params.yaml  pyproject.toml
 
 | Этап | Контейнеры / компоненты | Модули | DVC / задания | ADR |
 |---|---|---|---|---|
-| 1 Data Platform & Acquisition | Data Lake, Data Pipeline: Source Loader, Wikidata Parser | `lake`, `data.acquire`, `data.wikidata` | `acquire`, `wikidata` | 0010, 0011, 0014 |
+| 1 Data Platform & Acquisition | Data Lake, Data Pipeline: Source Loader, Wikidata Parser | `lake`, `data.acquire`, `data.wikidata` | `acquire`, `wikidata` | 0010, 0011, 0014, 0017 |
 | 2 Data Quality & Curation | Normalizer, Quality Filters, Deduplicator, Decontaminator | `ingestion.normalize`, `data.clean/dedup/decontaminate` | `clean`, `dedup`, `decontaminate` | 0011 |
 | 3 Task Datasets | Splitter, NER/Pair/SFT/NLI/Eval Builders, Teacher Job | `data.validate/split/build_*`, `batch.teacher_generate` | `validate`, `split`, `build_*` | 0007, 0015 |
 | 4 Document Processing | Worker: Parser, OCR, Chunker; DocProc Eval | `ingestion.*`, `evaluation.eval_docproc` | `eval_docproc` | 0001 |

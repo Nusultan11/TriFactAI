@@ -68,6 +68,27 @@ Silver NER: ссылки внутри статей Wikipedia → QID Wikidata �
 
 Ступени построения индекса — эксперимент RET-S, оценки пропускной способности — [архитектура §7.3, §9](../architecture/docs/01-architecture.md).
 
-## 7. Лицензии — обязательная проверка в этапе 1
+## 7. Лицензии — решения этапа 1
 
-WikiANN, SberQuAD, NEREL, KazParC, bge-m3-data — лицензия не указана в метаданных HF; WikiNEuRal исходно CC BY-NC-SA. Решение по каждому записывается в манифест источника.
+Решения записаны в `params.yaml: sources.*.license` и копируются в манифест каждого источника (ADR-0017). `allowed` — условия разрешают использование, в том числе выпуск производных в рамках лицензии. `research_only` — только обучение и оценка, производные наследуют `release: false` (ADR-0015). `blocked` — не скачивается. Проверено 2026-11-18.
+
+| Источник | Лицензия | Решение | release | Основание |
+|---|---|---|---|---|
+| Wikipedia, MIRACL corpus | CC BY-SA 3.0 (+ GFDL) | allowed | да | карточка HF, условия Wikimedia |
+| FineWeb-2 kk | ODC-By 1.0 + CommonCrawl ToU | allowed | да | карточка HF |
+| Multidomain Kazakh | Apache-2.0 (карточка) | allowed | **нет** | собран из CC100, OSCAR, новостей и книг; лицензия карточки не снимает права третьих лиц на тексты |
+| KazParC | CC BY 4.0 | allowed | да | в карточке HF лицензии нет; авторы: arXiv:2403.19399 и страница релиза ISSAI |
+| KazNERD | CC BY 4.0 | allowed | да | карточка HF |
+| KazQAD | CC BY-SA 4.0 | allowed | да | карточка HF |
+| SQuAD v2 | CC BY-SA 4.0 | allowed | да | карточка HF |
+| MIRACL (topics, qrels) | Apache-2.0 | allowed | да | карточка HF |
+| ru-HNP | Apache-2.0 | allowed | да | карточка HF; пары сгенерированы gpt-3.5-turbo |
+| Wikidata | CC0 1.0 | allowed | да | Wikidata:Licensing |
+| WikiANN | не указана (текст CC BY-SA) | research_only | нет | карточка HF «unknown»; github.com/afshinrahimi/mmner — Apache-2.0 для кода, данные на Dropbox без лицензии |
+| NEREL | не указана | research_only | нет | нет лицензии ни в карточке, ни в github.com/nerel-ds/NEREL; статья RANLP 2021 — CC BY 4.0 |
+| SberQuAD | не указана | research_only | нет | карточка HF «unknown», TFDS «No known license» |
+| WikiNEuRal | CC BY-NC-SA 4.0 | research_only | нет | карточка HF |
+| XNLI | CC BY-NC 4.0 | research_only | нет | карточка HF |
+| MS MARCO, mMARCO | условия MS MARCO (некоммерческие исследования) | research_only | нет | microsoft.github.io/msmarco/Notice; mMARCO — перевод MS MARCO |
+
+Решение `research_only` для WikiANN, NEREL и SberQuAD можно повысить до `allowed`, если правообладатель подтвердит лицензию. Для этого достаточно правки `params.yaml` и перезаписи манифеста, повторная загрузка не нужна.

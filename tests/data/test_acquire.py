@@ -194,6 +194,11 @@ def test_interrupted_run_resumes_without_redoing_finished_files(
     acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=1)
     assert fake_hub["downloads"] == []
 
+    revised = {**SPEC, "license": {**LICENSE, "use": "research_only", "release": False}}
+    m, _ = acq.acquire("fake", revised, _cfg(tmp_path), tmp_path / "staging", workers=1)
+    assert fake_hub["downloads"] == [] and m.license.use == "research_only"
+    assert SourceManifest.read(tmp_path / "lake" / "raw" / "fake").license.release is False
+
 
 def test_metadata_mismatch_is_reported(
     tmp_path: Path, fake_hub: dict[str, Any], monkeypatch: pytest.MonkeyPatch

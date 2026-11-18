@@ -189,3 +189,27 @@ def test_download_rejects_wrong_checksum(tmp_path: Path) -> None:
             backoff=0,
             transport=transport,
         )
+
+
+def test_download_spreads_chunks_over_mirrors(tmp_path: Path) -> None:
+    data = bytes(range(256)) * 40
+    hosts: list[str] = []
+    transport, _ = _server(data)
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "GET" and "range" in req.headers:
+            hosts.append(req.url.host)
+        return transport.handle_request(req)
+
+    wd.download(
+        "https://dumps.test/dump.json.bz2",
+        tmp_path / "d.bz2",
+        1,
+        chunk_bytes=512,
+        backoff=0,
+        transport=httpx.MockTransport(handler),
+        mirrors=("https://mirror.test/dump.json.bz2",),
+        mirror_connections=2,
+    )
+    assert (tmp_path / "d.bz2").read_bytes() == data
+    assert set(hosts) == {"dumps.test", "mirror.test"} and len(hosts) == 20

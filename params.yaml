@@ -182,7 +182,9 @@ sources:
     checksum_url: https://dumps.wikimedia.org/wikidatawiki/entities/20261116/wikidata-20261116-sha1sums.txt
     revision: "20261116"
     role: kb
-    connections: 3          # dumps.wikimedia.org gives ~1.4 MB/s per connection and limits parallel connections
+    connections: 3          # dumps.wikimedia.org: ~0.3-1.2 MB/s per connection, HTTP 429 from the 4th one
+    mirrors: [https://dumps.wikimedia.your.org/wikidatawiki/entities/20261116/wikidata-20261116-all.json.bz2]
+    mirror_connections: 3   # extra connections per mirror; the published sha1 is checked over the whole file
     workers: 12             # parse processes
     license: {license: CC0-1.0, use: allowed, release: true, evidence: "wikidata.org/wiki/Wikidata:Licensing; checked 2026-11-18"}
 

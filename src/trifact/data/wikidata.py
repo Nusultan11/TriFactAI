@@ -100,8 +100,13 @@ def download(
     chunk_bytes: int = CHUNK_BYTES,
     backoff: float = 5.0,
     transport: httpx.BaseTransport | None = None,
+    mirrors: tuple[str, ...] = (),
+    mirror_connections: int = 0,
 ) -> Path:
-    """Resumable chunked download of `url` (or its first `max_bytes`) to `dest`."""
+    """Resumable chunked download of `url` (or its first `max_bytes`) to `dest`.
+
+    Mirrors carrying the same file add `mirror_connections` each; the published sha1 guards the result.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     state_path = dest.with_name(dest.name + ".state.json")
     done_path = dest.with_name(dest.name + ".verified")
@@ -129,13 +134,25 @@ def download(
         lock = threading.Lock()
         started, fetched = time.perf_counter(), 0
 
-        def fetch(i: int) -> None:
+        sources = [url] * connections
+        for m in mirrors:
+            try:
+                same = int(client.head(m).raise_for_status().headers["content-length"]) == size
+            except (httpx.HTTPError, KeyError, ValueError):
+                same = False
+            if same:
+                sources += [m] * mirror_connections
+            else:
+                log.warning("mirror %s skipped: unreachable or different size", m)
+        queue = deque(todo)  # ordered: writes stay near the end of the file (no big NTFS zero-fill)
+
+        def fetch(i: int, src: str) -> None:
             nonlocal fetched
             lo, hi = i * chunk_bytes, min((i + 1) * chunk_bytes, total) - 1
             for attempt in range(retries):
                 try:
                     buf = bytearray()
-                    with client.stream("GET", url, headers={"Range": f"bytes={lo}-{hi}"}) as r:
+                    with client.stream("GET", src, headers={"Range": f"bytes={lo}-{hi}"}) as r:
                         if r.status_code != 206:
                             raise RuntimeError(f"HTTP {r.status_code} for range {lo}-{hi}")
                         for part in r.iter_bytes(1 << 20):
@@ -158,13 +175,27 @@ def download(
                     return
                 except (httpx.HTTPError, RuntimeError) as e:
                     wait = min(300.0, backoff * 2**attempt)
-                    log.warning("chunk %d attempt %d failed: %s; retry in %ss", i, attempt + 1, e, wait)
+                    log.warning(
+                        "chunk %d from %s attempt %d failed: %s; retry in %ss",
+                        i,
+                        src.split("/")[2],
+                        attempt + 1,
+                        e,
+                        wait,
+                    )
                     time.sleep(wait)
             raise RuntimeError(f"chunk {i} failed after {retries} attempts")
 
-        # Ordered submission keeps writes near the end of the file (no large sparse zero-fill on NTFS).
-        with ThreadPoolExecutor(connections) as pool:
-            for fut in [pool.submit(fetch, i) for i in todo]:
+        def worker(src: str) -> None:
+            while True:
+                with lock:
+                    if not queue:
+                        return
+                    i = queue.popleft()
+                fetch(i, src)
+
+        with ThreadPoolExecutor(len(sources)) as pool:
+            for fut in [pool.submit(worker, src) for src in sources]:
                 fut.result()
         if dest.stat().st_size != total:
             raise RuntimeError(f"{dest} has {dest.stat().st_size} bytes, expected {total}")
@@ -455,7 +486,12 @@ def main(argv: list[str] | None = None) -> int:
         dump = download(spec["url"], downloads / f"head-{need}-{filename}", 2, max_bytes=need)
     else:
         dump = download(
-            spec["url"], downloads / filename, int(spec["connections"]), checksum_url=spec["checksum_url"]
+            spec["url"],
+            downloads / filename,
+            int(spec["connections"]),
+            checksum_url=spec["checksum_url"],
+            mirrors=tuple(spec.get("mirrors", ())),
+            mirror_connections=int(spec.get("mirror_connections", 0)),
         )
     if args.download_only:
         return 0
