@@ -28,7 +28,7 @@ def structurizr(*args: str, extra_mount: Path | None = None) -> str:
         cmd += ["-v", f"{extra_mount.as_posix()}:/out"]
     cmd += [IMAGE, *args]
     env = {**os.environ, "MSYS_NO_PATHCONV": "1"}  # keep container paths intact under Git Bash
-    res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", env=env)
+    res = subprocess.run(cmd, check=False, capture_output=True, text=True, encoding="utf-8", env=env)
     out = res.stdout + res.stderr
     if res.returncode != 0:
         sys.exit(f"structurizr {args[0]} failed:\n{out}")

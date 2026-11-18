@@ -6,7 +6,8 @@ component can be swapped and evaluated on its own (baseline vs fine-tuned).
 
 from __future__ import annotations
 
-from typing import Protocol, Sequence
+from collections.abc import Sequence
+from typing import Protocol
 
 from trifact.core.schemas import (
     Answer,
@@ -21,7 +22,7 @@ from trifact.core.schemas import (
 
 
 class DocumentParser(Protocol):
-    def parse(self, raw: bytes, filename: str) -> "ParsedDocument": ...
+    def parse(self, raw: bytes, filename: str) -> ParsedDocument: ...
 
 
 class ParsedDocument(Protocol):
