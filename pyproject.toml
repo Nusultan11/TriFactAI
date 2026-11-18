@@ -27,7 +27,7 @@ serving = [
 ]
 ingestion = [
     "docling>=2.10",
-    "fasttext-wheel>=0.9.2",
+    "fasttext-predict>=0.9.2.4",  # predict-only fastText; fasttext-wheel breaks on numpy 2
     "dateparser>=1.2",
 ]
 ml = [
@@ -55,6 +55,7 @@ ml = [
     "pandera[polars]>=0.20",
     "seqeval>=1.2.2",
     "ranx>=0.3.20",
+    "fasttext-predict>=0.9.2.4",  # language id in curation (stage 2)
 ]
 dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "pre-commit>=4", "types-PyYAML>=6"]
 

@@ -5,8 +5,8 @@ languages: [kk, ru, en]
 
 scale:
   profile: pilot            # pilot | full — same code, different volumes (architecture §1)
-  pilot:   {corpus_chunks: 150000,   ner_sentences: 80000,   sft_examples: 24000,   retrieval_pairs: 10000,    eval_examples: 3000}
-  full:    {corpus_chunks: 35000000, ner_sentences: 10000000, sft_examples: 2000000, retrieval_pairs: 20000000, eval_examples: 50000}
+  pilot:   {corpus_docs: 30000, corpus_chunks: 150000,   ner_sentences: 80000,   sft_examples: 24000,   retrieval_pairs: 10000,    eval_examples: 3000}
+  full:    {corpus_docs: null,  corpus_chunks: 35000000, ner_sentences: 10000000, sft_examples: 2000000, retrieval_pairs: 20000000, eval_examples: 50000}
   min_kk_share: 0.30        # in SFT and eval
   index_steps: [1000000, 10000000, 35000000]   # RET-S scale ladder
 
@@ -189,10 +189,73 @@ sources:
     license: {license: CC0-1.0, use: allowed, release: true, evidence: "wikidata.org/wiki/Wikidata:Licensing; checked 2026-11-18"}
 
 curation:
-  langid: {candidates: [lid176, glotlid], min_score: 0.65}
-  quality: {min_chars: 200, min_alpha_ratio: 0.6, max_dup_line_ratio: 0.3}   # thresholds tuned on manual sample (stage 2)
-  minhash: {num_perm: 128, bands: 16, threshold: 0.8}
-  decontamination: {ngram: 13}
+  langid:                   # ROADMAP 2.2; model chosen by eval_langid (reports/langid.json)
+    model: lid176           # best macro-F1 at min_score, 5.7x faster and 5.7x smaller than GlotLID (stage 2)
+    candidates: [lid176, glotlid, glotlid_small]
+    min_score: 0.65         # document lang_score below this -> dropped as lang_low_score
+    min_para_chars: 20      # letters a line needs to be classified on its own
+    max_para_chars: 1000    # prediction uses the first N characters of a paragraph
+    cache: data/.cache/models
+    models:
+      lid176: {url: "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin",
+               sha256: 7e69ec5451bc261cc7844e49e4792a85d7f09c06789ec800fc4a44aec362764e, license: CC-BY-SA-3.0}
+      glotlid: {hf_id: cis-lmu/glotlid, revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522, file: model.bin,
+                sha256: 3b26297652e105cb63acde0fbf5aa228161528b519331e58a7c94ea9fe58474c, license: Apache-2.0}
+      glotlid_small: {hf_id: cis-lmu/glotlid, revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522, file: model_v4_small.bin,
+                      sha256: 7fdfc49052d42653a1b8db5fbb0754497d670a6a4fae32398692f8e5b3811bdd, license: Apache-2.0}
+  sources: [wikipedia, fineweb2_kk, multidomain_kk]   # corpus sources; order = keep priority in cross-source dedup
+  workers: 4                # processes per curation stage: pass-2 commit 2.1-2.6 GB each (stage 2 measurement), under lake.peak_ram_gb
+  domains:                  # domain of each corpus shard; multidomain_kk by its input file
+    wikipedia: wikipedia
+    fineweb2_kk: web
+    multidomain_kk: {cc100-monolingual-crawled-data.csv: cc100, kazakhBooks.csv: books, kazakhNews.csv: news,
+                     leipzig.csv: leipzig, oscar.csv: oscar}
+  boilerplate: {sample_docs: 20000, max_line_chars: 200, min_doc_share: 0.001, min_docs: 20}
+  dropped_text_chars: 2000  # dropped documents keep this prefix for audit
+  quality:                  # trifact.data.quality; tuned on the manual review sample (stage 2)
+    default: {min_lang_conf: 0.0, min_chars: 100, min_words: 15, min_alpha_ratio: 0.6, max_replacement_ratio: 0.001,
+              max_dup_line_ratio: 0.3, max_dup_ngram_ratio: 0.3, min_mean_word_len: 3.0, max_mean_word_len: 12.0,
+              max_bullet_ratio: 0.9, max_ellipsis_ratio: 0.3, min_stopword_ratio: 0.02, stopword_min_words: 50}
+    languages:              # stopword share p05 on the pilot: kk web/news 0.04, ru 0.06-0.13, en 0.13
+      kk: {min_stopword_ratio: 0.01}
+      ru: {min_stopword_ratio: 0.03}
+      en: {min_stopword_ratio: 0.05}
+    domains:
+      wikipedia:            # curated text: foreign reference lines, tables, lists and stubs are normal
+        min_lang_score: 0.5
+        max_dup_line_ratio: 0.5
+        min_stopword_ratio: 0.0
+      cc100: {min_chars: 40, min_words: 5, min_stopword_ratio: 0.0}  # one sentence per record
+      leipzig: {min_chars: 40, min_words: 5, min_stopword_ratio: 0.0}
+  minhash:                  # ROADMAP 2.4; trifact.data.dedup
+    num_perm: 126
+    bands: 14               # 14 bands x 9 rows: S-curve midpoint J ~ 0.75, P(link | J=0.8) ~ 0.87, P(link | J=0.6) ~ 0.13
+    ngram: 5                # word 5-gram shingles
+    keep_near_within: [wikipedia]  # one article per entity: similar articles are templated stubs, not copies
+  decontamination:          # ROADMAP 2.5: every split of the sources stage 3 builds eval sets from (ADR-0007)
+    ngram: 13
+    min_matches: 1            # one shared eval 13-gram makes the document contaminated
+    max_removed_share: 0.5    # lines with eval grams are cut; above this share of chars the doc is dropped
+    max_gram_docs: 100        # an eval 13-gram in more corpus documents is template text, ignored
+    sources:
+      kazqad: {columns: [context, question]}
+      sberquad: {columns: [context, question]}
+      squad_v2: {columns: [context, question]}
+      xnli: {columns: [premise, hypothesis]}
+      kaznerd: {tokens: tokens}
+      wikiann: {tokens: tokens}
+      wikineural: {tokens: tokens}
+      nerel: {columns: [text]}
+      miracl: {passages_from: miracl_corpus}   # queries + passages with relevance > 0
+  stats:                    # ROADMAP 2.6; trifact.data.corpus_stats
+    length_bins: [0, 100, 300, 1000, 3000, 10000, 30000, 100000]   # characters
+    sample_docs: 3000         # per (source, lang) for tokenizer fertility, seeded hash of doc_id
+    max_chars: 4000           # prefix of every sampled document
+    tokenizers:               # tokenizer.json at pinned revisions (2026-11-18)
+      xlmr: {hf_id: FacebookAI/xlm-roberta-base, revision: e73636d4f797dec63c3081bb6ed5c7b0bb3f2089,
+             file: tokenizer.json, unk: "<unk>"}
+      qwen3: {hf_id: Qwen/Qwen3-1.7B, revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e, file: tokenizer.json}
+      qwen3_5: {hf_id: Qwen/Qwen3.5-2B, revision: 15852e8c16360a2fea060d615a32b45270f8a8fc, file: tokenizer.json}
 
 split:
   by: source_document       # ADR-0007
