@@ -11,7 +11,8 @@ __pycache__/
 .env
 
 # Data and models are tracked by DVC, not git
-/data/
+/data/*
+!/data/*.dvc
 /models/
 /mlruns/
 /reports/*.json
