@@ -1,6 +1,6 @@
 # Каталог данных и план масштаба
 
-Строки помечены: **✓** — число получено из HF datasets-server / API 2026-11-18; **≈** — по карточке или публикации, проверить при загрузке (этап 1).
+Строки помечены: **✓** — число получено из HF datasets-server / API 2026-11-18; **●** — посчитано при загрузке этапа 1 (2026-11-18) и сверено с метаданными, итог в `data/raw/<источник>/source.yaml`; **≈** — по карточке или публикации, не проверено.
 
 ## 1. Текстовые корпуса (RAG-индекс, предобучение, silver-разметка)
 
@@ -10,18 +10,18 @@
 | Wikipedia RU | `wikimedia/wikipedia` `20231101.ru` | ✓ 1 945 063 статей | ✓ 4.9 GB | CC BY-SA |
 | Wikipedia KK | `wikimedia/wikipedia` `20231101.kk` | ✓ 238 615 статей | ✓ 0.18 GB | CC BY-SA |
 | FineWeb-2 KK | `HuggingFaceFW/fineweb-2` `kaz_Cyrl` | ✓ 3 375 998 документов | ✓ 6.9 GB | ODC-By |
-| Multidomain Kazakh | `kz-transformers/multidomain-kazakh-dataset` | ✓ 15 510 000 строк | ≈ | Apache-2.0 |
-| KazParC (параллельный kk/ru/en/tr) | `issai/kazparc` | ≈ 100k–1M пар | — | gated, проверить |
+| Multidomain Kazakh | `kz-transformers/multidomain-kazakh-dataset` | ● 24 883 808 записей CSV (карточка и datasets-server дают 15 510 000 — частичный подсчёт) | ● 6.97 GB parquet | Apache-2.0 |
+| KazParC (параллельный kk/ru/en/tr) | `issai/kazparc` | ● 15 103 193 строк (все конфиги, вкл. синтетику) | ● 2.26 GB parquet | CC BY 4.0, gated |
 | Wikidata | dumps.wikimedia.org (JSON) | ≈ 100M+ сущностей | ≈ 100+ GB сжатый | CC0 |
 
 ## 2. NER
 
 | Источник | HF ID | Объём | Языки | Лицензия |
 |---|---|---|---|---|
-| KazNERD | `issai/kaznerd` | ≈ 112 702 предложения, 25 классов (✓ классы проверены по IOB2-файлу) | kk | CC BY 4.0, gated |
+| KazNERD | `issai/kaznerd` | ● 112 702 предложения, 25 классов (✓ классы проверены по IOB2-файлу) | kk | CC BY 4.0, gated |
 | WikiANN | `unimelb-nlp/wikiann` | ✓ kk 3 000 · ru 40 000 · en 40 000 | kk/ru/en | не указана → проверить |
-| WikiNEuRal | `Babelscape/wikineural` | ✓ 1 027 506 предложений (9 языков, вкл. ru/en) | ru/en | проверить (CC BY-NC-SA у оригинала) |
-| NEREL | `iluvvatar/NEREL` | ≈ 29 типов сущностей | ru | проверить |
+| WikiNEuRal | `Babelscape/wikineural` | ✓ 1 027 506 предложений (9 языков); загружены ● en 115 907, ru 115 440 | ru/en | проверить (CC BY-NC-SA у оригинала) |
+| NEREL | `iluvvatar/NEREL` | ● 1 011 документов, ≈ 29 типов сущностей | ru | проверить |
 | **Silver NER из Wikipedia** | строим сами | **цель: 5–10 M предложений** | kk/ru/en | производная CC BY-SA |
 
 Silver NER: ссылки внутри статей Wikipedia → QID Wikidata → тип по `P31` (human → PER, organization → ORG, geographic → LOC). Так строились WikiANN/WikiNEuRal; мы получаем миллионы размеченных предложений на каждом языке, включая казахский.
@@ -32,16 +32,16 @@ Silver NER: ссылки внутри статей Wikipedia → QID Wikidata �
 |---|---|---|---|---|
 | SQuAD v2 | `rajpurkar/squad_v2` | ✓ 142 192 (вкл. неотвечаемые) | en | CC BY-SA 4.0 |
 | SberQuAD | `kuznetsoffandrey/sberquad` | ✓ 74 300 | ru | не указана → проверить |
-| KazQAD | `issai/kazqad` (`kazqad`, `nq-translate-kk`, `nq-original-en`) | ≈ | kk/en | CC BY-SA 4.0, gated |
+| KazQAD | `issai/kazqad` (`kazqad`, `nq-translate-kk`, `nq-original-en`) | ● kk 68 246 · en 68 770 | kk/en | CC BY-SA 4.0, gated |
 | **Синтетический grounded QA** | строим сами (учитель Qwen3.5-35B-A3B) | **цель: 1–2 M пар после фильтрации** | kk/ru/en + межъязыковые | производная |
 
 ## 4. Retrieval
 
 | Источник | HF ID | Объём | Язык |
 |---|---|---|---|
-| MS MARCO | `microsoft/ms_marco` | ≈ 8.8 M пассажей, ~500k обучающих запросов | en |
-| mMARCO | `unicamp-dl/mmarco` (`russian`) | ≈ 8.8 M пассажей (перевод) | ru |
-| MIRACL | `miracl/miracl` (`ru`, `en`) | ≈ корпуса в миллионы пассажей, ручные оценки | ru/en |
+| MS MARCO | `microsoft/ms_marco` | ● 1 112 939 строк запрос + пассажи (v1.1, v2.1) | en |
+| mMARCO | `unicamp-dl/mmarco` (`russian`) | ● ru 9 758 627 (коллекция и запросы), multi 39 780 811 (тройки id) | ru |
+| MIRACL | `miracl/miracl` (`ru`, `en`) + `miracl/miracl-corpus` | ● запросы с оценками en 43 952 · ru 54 585; корпус en 32 893 221 · ru 9 543 918 пассажей | ru/en |
 | ru-HNP | `deepvk/ru-HNP` | ✓ 102 590 (hard negatives) | ru |
 | bge-m3-data | `Shitao/bge-m3-data` | ≈ обучающие данные BGE-M3 | мульти |
 | **Синтетические запросы** | строим сами | **цель: 3–5 M (запрос, чанк)** | kk/ru/en, 9 направлений |
