@@ -186,7 +186,24 @@ sources:
     mirrors: [https://dumps.wikimedia.your.org/wikidatawiki/entities/20261116/wikidata-20261116-all.json.bz2]
     mirror_connections: 3   # extra connections per mirror; the published sha1 is checked over the whole file
     workers: 12             # parse processes
+    range_mb: 512           # compressed bytes per parse unit (bz2 block ranges, ADR-0020): ~200 units, ~0.5 M entities each
     license: {license: CC0-1.0, use: allowed, release: true, evidence: "wikidata.org/wiki/Wikidata:Licensing; checked 2026-11-18"}
+  wikipedia_wikitext:       # article markup with links, for silver NER (ADR-0015); plain-text wikipedia has no links
+    base_url: https://dumps.wikimedia.org
+    revision: "20261101"
+    role: corpus_links
+    connections: 2
+    workers: 4
+    license: {license: CC-BY-SA-4.0 AND GFDL, use: allowed, release: true, evidence: "Wikimedia Terms of Use, dumps.wikimedia.org/legal.html; checked 2026-11-18"}
+    files:                  # kk whole wiki; ru and en: the first page-id ranges (oldest, most linked articles),
+      - {wiki: kkwiki, lang: kk, name: kkwiki-20261101-pages-articles.xml.bz2}   # enough for the 5-10M silver target
+      - {wiki: ruwiki, lang: ru, name: ruwiki-20261101-pages-articles1.xml-p1p224167.bz2}
+      - {wiki: ruwiki, lang: ru, name: ruwiki-20261101-pages-articles2.xml-p224168p1042043.bz2}
+      - {wiki: ruwiki, lang: ru, name: ruwiki-20261101-pages-articles3.xml-p1042044p2198269.bz2}
+      - {wiki: enwiki, lang: en, name: enwiki-20261101-pages-articles1.xml-p1p41242.bz2}
+      - {wiki: enwiki, lang: en, name: enwiki-20261101-pages-articles2.xml-p41243p151573.bz2}
+      - {wiki: enwiki, lang: en, name: enwiki-20261101-pages-articles3.xml-p151574p311329.bz2}
+      - {wiki: enwiki, lang: en, name: enwiki-20261101-pages-articles4.xml-p311330p558391.bz2}
 
 curation:
   langid:                   # ROADMAP 2.2; model chosen by eval_langid (reports/langid.json)
@@ -269,6 +286,12 @@ chunking:
 ner:
   base_model: FacebookAI/xlm-roberta-base
   labels: configs/labels.yaml
+  silver:                   # ADR-0015, trifact.data.build_ner
+    min_tokens: 5
+    max_tokens: 80
+    capital_filter: true    # drop sentences with a capitalized non-initial word linked nowhere (likely missed entity)
+    gazetteer_min_count: 3  # noise estimate: silver surfaces seen >= 3 times ...
+    gazetteer_min_share: 0.9  # ... with >= 90% one type
   curriculum: [silver, gold]
   epochs: 5
   lr: 3.0e-5
@@ -299,12 +322,27 @@ retrieval:
     hnsw: {m: 16, ef_construct: 128, on_disk: false}
     mrl_dim: null           # Qwen3-Embedding only: 256 | 512 | 1024
 
+nli:                        # stage 3.4, trifact.data.build_nli
+  kk_filters: {min_chrf_back: 40, min_lang_score: 0.5, min_len_ratio: 0.5, max_len_ratio: 2.0}
+
+mt:                         # NLLB-200 on Kaggle T4 x2 (ADR-0020); revisions resolved 2026-11-18
+  model: {hf_id: facebook/nllb-200-distilled-1.3B, revision: 7be3e24664b38ce1cac29b8aeed6911aa0cf0576, license: CC-BY-NC-4.0}
+  back_model: {hf_id: facebook/nllb-200-distilled-600M, revision: f8d333a098d19b4fd9a8b18f94170487ad3f821d, license: CC-BY-NC-4.0}
+  beams: 2
+
 sft:
   mix: {answerable: 0.60, cross_lingual: 0.25, unanswerable: 0.15}
+  distractors: 3            # BM25 contexts added to the gold context as evidence
 
-teacher:                    # ADR-0015, cloud vLLM
+teacher:                    # ADR-0015, ADR-0020: llama.cpp on Kaggle T4 x2 (vLLM MoE kernels need sm80)
   model: Qwen/Qwen3.5-35B-A3B
   filters: {round_trip_top_k: 10, min_nli_entail: 0.7}
+  serve: {repo: unsloth/Qwen3.5-35B-A3B-GGUF, revision: bc014a17be43adabd7066b7a86075ff935c6a4e2,
+          file: Qwen3.5-35B-A3B-UD-IQ4_XS.gguf, llama_cpp_ref: b12032, parallel: 16, ctx_per_slot: 4096,
+          temperature: 0.7, top_p: 0.9, extra_args: [-kvu]}
+          # measured 2026-11-18 (llama-batched-bench, 2x T4, 400+64 tokens): 16 sequences 740 tok/s with a unified
+          # KV cache (-kvu) vs 305 tok/s without (hybrid DeltaNet layers); single sequence pp 935 / tg 57 tok/s
+  time_budget_h: 11.0       # per Kaggle session (12 h limit); weekly GPU quota 30 h, cost 0 USD
 
 llm:                        # ADR-0012
   base_model: Qwen/Qwen3.5-2B
@@ -320,6 +358,8 @@ llm:                        # ADR-0012
 
 verification:
   nli_model: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
+  nli_job: {model: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7, revision: b5113eb38ab63efdd7f280f8c144ea8b13f978ce,
+            batch_size: 128, max_length: 384}   # Kaggle nli_score: label consistency (stage 3)
   nli_challengers: [MoritzLaurer/bge-m3-zeroshot-v2.0]
   nei_ratio_threshold: 0.3
 
@@ -327,6 +367,7 @@ evaluation:
   bootstrap_samples: 1000
   ci: 0.95
   human_verified_min: 3000
+  review_per_kind: 500      # MT-derived eval rows per direction / kind on the human review sheet
   real_docs_min: 50
 
 promotion:                  # ADR-0009, architecture §10

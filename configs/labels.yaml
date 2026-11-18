@@ -1,17 +1,56 @@
-# Label schema for the trained NER model (ADR-0006).
+# Label schema for the trained NER model (ADR-0006) and the mapping of every gold and silver source to it.
 # DATE is produced by the rule-based extractor (trifact.extraction.dates), not by the model.
 core_labels: [PER, ORG, LOC]
+
+# Tag sets of the raw `ner_tags` ids, from the dataset cards at the pinned revisions (checked 2026-11-18).
+tagsets:
+  kaznerd: [O, B-ADAGE, I-ADAGE, B-ART, I-ART, B-CARDINAL, I-CARDINAL, B-CONTACT, I-CONTACT, B-DATE, I-DATE,
+            B-DISEASE, I-DISEASE, B-EVENT, I-EVENT, B-FACILITY, I-FACILITY, B-GPE, I-GPE, B-LANGUAGE, I-LANGUAGE,
+            B-LAW, I-LAW, B-LOCATION, I-LOCATION, B-MISCELLANEOUS, I-MISCELLANEOUS, B-MONEY, I-MONEY,
+            B-NON_HUMAN, I-NON_HUMAN, B-NORP, I-NORP, B-ORDINAL, I-ORDINAL, B-ORGANISATION, I-ORGANISATION,
+            B-PERSON, I-PERSON, B-PERCENTAGE, I-PERCENTAGE, B-POSITION, I-POSITION, B-PRODUCT, I-PRODUCT,
+            B-PROJECT, I-PROJECT, B-QUANTITY, I-QUANTITY, B-TIME, I-TIME]
+  wikiann: [O, B-PER, I-PER, B-ORG, I-ORG, B-LOC, I-LOC]
+  wikineural: [O, B-PER, I-PER, B-ORG, I-ORG, B-LOC, I-LOC, B-MISC, I-MISC]
+
+# Source entity type -> core label; types not listed map to O.
+kaznerd:            # 25 classes -> core
+  PERSON: PER
+  ORGANISATION: ORG
+  GPE: LOC
+  LOCATION: LOC
+  FACILITY: LOC     # experiment: compare with FACILITY -> O
+  # DATE is kept in `tags_full` to evaluate the rule-based date extractor
+  # Full 25-class schema is used only in experiment NER-4
 
 wikiann:            # already PER / ORG / LOC
   PER: PER
   ORG: ORG
   LOC: LOC
 
-kaznerd:            # 25 classes -> core; everything not listed maps to O
+wikineural:         # MISC -> O
+  PER: PER
+  ORG: ORG
+  LOC: LOC
+
+nerel:              # 29 brat types -> core; nested spans: the outermost core span wins
   PERSON: PER
-  ORGANISATION: ORG
-  GPE: LOC
+  ORGANIZATION: ORG
+  CITY: LOC
+  COUNTRY: LOC
+  STATE_OR_PROVINCE: LOC
+  DISTRICT: LOC
   LOCATION: LOC
-  FACILITY: LOC     # experiment: compare with FACILITY -> O
-  # DATE is kept separately to evaluate the rule-based date extractor
-  # Full 25-class schema is used only in experiment NER-3
+  FACILITY: LOC
+
+# Silver NER (ADR-0015): Wikidata classes of a link target's P31 (instance of) -> core label.
+# A class matches directly or through its P279 (subclass of) ancestors up to `wikidata_max_depth` levels.
+wikidata_max_depth: 6
+wikidata_classes:
+  PER: [Q5]                                     # human
+  ORG: [Q43229, Q4830453, Q7278, Q327333, Q2659904, Q3918, Q31855, Q476028, Q15911314]
+       # organization, business, political party, government agency, government organization,
+       # university, research institute, association football club, association
+  LOC: [Q17334923, Q2221906, Q618123, Q486972, Q6256, Q515, Q35657, Q10864048, Q56061, Q82794, Q41176]
+       # location, geographic location, geographical feature, human settlement, country, city,
+       # US state, first-level admin division, administrative territorial entity, geographic region, building

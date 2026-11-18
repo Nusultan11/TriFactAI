@@ -17,6 +17,12 @@ stages:
     params: [sources.wikidata, lake]
     outs: [{data/raw/wikidata: {persist: true}}]
 
+  wikitext:  # Wikipedia XML dumps with links, for silver NER (ADR-0015)
+    cmd: python -m trifact.data.wikitext
+    deps: [src/trifact/data/wikitext.py, src/trifact/data/wikidata.py, src/trifact/lake]
+    params: [sources.wikipedia_wikitext, lake]
+    outs: [{data/raw/wikipedia_wikitext: {persist: true}}]
+
   # ------------------------------------------------ stage 2: curation
   # Curation stages are resumable (fingerprinted output, finished shards kept, ADR-0014): outs are
   # persistent so that an interrupted `dvc repro` continues instead of starting over.
@@ -60,61 +66,108 @@ stages:
     params: [curation.stats, seed]
     metrics: [{reports/corpus_stats.json: {cache: false}}]
 
+  eda:       # full-volume EDA of every layer (ROADMAP 2.6); entities = Wikidata
+    foreach: [raw, clean, curated, entities]
+    do:
+      cmd: python -m trifact.data.eda ${item}
+      deps: [src/trifact/data/eda.py, data/raw, data/clean, data/curated]
+      params: [curation.workers, seed]
+      outs: ["reports/eda/${item}.json"]
+
+  eda_report:
+    cmd: python -m trifact.data.eda_report
+    deps: [src/trifact/data/eda_report.py, src/trifact/data/task_eda.py, reports/eda/raw.json, reports/eda/clean.json,
+           reports/eda/curated.json, reports/eda/entities.json, reports/eda/task.json, reports/corpus_stats.json]
+    outs: [reports/eda/report.md, reports/eda/figures, reports/eda/findings.json]
+
   # ------------------------------------------------ stage 3: task datasets
+  # GPU work (NLLB translation, NLI scoring, teacher) runs on Kaggle (ADR-0020): `python -m trifact.batch.kaggle run`
+  # writes its outputs to data/external/kaggle/<run>, versioned with `dvc add`; the stages below only import them.
   validate:
     cmd: python -m trifact.data.validate
-    deps: [src/trifact/data/validate.py, data/raw/kaznerd, data/raw/wikiann, data/raw/nerel, data/raw/squad_v2, data/raw/sberquad, data/raw/kazqad]
+    deps: [src/trifact/data/validate.py, src/trifact/data/task_common.py, configs/labels.yaml, data/raw/kaznerd,
+           data/raw/wikiann, data/raw/wikineural, data/raw/nerel, data/raw/squad_v2, data/raw/sberquad, data/raw/kazqad,
+           data/raw/xnli, data/raw/miracl, data/raw/miracl_corpus]
     metrics: [{reports/data_quality.json: {cache: false}}]
 
   split:
     cmd: python -m trifact.data.split
-    deps: [src/trifact/data/split.py, reports/data_quality.json]
+    deps: [src/trifact/data/split.py, src/trifact/data/task_common.py, reports/data_quality.json]
     params: [seed, split]
     outs: [data/task/splits]
 
-  build_eval:
-    cmd: python -m trifact.data.build_eval
-    deps: [src/trifact/data/build_eval.py, data/task/splits]
-    params: [scale, evaluation]
-    outs: [data/eval]            # frozen, ADR-0007
-
-  build_ner:
-    cmd: python -m trifact.data.build_ner
-    deps: [src/trifact/data/build_ner.py, configs/labels.yaml, data/task/splits, data/curated/corpus, data/raw/wikidata]
-    params: [scale, ner.labels]
-    outs: [data/task/ner]
-
-  build_pairs:
-    cmd: python -m trifact.data.build_pairs
-    deps: [src/trifact/data/build_pairs.py, data/task/splits, data/task/chunks, data/raw/ms_marco, data/raw/mmarco_ru, data/raw/kazparc]
-    params: [scale, retrieval.hard_negatives_per_query, teacher.filters]
-    outs: [data/task/retrieval]
-
-  build_sft:
-    cmd: python -m trifact.data.build_sft
-    deps: [src/trifact/data/build_sft.py, configs/prompts/grounded_answer.md, data/task/splits, data/task/chunks]
-    params: [scale, sft, teacher]
-    outs: [data/task/sft]
-
-  build_nli:
-    cmd: python -m trifact.data.build_nli
-    deps: [src/trifact/data/build_nli.py, data/raw/xnli]
-    params: [teacher.filters]
-    outs: [data/task/nli]
-
-  # ------------------------------------------------ corpus chunks, KB and index
-  chunk_corpus:
-    cmd: python -m trifact.data.chunk_corpus
-    deps: [src/trifact/data/chunk_corpus.py, src/trifact/ingestion/chunker.py, data/curated/corpus]
-    params: [scale.profile, chunking]
-    outs: [data/task/chunks]
-
   build_kb:
     cmd: python -m trifact.data.build_kb
-    deps: [src/trifact/data/build_kb.py, data/raw/wikidata, data/raw/wikipedia]
+    deps: [src/trifact/data/build_kb.py, configs/labels.yaml, data/raw/wikidata]
     params: [linking]
     outs: [data/task/kb]
 
+  build_ner:
+    cmd: python -m trifact.data.build_ner
+    deps: [src/trifact/data/build_ner.py, src/trifact/data/ner_common.py, src/trifact/data/wikimarkup.py,
+           configs/labels.yaml, data/task/splits, data/task/kb, data/raw/wikipedia_wikitext]
+    params: [scale, ner.silver, seed]
+    outs: [data/task/ner]
+
+  mt:        # import of the Kaggle NLLB runs (ADR-0020)
+    foreach:
+      xnli_kk: {run: data/external/kaggle/translate_xnli_kk, sources: xnli}
+      qa: {run: data/external/kaggle/translate_qa, sources: "squad_v2,sberquad,kazqad,miracl"}
+    do:
+      cmd: python -m trifact.data.translations import ${key} --kaggle-out ${item.run}/out --sentences ${item.run}/sentences_all.parquet --sources ${item.sources}
+      deps: [src/trifact/data/translations.py, "${item.run}"]
+      params: [curation.langid]
+      outs: ["data/task/mt/${key}"]
+
+  build_nli:
+    cmd: python -m trifact.data.build_nli --scores data/external/kaggle/nli_score_xnli/out
+    deps: [src/trifact/data/build_nli.py, data/raw/xnli, data/task/splits, data/task/mt/xnli_kk, data/external/kaggle/nli_score_xnli]
+    params: [nli]
+    outs: [data/task/nli]
+
+  chunk_corpus:
+    cmd: python -m trifact.data.chunk_corpus
+    deps: [src/trifact/data/chunk_corpus.py, src/trifact/ingestion/chunker.py, src/trifact/ingestion/segment.py, data/curated/corpus]
+    params: [scale, chunking, curation.stats.tokenizers.xlmr]
+    outs: [{data/task/chunks: {persist: true}}]
+
+  synthetic: # import + filters of the Kaggle teacher runs (ADR-0015, ADR-0020)
+    foreach: [queries, qa]
+    do:
+      cmd: python -m trifact.data.synthetic import --kind ${item} --kaggle-out data/external/kaggle/teacher_${item}/out
+      deps: [src/trifact/data/synthetic.py, data/task/chunks, "data/external/kaggle/teacher_${item}"]
+      params: [teacher, sft.mix, scale.min_kk_share]
+      outs: ["data/task/synthetic/${item}"]
+
+  build_pairs:
+    cmd: python -m trifact.data.build_pairs --synthetic data/task/synthetic/queries
+    deps: [src/trifact/data/build_pairs.py, src/trifact/data/qa_common.py, src/trifact/data/bm25.py, data/task/splits,
+           data/task/mt/qa, data/task/synthetic/queries, data/raw/ms_marco, data/raw/mmarco_ru, data/raw/miracl,
+           data/raw/miracl_corpus, data/raw/ru_hnp, data/raw/kazparc, data/raw/squad_v2, data/raw/sberquad, data/raw/kazqad]
+    params: [scale, retrieval.hard_negatives_per_query, split, seed]
+    outs: [data/task/retrieval]
+
+  build_sft:
+    cmd: python -m trifact.data.build_sft --synthetic data/task/synthetic/qa
+    deps: [src/trifact/data/build_sft.py, src/trifact/data/qa_common.py, configs/prompts/grounded_answer.md, data/task/splits,
+           data/task/mt/qa, data/task/synthetic/qa]
+    params: [scale, sft, nli.kk_filters]
+    outs: [data/task/sft]
+
+  build_eval:  # frozen sets are never rebuilt (frozen.json); MT-derived rows wait for the human review sheets
+    cmd: python -m trifact.data.build_eval build
+    deps: [src/trifact/data/build_eval.py, data/task/splits, data/task/ner, data/task/nli, data/task/mt/qa,
+           data/task/retrieval, data/task/sft]
+    params: [evaluation, seed]
+    outs: [{data/eval: {persist: true}}]
+    metrics: [{reports/eval.json: {cache: false}}]
+
+  task_eda:    # ROADMAP 3.7
+    cmd: python -m trifact.data.task_eda
+    deps: [src/trifact/data/task_eda.py, data/task, data/eval]
+    outs: [reports/eda/task.json]
+
+  # ------------------------------------------------ corpus index
   embed_corpus:
     cmd: python -m trifact.batch.embed_corpus
     deps: [src/trifact/batch/embed_corpus.py, data/task/chunks]

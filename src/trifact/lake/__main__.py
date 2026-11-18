@@ -4,6 +4,8 @@ python -m trifact.lake verify [--layer raw] [--quick]   re-hash every shard, che
     (layer raw: source manifests; other layers: every derived dataset.yaml, e.g. clean/<source>,
     curated/dedup, curated/corpus, plus its data card)
 python -m trifact.lake report [--layer raw] [--out reports/raw.json]   volumes, row checks, throughput per source
+python -m trifact.lake mlflow [--layer clean]   log every manifest of a layer as an MLflow run (backfill for
+    stages that ran while the tracking server was down; the manifest stays the primary record)
 """
 
 from __future__ import annotations
@@ -65,15 +67,55 @@ def markdown(rep: dict[str, dict]) -> str:
     return "\n".join(lines)
 
 
+def _numbers(d: dict, prefix: str = "") -> dict[str, float]:
+    out: dict[str, float] = {}
+    for k, v in d.items():
+        key = f"{prefix}{k}"
+        if isinstance(v, bool):
+            continue
+        if isinstance(v, (int, float)):
+            out[key] = float(v)
+        elif isinstance(v, dict) and len(out) < 400:
+            out.update(_numbers(v, key + "."))
+    return out
+
+
+def backfill(root: Path, layer: str) -> int:
+    from trifact.lake.manifest import DatasetManifest
+    from trifact.lake.stats import log_mlflow
+
+    if layer == "raw":
+        for src in _sources(root, layer):
+            m = SourceManifest.read(src)
+            st = m.stats.model_dump() if m.stats else {}
+            ok = log_mlflow("data", f"{m.name}-manifest", {"revision": m.revision, "code_version": m.code_version},
+                            {"rows": float(sum(m.rows.values())), **{k: float(v) for k, v in st.items()}})  # fmt: skip
+            print(m.name, "logged" if ok else "not logged")
+        return 0
+    for d in _datasets(root, layer):
+        m = DatasetManifest.read(d)
+        metrics = {"rows_out": float(sum(m.rows_of().values())), "rows_in": float(sum(m.rows_in.values())),
+                   **{f"drop.{k}": float(sum(v.values())) for k, v in m.drops.items()}, **_numbers(m.metrics, "m.")}  # fmt: skip
+        if m.stats:
+            metrics.update({f"run.{k}": float(v) for k, v in m.stats.model_dump().items()})
+        exp = {"clean": "curation", "curated": "curation", "task": "task", "eval": "eval"}.get(layer, layer)
+        ok = log_mlflow(exp, m.name, {"fingerprint": m.fingerprint, "code_version": m.code_version, "stage": m.stage,
+                                      "partial": m.partial}, dict(list(metrics.items())[:500]))  # fmt: skip
+        print(m.name, "logged" if ok else "not logged")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["verify", "report"])
+    ap.add_argument("command", choices=["verify", "report", "mlflow"])
     ap.add_argument("--layer", default="raw")
     ap.add_argument("--root", type=Path)
     ap.add_argument("--quick", action="store_true", help="verify sizes and row counts, skip sha256")
     ap.add_argument("--out", type=Path, help="report: write JSON here")
     args = ap.parse_args(argv)
     root = args.root or ROOT / load_params()["lake"]["root"]
+    if args.command == "mlflow":
+        return backfill(root, args.layer)
     if args.command == "verify":
         problems = []
         if args.layer == "raw":

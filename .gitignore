@@ -16,6 +16,7 @@ __pycache__/
 /models/
 /mlruns/
 /reports/*.json
+/reports/eda/
 
 # Task manager state, local tools
 .shrimp/

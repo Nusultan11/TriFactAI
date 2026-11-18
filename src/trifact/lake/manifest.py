@@ -71,6 +71,7 @@ class RowCheck(BaseModel):
         "line_count",
         "csv_record_count",
         "entity_count",
+        "xml_page_count",
     ]
     expected: int
     actual: int

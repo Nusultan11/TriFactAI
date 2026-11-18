@@ -141,27 +141,47 @@ def score(sample: pl.DataFrame, labels: pl.DataFrame) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["sample", "score"])
+    ap.add_argument("cmd", choices=["sample", "sheet", "score"])
     ap.add_argument("--clean", type=Path, help="clean layer directory (default <lake root>/clean)")
+    ap.add_argument("--review-dir", type=Path, default=REVIEW, help="sample / labels directory")
+    ap.add_argument("--reviewer", default="Claude (LLM), not a human annotator",
+                    help="who labelled labels.csv; a human review must name the person")  # fmt: skip
     args = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
     clean = (args.clean or ROOT / params["lake"]["root"] / "clean").resolve()
+    review = args.review_dir.resolve()
+    if args.cmd == "sheet":  # blank CSV for human reviewers: doc_id,label,note + the text to read
+        sample = pl.read_parquet(review / "sample.parquet")
+        sheet = sample.select(
+            "doc_id", "review_lang", "status", "stratum", "text", label=pl.lit(""), note=pl.lit("")
+        )
+        out = review / "to_label.csv"
+        if out.exists():
+            print(f"{out} exists, kept")
+            return 0
+        sheet.write_csv(out)
+        print(f"{sheet.height} documents -> {out}; save the filled sheet as labels.csv (doc_id,label,note)")
+        return 0
     if args.cmd == "sample":
         kept, dropped = frames(clean, params["curation"]["sources"])
         sample = pl.concat(
             [draw(kept, KEPT_PER_LANG, params["seed"]), draw(dropped, DROPPED_PER_LANG, params["seed"])]
         ).sort("review_lang", "status", "stratum", "doc_id")
-        REVIEW.mkdir(parents=True, exist_ok=True)
-        sample.write_parquet(REVIEW / "sample.parquet")
+        review.mkdir(parents=True, exist_ok=True)
+        sample.write_parquet(review / "sample.parquet")
         print(sample.group_by("review_lang", "status").len().sort("review_lang", "status"))
         return 0
-    sample = pl.read_parquet(REVIEW / "sample.parquet")
-    labels = pl.read_csv(REVIEW / "labels.csv", schema_overrides={"note": pl.String})
+    sample = pl.read_parquet(review / "sample.parquet")
+    labels = pl.read_csv(review / "labels.csv", schema_overrides={"note": pl.String}).select(
+        "doc_id", "label", "note"
+    )
     res = score(sample, labels)
     res["clean"] = {s: DatasetManifest.read(clean / s).fingerprint for s in params["curation"]["sources"]}
-    res["reviewer"] = "Claude (LLM), not a human annotator"
-    write_report(ROOT / "reports/quality_review.json", res)
+    res["reviewer"] = args.reviewer
+    res["human"] = "LLM" not in args.reviewer
+    name = "quality_review.json" if review == REVIEW.resolve() else f"quality_review_{review.name}.json"
+    write_report(ROOT / "reports" / name, res)
     for lang, r in res["by_lang"].items():
         print(lang, "kept good", r["kept"]["weighted_share"], r["kept"]["ci95"], "dropped bad", r["dropped"]["share"],
               r["dropped"]["ci95"], "good lost", r["good_lost"])  # fmt: skip

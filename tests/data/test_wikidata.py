@@ -213,3 +213,30 @@ def test_download_spreads_chunks_over_mirrors(tmp_path: Path) -> None:
     )
     assert (tmp_path / "d.bz2").read_bytes() == data
     assert set(hosts) == {"dumps.test", "mirror.test"} and len(hosts) == 20
+
+
+def test_parse_by_block_ranges_matches_dump_order(tmp_path: Path) -> None:
+    # compresslevel=1: 100 kB bz2 blocks; random-ish payload keeps blocks small and bit-aligned at odd offsets
+    import random
+
+    rnd = random.Random(0)
+    lines = ["["]
+    n = 3000
+    for i in range(1, n + 1):
+        e = entity(i)
+        e["descriptions"]["en"] = {
+            "language": "en",
+            "value": "".join(rnd.choice("abcdefgh ") for _ in range(rnd.randint(50, 400))),
+        }
+        lines.append(json.dumps(e, ensure_ascii=False) + ("," if i < n else ""))
+    lines.append("]")
+    dump = tmp_path / "dump.json.bz2"
+    dump.write_bytes(bz2.compress(("\n".join(lines) + "\n").encode("utf-8"), compresslevel=1))
+    cfg = LakeConfig(root=tmp_path / "lake", shard_rows=1000, row_group_rows=64)
+    src = tmp_path / "lake" / "raw" / "wikidata"
+    shards, counted = wd.parse_dump_ranges(dump, src, cfg, workers=2, range_bytes=37_000)
+    assert counted == n
+    qids = pa.concat_tables(pq.read_table(src / s.path) for s in shards)["qid"].to_pylist()
+    assert qids == [f"Q{i}" for i in range(1, n + 1)]
+    again, counted2 = wd.parse_dump_ranges(dump, src, cfg, workers=2, range_bytes=37_000)  # markers only
+    assert again == shards and counted2 == n

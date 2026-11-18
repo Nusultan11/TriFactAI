@@ -6,6 +6,8 @@ Date: 2026-11-18
 
 Accepted
 
+Amended by [20. Kaggle как batch GPU, NLLB для перевода, учитель на llama.cpp](0020-kaggle-batch-gpu-mt-and-teacher.md)
+
 Amends [10. DVC с S3-remote](0010-dvc-with-s3-remote.md)
 
 ## Context
