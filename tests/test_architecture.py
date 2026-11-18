@@ -64,3 +64,9 @@ def test_answer_contract_in_architecture_matches_schema() -> None:
     claim = example["claims"][0]
     claim["verdict"] = "supported"  # the doc lists the enum as "a | b | c"
     Answer.model_validate(example)
+
+
+def test_dvc_dependencies_use_lf_line_endings() -> None:
+    # dvc.lock hashes bytes: a CRLF working copy locks hashes that a fresh LF checkout never reproduces
+    files = [ROOT / "params.yaml", ROOT / "dvc.yaml", *(ROOT / "src").rglob("*.py")]
+    assert [str(f.relative_to(ROOT)) for f in files if b"\r\n" in f.read_bytes()] == []
