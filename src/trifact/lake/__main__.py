@@ -1,6 +1,8 @@
 """Lake maintenance: integrity check and volume report over source manifests.
 
 python -m trifact.lake verify [--layer raw] [--quick]   re-hash every shard, check row checks; exit 1 on problems
+    (layer raw: source manifests; other layers: every derived dataset.yaml, e.g. clean/<source>,
+    curated/dedup, curated/corpus, plus its data card)
 python -m trifact.lake report [--layer raw] [--out reports/raw.json]   volumes, row checks, throughput per source
 """
 
@@ -12,11 +14,17 @@ import sys
 from pathlib import Path
 
 from trifact.core.params import ROOT, load_params
-from trifact.lake.manifest import MANIFEST_NAME, SourceManifest, verify_source
+from trifact.lake.manifest import DATASET_NAME, MANIFEST_NAME, SourceManifest, verify_dataset, verify_source
 
 
 def _sources(root: Path, layer: str) -> list[Path]:
     return sorted(p.parent for p in (root / layer).glob(f"*/{MANIFEST_NAME}"))
+
+
+def _datasets(root: Path, layer: str) -> list[Path]:
+    """Derived datasets of a layer: directories holding dataset.yaml (at most two levels deep)."""
+    base = root / layer
+    return sorted({p.parent for pat in (f"*/{DATASET_NAME}", f"*/*/{DATASET_NAME}") for p in base.glob(pat)})
 
 
 def report(root: Path, layer: str) -> dict[str, dict]:
@@ -68,9 +76,18 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root or ROOT / load_params()["lake"]["root"]
     if args.command == "verify":
         problems = []
-        for src in _sources(root, args.layer):
-            found = verify_source(src, deep=not args.quick)
-            print(f"{src.name}: {'OK' if not found else f'{len(found)} problem(s)'}")
+        if args.layer == "raw":
+            checks = [(src.name, verify_source, src) for src in _sources(root, args.layer)]
+        else:
+            checks = [
+                (d.relative_to(root).as_posix(), verify_dataset, d) for d in _datasets(root, args.layer)
+            ]
+        if not checks:
+            print(f"no manifests under {root / args.layer}", file=sys.stderr)
+            return 1
+        for name, check, path in checks:
+            found = check(path, deep=not args.quick)
+            print(f"{name}: {'OK' if not found else f'{len(found)} problem(s)'}")
             problems += found
         for p in problems:
             print("  " + p, file=sys.stderr)

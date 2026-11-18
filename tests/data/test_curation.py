@@ -100,3 +100,19 @@ def test_iter_batches_limit(tmp_path: Path) -> None:
     pq.write_table(pa.table({"i": list(range(1000))}), p, row_group_size=100)
     assert sum(b.num_rows for b in iter_batches(p, None, 250)) == 250
     assert sum(b.num_rows for b in iter_batches(p, ["i"], None)) == 1000
+
+
+def test_lake_cli_verifies_derived_layers(tmp_path: Path) -> None:
+    from trifact.lake.__main__ import main
+
+    out = tmp_path / "curated" / "dedup"
+    sd = StageDir(out, "fp")
+    sd.prepare()
+    w = UnitWriter(out, 0, "part", LakeConfig(root=tmp_path))
+    w.write("kk", pa.table({"text": ["a"]}))
+    sd.finish(_manifest(sd, w.close()))
+    assert main(["verify", "--layer", "curated", "--root", str(tmp_path)]) == 0
+    shard = next(out.rglob("part-*.parquet"))
+    shard.write_bytes(shard.read_bytes()[:-10])
+    assert main(["verify", "--layer", "curated", "--root", str(tmp_path)]) == 1
+    assert main(["verify", "--layer", "clean", "--root", str(tmp_path)]) == 1  # nothing there
