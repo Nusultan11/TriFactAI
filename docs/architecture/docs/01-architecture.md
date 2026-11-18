@@ -24,25 +24,14 @@ TriFact AI — мультиязычная (KK / RU / EN) платформа. О�
 | **Обучаемые направления** | Extraction (NER + Entity Linking), Retrieval (embedder + reranker), Generation (LLM + LoRA), Verification (NLI) |
 | **Вне первой версии** | Relation Extraction, Knowledge Graph, юридические, медицинские и финансовые документы |
 
-**Масштаб** (из [datasets.md §6](../../research/datasets.md)):
-
-| Слой | Объём | Хранение |
-|---|---|---|
-| raw-корпуса | ~27M документов | ~40 GB parquet |
-| curated | 60–80 % от raw | ~30 GB |
-| Корпусный индекс | ~35M чанков (≈20M en, 7M ru, 8M kk) | векторы fp16 на диске ~72 GB |
-| NER | 5–10M silver + ~1.3M gold | ~5 GB |
-| Retrieval-пары | 10–20M | ~10 GB |
-| SFT grounded QA | 1–2M | ~5 GB |
-| NLI | ~1.2M | ~0.5 GB |
-| Eval (заморожен) | 30–50k, ≥ 3k проверены вручную, 9 направлений | — |
+**Масштаб**: целевые объёмы по слоям — [datasets.md §6](../../research/datasets.md). Для архитектуры ключевые цифры такие: ~27M документов в raw и ~35M чанков в корпусном индексе.
 
 **Профили масштаба.** Все стадии параметризованы `params.yaml: scale.profile`:
 
 - `pilot` — бюджет исходной концепции: 150k чанков, 80k NER, 24k SFT, 10k пар, 3k eval. Нужен, чтобы быстро прогнать весь цикл от начала до конца и отладить пайплайн.
 - `full` — целевой масштаб из таблицы выше.
 
-Код один, меняются только параметры (AGENTS §3).
+Код один, меняются только параметры ([AGENTS §6.1](../../../AGENTS.md)).
 
 **Железо.** Локально: RTX 3050 Laptop 4 GB, Ryzen 7 5800HS 8C/16T, 15.4 GB RAM, SSD 663 GB. Всё, что сюда не помещается, выполняется на арендованных GPU (24–80 GB) и, при необходимости, на облачном Serving VM для полного индекса (ADR-0013).
 
@@ -301,7 +290,7 @@ sequenceDiagram
 
 ## 7. ML-компоненты
 
-Идентификаторы экспериментов привязаны к этапам ROADMAP. Каждый run логируется в MLflow с метриками по языкам ([AGENTS §5](../../../AGENTS.md)).
+Идентификаторы экспериментов привязаны к этапам ROADMAP. Каждый run логируется в MLflow с метриками по языкам ([AGENTS §6.3](../../../AGENTS.md)).
 
 ### 7.1 Document Processing (этап 4)
 
@@ -445,7 +434,7 @@ Payload: `chunk_id, document_id, lang, page, section, text, entity_ids[], entity
 
 ## 10. Оценка и продвижение
 
-- **Замороженный eval**: 30–50k примеров, все 9 направлений, ≥ 3k проверены вручную. Собирается в этапе 3 до любого обучения, sha256 хранится в `data/eval/MANIFEST.yaml`.
+- **Замороженный eval** (объём — [datasets.md §6](../../research/datasets.md)): все 9 направлений, собирается в этапе 3 до любого обучения, sha256 хранится в `data/eval/MANIFEST.yaml`.
 - **Наборы**: `ner` (gold test по языкам), `retrieval` (вопрос × переводы × золотой фрагмент на исходном языке), `qa` (отвечаемые, межъязыковые, неотвечаемые), `nli`, `docproc` (документы с эталонным текстом), `real_docs` (50–100 реальных документов для оценки переноса), `e2e`.
 - **Значимость**: bootstrap CI (1000 ресэмплов) по примерам или ≥ 3 сидов. Улучшение без значимости улучшением не считается.
 - **Гейт** ([ADR-0009](../adr/0009-model-registry-and-promotion-gate.md)), пороги в `params.yaml: promotion`:
@@ -465,7 +454,7 @@ Payload: `chunk_id, document_id, lang, page, section, text, entity_ids[], entity
 
 - **MLflow**: по эксперименту на направление (`docproc`, `ner`, `retrieval`, `generation`, `verification`, `e2e`, `batch`). В каждом run: git SHA, DVC-хеши входов, полный конфиг, метрики по языкам и направлениям, время, железо, стоимость.
 - **Registry**: модели `trifact-ner`, `trifact-embedder`, `trifact-reranker`, `trifact-nli`, `trifact-llm-adapter`; alias `champion` / `challenger`. Inference и LLM читают `champion` при старте. Откат — перенос alias. Для эмбеддера alias коллекции Qdrant и alias модели переключаются вместе.
-- **Качество кода**: `ruff check`, `ruff format --check`, `mypy src/trifact/core`, `pytest -q` перед каждым коммитом (AGENTS §6). Архитектурные тесты (`tests/test_architecture.py`) проверяют, что `trifact.core` ни от чего не зависит, что все команды `dvc.yaml` указывают на существующие модули и что все ADR упомянуты в документации.
+- **Качество кода**: проверки перед коммитом — [AGENTS §5](../../../AGENTS.md). Архитектурные тесты (`tests/test_architecture.py`) проверяют, что `trifact.core` ни от чего не зависит, что все команды `dvc.yaml` указывают на существующие модули и что все ADR упомянуты в документации.
 
 ## 12. Наблюдаемость
 
@@ -528,6 +517,8 @@ dvc.yaml  params.yaml  pyproject.toml
 2. Проверка: `docker run --rm -v "$PWD/docs/architecture:/usr/local/structurizr" structurizr/structurizr inspect -w /usr/local/structurizr/workspace.dsl` (ноль ошибок) или MCP `structurizr`.
 3. Экспорт диаграмм: `python scripts/export_diagrams.py`.
 4. ADR, если решение изменилось.
+
+Просмотр интерактивной модели C4 с документацией и ADR на http://localhost:8081: `docker run -it --rm -p 8081:8080 -v "$PWD/docs/architecture:/usr/local/structurizr" structurizr/structurizr local`.
 
 ## 16. Трассировка: этапы ROADMAP → архитектура
 
