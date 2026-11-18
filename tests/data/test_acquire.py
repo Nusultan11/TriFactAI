@@ -241,3 +241,10 @@ def test_smoke_limit_marks_manifest_partial(tmp_path: Path, fake_hub: dict[str, 
     assert problems == []
     assert m.partial and m.rows["kk"] == 5 + 5 + 2 + 2
     assert all(c.ok for c in m.row_checks)
+
+
+def test_csv_count_accepts_huge_fields(tmp_path: Path) -> None:
+    p = tmp_path / "big.csv"
+    p.write_text('id,text\n1,"' + "ә" * 300_000 + '"\n', encoding="utf-8", newline="\n")
+    assert acq.count_csv_records(p) == 1
+    assert sum(b.num_rows for b in acq.read_csv(p)) == 1

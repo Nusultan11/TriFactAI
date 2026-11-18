@@ -206,6 +206,7 @@ def read_csv(path: Path) -> Iterator[pa.RecordBatch]:
 
 def count_csv_records(path: Path) -> int:
     """Independent record count with the stdlib parser (handles quoted newlines)."""
+    csv.field_size_limit(2**31 - 1)  # whole books are single fields in some corpora
     with _open(path) as f:
         r = csv.reader(io.TextIOWrapper(f, encoding="utf-8", newline=""))
         next(r)
@@ -564,17 +565,15 @@ def acquire(
         local = Path(
             hf_hub_download(repo, p.path, repo_type="dataset", revision=revision, local_dir=staging / name)
         )
-        try:
-            if p.sha256 and limit is None and sha256_file(local) != p.sha256:
-                local.unlink()
-                raise RuntimeError(f"{p.path}: sha256 differs from the repository LFS pointer")
-            d = convert(p, local, work, cfg, limit)
-            atomic_write_bytes(work / f"{p.idx:05d}.json", json.dumps(asdict(d)).encode())
-            log.info("%s: [%d/%d] %s -> %d rows", name, p.idx + 1, len(planned), p.path, d.rows)
-            return d
-        finally:
-            if limit is None:
-                local.unlink(missing_ok=True)
+        if p.sha256 and limit is None and sha256_file(local) != p.sha256:
+            local.unlink()
+            raise RuntimeError(f"{p.path}: sha256 differs from the repository LFS pointer")
+        d = convert(p, local, work, cfg, limit)
+        atomic_write_bytes(work / f"{p.idx:05d}.json", json.dumps(asdict(d)).encode())
+        log.info("%s: [%d/%d] %s -> %d rows", name, p.idx + 1, len(planned), p.path, d.rows)
+        if limit is None:  # kept on failure, so a re-run does not download it again
+            local.unlink(missing_ok=True)
+        return d
 
     with ResourceMonitor() as mon:
         with ThreadPoolExecutor(workers) as pool:
