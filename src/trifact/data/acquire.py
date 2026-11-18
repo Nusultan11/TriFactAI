@@ -507,7 +507,8 @@ def check_schemas(src: Path, shards: list[ShardEntry]) -> list[str]:
 
 def acquire(
     name: str, spec: dict[str, Any], cfg: LakeConfig, staging: Path, workers: int, limit: int | None = None
-) -> tuple[SourceManifest, list[str]]:
+) -> tuple[SourceManifest, list[str], bool]:
+    """Return (manifest, problems, fresh); fresh is False when verified existing data was reused."""
     lic = LicenseDecision.model_validate(spec["license"])
     if lic.use == LicenseUse.blocked:
         raise PermissionError(f"{name}: license decision is 'blocked' ({lic.license}); not acquired")
@@ -531,7 +532,7 @@ def acquire(
                     m.license = lic
                     m.write(src)
                 log.info("%s: already acquired at %s, manifest verified", name, revision[:12])
-                return m, []
+                return m, [], False
         log.info("%s: existing data does not match the plan, re-acquiring", name)
     if (work / "plan.json").exists() and json.loads((work / "plan.json").read_text())["fingerprint"] != fp:
         log.info("%s: plan changed, discarding previous partial work", name)
@@ -624,7 +625,7 @@ def acquire(
     problems = verify_source(src, deep=False) + check_schemas(src, shards)
     if not manifest.row_checks and limit is None:
         problems.append(f"{name}: no row count could be checked")
-    return manifest, problems
+    return manifest, problems, True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -649,31 +650,32 @@ def main(argv: list[str] | None = None) -> int:
     workers = args.workers or int(params["lake"]["acquire_workers"])
     staging = ROOT / params["lake"]["downloads"] / "hf"
     try:
-        m, problems = acquire(args.source, spec, cfg, staging, workers, args.limit_rows)
+        m, problems, fresh = acquire(args.source, spec, cfg, staging, workers, args.limit_rows)
     except PermissionError as e:
         log.error("%s", e)
         return 2
     peak_limit_mb = float(params["lake"]["peak_ram_gb"]) * 1024
     if m.stats and m.stats.peak_rss_mb > peak_limit_mb:
         problems.append(f"peak RSS {m.stats.peak_rss_mb:.0f} MB exceeds lake.peak_ram_gb")
-    log_mlflow(
-        "data",
-        f"acquire-{args.source}{'-smoke' if m.partial else ''}",
-        {
-            "source": args.source,
-            "revision": m.revision,
-            "workers": workers,
-            "partial": m.partial,
-            "code_version": m.code_version,
-            "license_use": m.license.use.value,
-        },
-        {
-            "rows": sum(m.rows.values()),
-            "bytes": sum(m.bytes.values()),
-            **{f"rows_{k}": v for k, v in m.rows.items()},
-            **(m.stats.model_dump(exclude={"workers"}) if m.stats else {}),
-        },
-    )
+    if fresh:  # an idempotent re-run did no work worth a run
+        log_mlflow(
+            "data",
+            f"acquire-{args.source}{'-smoke' if m.partial else ''}",
+            {
+                "source": args.source,
+                "revision": m.revision,
+                "workers": workers,
+                "partial": m.partial,
+                "code_version": m.code_version,
+                "license_use": m.license.use.value,
+            },
+            {
+                "rows": sum(m.rows.values()),
+                "bytes": sum(m.bytes.values()),
+                **{f"rows_{k}": v for k, v in m.rows.items()},
+                **(m.stats.model_dump(exclude={"workers"}) if m.stats else {}),
+            },
+        )
     for c in m.row_checks:
         log.info(
             "row check %-55s %-20s expected=%d actual=%d %s",

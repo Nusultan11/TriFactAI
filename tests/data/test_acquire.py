@@ -132,7 +132,7 @@ def test_plan_uses_globs_meta_split_and_rejects_empty_globs() -> None:
 
 
 def test_acquire_writes_layout_manifest_and_checks_rows(tmp_path: Path, fake_hub: dict[str, Any]) -> None:
-    m, problems = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=3)
+    m, problems, _ = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=3)
     assert problems == []
     src = tmp_path / "lake" / "raw" / "fake"
     assert m.rows == {"en": 25, "kk": 49, "multi": 3, "ru": 2}
@@ -184,18 +184,18 @@ def test_interrupted_run_resumes_without_redoing_finished_files(
 
     fake_hub["fail"].clear()
     fake_hub["downloads"].clear()
-    m, problems = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=1)
+    m, problems, _ = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=1)
     assert problems == []
     redone = ["docs-0.jsonl.gz"] + ([] if 6 in finished else ["validation.arrow"])
     assert fake_hub["downloads"] == redone
     assert m.rows == {"en": 25, "kk": 49, "multi": 3, "ru": 2}
 
     fake_hub["downloads"].clear()  # a third run finds a verified manifest and does nothing
-    acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=1)
-    assert fake_hub["downloads"] == []
+    _, _, fresh = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=1)
+    assert fake_hub["downloads"] == [] and fresh is False
 
     revised = {**SPEC, "license": {**LICENSE, "use": "research_only", "release": False}}
-    m, _ = acq.acquire("fake", revised, _cfg(tmp_path), tmp_path / "staging", workers=1)
+    m, _, _ = acq.acquire("fake", revised, _cfg(tmp_path), tmp_path / "staging", workers=1)
     assert fake_hub["downloads"] == [] and m.license.use == "research_only"
     assert SourceManifest.read(tmp_path / "lake" / "raw" / "fake").license.release is False
 
@@ -204,7 +204,7 @@ def test_metadata_mismatch_is_reported(
     tmp_path: Path, fake_hub: dict[str, Any], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(acq, "readme_counts", lambda *a: {("c1", "train"): 46})
-    _, problems = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=2)
+    _, problems, _ = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=2)
     assert any("row check failed config=c1 split=train: 45 != 46" in p for p in problems)
 
 
@@ -237,7 +237,7 @@ def test_branch_names_are_not_accepted_as_revision(tmp_path: Path, fake_hub: dic
 
 
 def test_smoke_limit_marks_manifest_partial(tmp_path: Path, fake_hub: dict[str, Any]) -> None:
-    m, problems = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=2, limit=5)
+    m, problems, _ = acq.acquire("fake", SPEC, _cfg(tmp_path), tmp_path / "staging", workers=2, limit=5)
     assert problems == []
     assert m.partial and m.rows["kk"] == 5 + 5 + 2 + 2
     assert all(c.ok for c in m.row_checks)
