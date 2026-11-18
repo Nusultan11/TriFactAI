@@ -5,13 +5,13 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 4399c4d8f188541c506f8702920a48b6
-      size: 24854
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 01714428e813bda2e6a969522349129e.dir
-      size: 16042
-      nfiles: 4
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
+      nfiles: 5
     params:
       params.yaml:
         lake:
@@ -53,13 +53,13 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 4399c4d8f188541c506f8702920a48b6
-      size: 24854
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 01714428e813bda2e6a969522349129e.dir
-      size: 16042
-      nfiles: 4
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
+      nfiles: 5
     params:
       params.yaml:
         lake:
@@ -105,13 +105,13 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 4399c4d8f188541c506f8702920a48b6
-      size: 24854
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 01714428e813bda2e6a969522349129e.dir
-      size: 16042
-      nfiles: 4
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
+      nfiles: 5
     params:
       params.yaml:
         lake:
@@ -177,12 +177,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 36fd93d574361f3aae6598919398e061
-      size: 25225
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -242,12 +242,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 36fd93d574361f3aae6598919398e061
-      size: 25225
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -297,12 +297,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 36fd93d574361f3aae6598919398e061
-      size: 25225
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -345,12 +345,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 36fd93d574361f3aae6598919398e061
-      size: 25225
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -398,12 +398,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 36fd93d574361f3aae6598919398e061
-      size: 25225
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -445,12 +445,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 36fd93d574361f3aae6598919398e061
-      size: 25225
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -493,12 +493,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 19e25b48a072fb617bcedfcc43067290
-      size: 25996
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -540,12 +540,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 19e25b48a072fb617bcedfcc43067290
-      size: 25996
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -596,12 +596,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 19e25b48a072fb617bcedfcc43067290
-      size: 25996
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -646,12 +646,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 19e25b48a072fb617bcedfcc43067290
-      size: 25996
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -696,12 +696,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 19e25b48a072fb617bcedfcc43067290
-      size: 25996
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -762,12 +762,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 19e25b48a072fb617bcedfcc43067290
-      size: 25996
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -819,12 +819,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 19e25b48a072fb617bcedfcc43067290
-      size: 25996
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
@@ -869,12 +869,12 @@ stages:
     deps:
     - path: src/trifact/data/acquire.py
       hash: md5
-      md5: 19e25b48a072fb617bcedfcc43067290
-      size: 25996
+      md5: 29a34b3042690830adcebbb41322435f
+      size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: 4a93b542107c7c2ebfd40d8f2a6d1dc2.dir
-      size: 19674
+      md5: d5fd5293e418f53249563ce080fadc77.dir
+      size: 19555
       nfiles: 5
     params:
       params.yaml:
