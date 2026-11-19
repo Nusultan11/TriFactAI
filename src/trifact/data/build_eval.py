@@ -51,7 +51,7 @@ from trifact.data.task_common import (
     raw_input,
     scan_raw,
 )
-from trifact.data.translations import MT_LICENSE
+from trifact.data.translations import MT_LICENSE, qc_ok
 from trifact.lake.layout import LakeConfig, sha256_file
 from trifact.lake.manifest import DatasetManifest, verify_dataset
 from trifact.lake.stats import ResourceMonitor, log_mlflow
@@ -72,11 +72,7 @@ def mt_table(root: Path) -> pl.DataFrame | None:
         return None
     return (
         pl.scan_parquet(str(d / "*/translations-*.parquet"))
-        .filter(
-            (pl.col("mt_lang") == pl.col("tgt_lang"))
-            & ~pl.col("copy")
-            & (pl.col("translation").str.strip_chars() != "")
-        )
+        .filter(qc_ok(30.0))  # eval candidates are human-reviewed afterwards: a looser round-trip floor
         .select("src_lang", "tgt_lang", "text", "translation", "chrf_back")
         .collect()
     )

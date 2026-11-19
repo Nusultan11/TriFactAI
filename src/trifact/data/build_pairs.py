@@ -36,7 +36,7 @@ from trifact.core.params import ROOT, load_params
 from trifact.data.curation import fingerprint, write_report
 from trifact.data.qa_common import QA_SOURCES, bm25_negatives, load_qa
 from trifact.data.task_common import DatasetWriter, dataset_input_of, finish, inherited, raw_input, scan_raw
-from trifact.data.translations import MT_LICENSE
+from trifact.data.translations import MT_LICENSE, qc_ok
 from trifact.lake.layout import LakeConfig
 from trifact.lake.stats import ResourceMonitor, log_mlflow
 
@@ -326,11 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     if mt_dir.is_dir():
         mt = (
             pl.scan_parquet(str(mt_dir / "*/translations-*.parquet"))
-            .filter(
-                (pl.col("chrf_back") >= params["nli"]["kk_filters"]["min_chrf_back"])
-                & (pl.col("mt_lang") == pl.col("tgt_lang"))
-                & ~pl.col("copy")
-            )
+            .filter(qc_ok(params["nli"]["kk_filters"]["min_chrf_back"]))
             .select("src_lang", "tgt_lang", "text", "translation")
             .collect()
         )

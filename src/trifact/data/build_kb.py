@@ -32,7 +32,7 @@ import yaml
 from trifact.core.params import ROOT, load_params
 from trifact.data.curation import fingerprint, shard_entry, write_report
 from trifact.data.task_common import finish, inherited, raw_files, raw_input
-from trifact.lake.layout import LakeConfig
+from trifact.lake.layout import LakeConfig, ShardInfo, sha256_file
 from trifact.lake.manifest import ShardEntry
 from trifact.lake.stats import ResourceMonitor, log_mlflow
 
@@ -77,6 +77,17 @@ def class_closure(files: list[str], roots: dict[str, list[str]], depth: int) -> 
         .drop("r")
         .sort("cls")
     )
+
+
+def sink(lf: pl.LazyFrame, out: Path, table: str, lake: LakeConfig) -> None:
+    """Streaming write into `<out>/<table>-NNNNN.parquet` files of at most `lake.shard_rows` rows."""
+    tmp = out / f"_{table}"
+    lf.sink_parquet(
+        pl.PartitionBy(tmp, max_rows_per_file=lake.shard_rows), compression=lake.compression, mkdir=True
+    )
+    for i, f in enumerate(sorted(tmp.glob("*.parquet"))):
+        f.replace(out / f"{table}-{i:05d}.parquet")
+    shutil.rmtree(tmp)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,11 +149,7 @@ def main(argv: list[str] | None = None) -> int:
             *[f"aliases_{lg}" for lg in langs], *[f"sitelink_{w}" for w in WIKIS], "n_sitelinks",
             p31=pl.col("p31").list.head(5),
         )  # fmt: skip
-        ent.sink_parquet(
-            pl.PartitionMaxSize(ent_dir / "entities-{part:05d}.parquet", max_size=lake.shard_rows),
-            compression=lake.compression,
-            mkdir=True,
-        )
+        sink(ent, ent_dir, "entities", lake)
         titles = (
             pl.concat(
                 [
@@ -155,13 +162,7 @@ def main(argv: list[str] | None = None) -> int:
             .join(typed.lazy(), on="qid", how="left")
             .with_columns(pl.col("ner_type").fill_null("O"))
         )
-        titles.sink_parquet(
-            pl.PartitionMaxSize(ent_dir / "titles-{part:05d}.parquet", max_size=lake.shard_rows),
-            compression=lake.compression,
-            mkdir=True,
-        )
-        from trifact.lake.layout import ShardInfo, sha256_file
-
+        sink(titles, ent_dir, "titles", lake)
         for p in sorted(ent_dir.glob("*.parquet")):
             n = pl.scan_parquet(p).select(pl.len()).collect().item()
             table = p.name.split("-")[0]

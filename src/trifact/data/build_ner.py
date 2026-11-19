@@ -389,6 +389,38 @@ def silver_noise(silver: pl.LazyFrame, gold: pl.DataFrame, cfg: dict[str, Any]) 
     }
 
 
+# ----------------------------------------------------------------------------- manual review sheet
+
+
+def render_tags(tokens: list[str], tags: list[str]) -> str:
+    """`[Абай|PER] Семейде ...` — entities in brackets with their label."""
+    out, i = [], 0
+    for s0, e0, lab in entities(tags):
+        out += tokens[i:s0] + [f"[{' '.join(tokens[s0:e0])}|{lab}]"]
+        i = e0
+    return " ".join(out + tokens[i:])
+
+
+def review_sheet(silver: pl.DataFrame, path: Path, per_lang: int, seed: int) -> int:
+    """Blank CSV for human reviewers: per sentence the number of wrong / missed entities (ADR-0015 noise check)."""
+    if path.exists():
+        return 0
+    smp = (
+        silver.with_columns(r=pl.col("sent_id").hash(seed=seed))
+        .sort("r")
+        .group_by("lang", maintain_order=True)
+        .head(per_lang)
+    )
+    rows = smp.select(
+        "sent_id", "lang", text=pl.struct("tokens", "tags").map_elements(lambda x: render_tags(x["tokens"], x["tags"]), return_dtype=pl.String),
+        entities=pl.col("tags").list.eval(pl.element().str.starts_with("B-")).list.sum(),
+        wrong_type=pl.lit(""), wrong_span=pl.lit(""), not_entity=pl.lit(""), missed=pl.lit(""), reviewer=pl.lit(""), note=pl.lit(""),
+    )  # fmt: skip
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows.write_csv(path)
+    return rows.height
+
+
 # ----------------------------------------------------------------------------- driver
 
 
@@ -578,6 +610,9 @@ def main(argv: list[str] | None = None) -> int:
                 .drop_nulls().group_by("lang", "e").len().sort("lang", "e").to_dicts(),
             }  # fmt: skip
             metrics["silver_noise"] = silver_noise(s.lazy(), gold.filter(pl.col("split") != "drop"), cfg)
+            metrics["review_sheet"] = review_sheet(
+                s, root / "review" / "ner_silver" / "to_label.csv", 200, params["seed"]
+            )
         shards = w.close()
     sources = GOLD + ([] if args.skip_silver else ["wikipedia_wikitext", "wikidata"])
     inputs = [raw_input(root, x) for x in GOLD] + [dataset_input_of(root, root / "task/splits")]

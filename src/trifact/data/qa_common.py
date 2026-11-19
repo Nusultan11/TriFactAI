@@ -53,7 +53,12 @@ def bm25_negatives(df: pl.DataFrame, k: int, exclude_answer: bool = False) -> pl
         idx, _ = bm.search(g["question"].to_list(), k + 5)
         ids, titles, texts = ctx["doc_id"].to_list(), ctx["title"].to_list(), ctx["context"].to_list()
         for r, row, pos, title, answers in zip(
-            g["_r"], idx, g["doc_id"], g["title"], g["answers"], strict=True
+            g["_r"].to_list(),
+            idx,
+            g["doc_id"].to_list(),
+            g["title"].to_list(),
+            g["answers"].to_list(),
+            strict=True,
         ):
             keep = []
             for j in row:

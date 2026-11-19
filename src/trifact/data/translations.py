@@ -42,6 +42,18 @@ MT_LICENSE = InheritedLicense(
 )
 
 
+def qc_ok(min_chrf: float) -> pl.Expr:
+    """Translation passes QC: round-trip chrF, not empty, not a copy, and the target language — the language
+    check is skipped for texts under 4 words (names, numbers, short answer spans), where lid.176 is unreliable."""
+    short = pl.col("text").str.count_matches(r"\w+") < 4
+    return (
+        (pl.col("chrf_back") >= min_chrf)
+        & ~pl.col("copy")
+        & (pl.col("translation").str.strip_chars() != "")
+        & ((pl.col("mt_lang") == pl.col("tgt_lang")) | short)
+    )
+
+
 def _ngrams(s: str, n: int) -> Counter[str]:
     s = "".join(s.split())
     return Counter(s[i : i + n] for i in range(len(s) - n + 1))
