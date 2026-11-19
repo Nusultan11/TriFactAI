@@ -160,12 +160,33 @@ def build_gold(root: Path, labels: dict[str, Any]) -> pl.DataFrame:
 # ----------------------------------------------------------------------------- silver pass 1: sentences
 
 
+SENT_SCHEMA = pa.schema(
+    [
+        ("page_id", pa.int64()), ("title", pa.string()), ("lang", pa.string()), ("para", pa.int32()),
+        ("tokens", pa.list_(pa.string())),
+        ("links", pa.list_(pa.struct([("s", pa.int32()), ("e", pa.int32()), ("target", pa.string())]))),
+    ]
+)  # fmt: skip
+PART_SENTENCES = 200_000  # sentences per pass-1 part: whole articles, bounded memory in passes 2 and 3
+
+
 def sentences_unit(args: tuple[str, str, str, int, int]) -> dict[str, Any]:
+    """Pass 1 over one wikitext shard: parts `<out>-<k:03d>.parquet` of whole articles, marker `<out>.done`."""
     path, lang, out, min_tok, max_tok = args
     rows: dict[str, list[Any]] = defaultdict(list)
     pf = pq.ParquetFile(path)
-    n_art = n_sent = 0
-    for b in pf.iter_batches(batch_size=500, columns=["page_id", "title", "wikitext"]):
+    n_art = n_sent = k = 0
+
+    def flush() -> None:
+        nonlocal k
+        if rows["page_id"]:
+            pq.write_table(
+                pa.table(dict(rows), schema=SENT_SCHEMA), f"{out}-{k:03d}.parquet", compression="zstd"
+            )
+            k += 1
+            rows.clear()
+
+    for b in pf.iter_batches(batch_size=200, columns=["page_id", "title", "wikitext"]):
         for pid, title, wt in zip(
             *(b.column(c).to_pylist() for c in ("page_id", "title", "wikitext")), strict=True
         ):
@@ -189,11 +210,12 @@ def sentences_unit(args: tuple[str, str, str, int, int]) -> dict[str, Any]:
                     rows["tokens"].append([t for t, _, _ in toks])
                     rows["links"].append(spans)
                     n_sent += 1
-    schema = pa.schema([("page_id", pa.int64()), ("title", pa.string()), ("lang", pa.string()), ("para", pa.int32()),
-                        ("tokens", pa.list_(pa.string())),
-                        ("links", pa.list_(pa.struct([("s", pa.int32()), ("e", pa.int32()), ("target", pa.string())])))])  # fmt: skip
-    pq.write_table(pa.table(dict(rows), schema=schema), out, compression="zstd")
-    return {"articles": n_art, "sentences": n_sent}
+            if len(rows["page_id"]) >= PART_SENTENCES:  # article border: an article never spans two parts
+                flush()
+    flush()
+    res = {"articles": n_art, "sentences": n_sent, "parts": k}
+    Path(f"{out}.done").write_text(json.dumps(res))
+    return res
 
 
 # ----------------------------------------------------------------------------- silver pass 3: tagging
@@ -441,8 +463,10 @@ def build_silver(
     (work / "tag").mkdir(parents=True, exist_ok=True)
     jobs = []
     for i, s in enumerate(parts):
-        out = work / "sent" / f"{i:05d}.parquet"
-        if not out.is_file():
+        out = work / "sent" / f"{i:05d}"
+        if not Path(f"{out}.done").is_file():
+            for stale in (work / "sent").glob(f"{i:05d}-*.parquet"):
+                stale.unlink()
             jobs.append((str(base / s.path), s.lang, str(out), cfg["min_tokens"], cfg["max_tokens"]))
     stats: dict[str, Any] = {"pass1": Counter()}
     with ProcessPoolExecutor(workers) as pool:
@@ -467,11 +491,12 @@ def build_silver(
         .collect()
     )
     kbd = kb.collect()
-    for i in range(len(parts)):
-        out = work / "res" / f"{i:05d}.parquet"
+    sent_parts = sorted(p.name for p in (work / "sent").glob("*.parquet"))
+    for name in sent_parts:
+        out = work / "res" / name
         if out.is_file():
             continue
-        df = pl.read_parquet(work / "sent" / f"{i:05d}.parquet").with_row_index("sid")
+        df = pl.read_parquet(work / "sent" / name).with_row_index("sid")
         links = (
             df.select("sid", "lang", "links")
             .explode("links")
@@ -498,12 +523,14 @@ def build_silver(
             .sort("sid")
             .drop("sid")
         )
-        res.write_parquet(out, compression="zstd")
-    log.info("silver pass 2: links resolved")
+        tmp = out.with_name(out.name + ".tmp")
+        res.write_parquet(tmp, compression="zstd")
+        tmp.replace(out)
+    log.info("silver pass 2: links resolved in %d parts", len(sent_parts))
     jobs3 = [
-        (str(work / "res" / f"{i:05d}.parquet"), str(work / "tag" / f"{i:05d}.parquet"), cfg)
-        for i in range(len(parts))
-        if not (work / "tag" / f"{i:05d}.done").is_file()
+        (str(work / "res" / name), str(work / "tag" / name), cfg)
+        for name in sent_parts
+        if not (work / "tag" / name).with_suffix(".done").is_file()
     ]
     stats["reasons"] = Counter()
     stats["types"] = Counter()

@@ -45,12 +45,13 @@ nerel:              # 29 brat types -> core; nested spans: the outermost core sp
 
 # Silver NER (ADR-0015): Wikidata classes of a link target's P31 (instance of) -> core label.
 # A class matches directly or through its P279 (subclass of) ancestors up to `wikidata_max_depth` levels.
+# Q2221906 (geographic location) is not a root: its closure reached 1.03 M classes at depth 6 (checked 2026-11-19).
 wikidata_max_depth: 6
 wikidata_classes:
   PER: [Q5]                                     # human
   ORG: [Q43229, Q4830453, Q7278, Q327333, Q2659904, Q3918, Q31855, Q476028, Q15911314]
        # organization, business, political party, government agency, government organization,
        # university, research institute, association football club, association
-  LOC: [Q17334923, Q2221906, Q618123, Q486972, Q6256, Q515, Q35657, Q10864048, Q56061, Q82794, Q41176]
-       # location, geographic location, geographical feature, human settlement, country, city,
+  LOC: [Q17334923, Q618123, Q486972, Q6256, Q515, Q35657, Q10864048, Q56061, Q82794, Q41176]
+       # physical location, geographical feature, human settlement, country, city,
        # US state, first-level admin division, administrative territorial entity, geographic region, building

@@ -7,7 +7,7 @@ python -m trifact.data.build_kb [--workers N]
    the class sets of PER / ORG / LOC (a class reachable from several labels keeps the first of
    PER > ORG > LOC).
 2. NER type of an entity: the label of the first of its P31 (instance of) classes found in those sets.
-3. Tables (streamed, one pass per table; ADR-0011):
+3. Tables, written one raw shard at a time (memory bounded by a shard, ADR-0011):
    * `entities` — entities with a label or alias in at least `linking.kb_min_labels` of kk/ru/en
      (or the multilingual `mul` label): qid, ner_type, labels, descriptions, aliases, sitelinks,
      n_sitelinks, p31;
@@ -79,17 +79,6 @@ def class_closure(files: list[str], roots: dict[str, list[str]], depth: int) -> 
     )
 
 
-def sink(lf: pl.LazyFrame, out: Path, table: str, lake: LakeConfig) -> None:
-    """Streaming write into `<out>/<table>-NNNNN.parquet` files of at most `lake.shard_rows` rows."""
-    tmp = out / f"_{table}"
-    lf.sink_parquet(
-        pl.PartitionBy(tmp, max_rows_per_file=lake.shard_rows), compression=lake.compression, mkdir=True
-    )
-    for i, f in enumerate(sorted(tmp.glob("*.parquet"))):
-        f.replace(out / f"{table}-{i:05d}.parquet")
-    shutil.rmtree(tmp)
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path)
@@ -114,55 +103,40 @@ def main(argv: list[str] | None = None) -> int:
         classes = class_closure(files, roots, depth)
         cls_path = out / "multi" / "classes-00000.parquet"
         classes.write_parquet(cls_path, compression=lake.compression)
-        typed = (
-            pl.scan_parquet(files)
-            .select("qid", "p31")
-            .explode("p31")
-            .join(classes.lazy().select(p31="cls", ner_type="ner_type"), on="p31", how="inner")
-            .with_columns(
-                r=pl.col("ner_type").replace_strict(
-                    {k: i for i, k in enumerate(PRIORITY)}, return_dtype=pl.Int32
-                )
-            )
-            .group_by("qid")
-            .agg(pl.col("ner_type").sort_by("r").first())
-            .collect(engine="streaming")
-        )
-        log.info("typed entities: %s", typed.group_by("ner_type").len().sort("ner_type").to_dicts())
         langs = ["kk", "ru", "en", "mul"]
+        ent_dir = out / "multi"
+        n_ent = 0
+        shards: list[ShardEntry] = []
+        rank = {k: i for i, k in enumerate(PRIORITY)}
+        cmap = classes.select(p31="cls", ner_type="ner_type")
         has = sum(
             ((pl.col(f"label_{lg}").is_not_null()) | (pl.col(f"aliases_{lg}").list.len() > 0)).cast(pl.Int32)
             for lg in langs[:3]
         )
-        base = (
-            pl.scan_parquet(files)
-            .filter((has >= min_labels) | pl.col("label_mul").is_not_null())
-            .join(typed.lazy(), on="qid", how="left")
-        )
-        ent_dir = out / "multi"
-        n_ent = 0
-        shards: list[ShardEntry] = []
-        # one streaming sink per output shard range keeps files near lake.shard_rows rows
-        ent = base.select(
-            "qid", pl.col("ner_type").fill_null("O"), "type",
-            *[f"label_{lg}" for lg in langs], *[f"description_{lg}" for lg in langs],
-            *[f"aliases_{lg}" for lg in langs], *[f"sitelink_{w}" for w in WIKIS], "n_sitelinks",
-            p31=pl.col("p31").list.head(5),
-        )  # fmt: skip
-        sink(ent, ent_dir, "entities", lake)
-        titles = (
-            pl.concat(
-                [
-                    pl.scan_parquet(files)
-                    .filter(pl.col(f"sitelink_{w}").is_not_null())
-                    .select(wiki=pl.lit(w), lang=pl.lit(lg), title=pl.col(f"sitelink_{w}"), qid="qid")
-                    for w, lg in WIKIS.items()
-                ]
-            )
-            .join(typed.lazy(), on="qid", how="left")
-            .with_columns(pl.col("ner_type").fill_null("O"))
-        )
-        sink(titles, ent_dir, "titles", lake)
+        # one raw shard at a time: memory is bounded by a shard (~0.6 M entities), not by 122 M entities
+        for k, f in enumerate(files):
+            df = pl.read_parquet(f)
+            typed = (
+                df.select("qid", "p31").explode("p31").join(cmap, on="p31", how="inner")
+                .with_columns(r=pl.col("ner_type").replace_strict(rank, return_dtype=pl.Int32))
+                .group_by("qid").agg(pl.col("ner_type").sort_by("r").first())
+            )  # fmt: skip
+            df = df.join(typed, on="qid", how="left").with_columns(pl.col("ner_type").fill_null("O"))
+            ent = df.filter((has >= min_labels) | pl.col("label_mul").is_not_null()).select(
+                "qid", "ner_type", "type",
+                *[f"label_{lg}" for lg in langs], *[f"description_{lg}" for lg in langs],
+                *[f"aliases_{lg}" for lg in langs], *[f"sitelink_{w}" for w in WIKIS], "n_sitelinks",
+                p31=pl.col("p31").list.head(5),
+            )  # fmt: skip
+            ent.write_parquet(ent_dir / f"entities-{k:05d}.parquet", compression=lake.compression)
+            titles = pl.concat([
+                df.filter(pl.col(f"sitelink_{w}").is_not_null()).select(
+                    wiki=pl.lit(w), lang=pl.lit(lg), title=pl.col(f"sitelink_{w}"), qid="qid", ner_type="ner_type")
+                for w, lg in WIKIS.items()
+            ])  # fmt: skip
+            titles.write_parquet(ent_dir / f"titles-{k:05d}.parquet", compression=lake.compression)
+            if k % 20 == 0:
+                log.info("shard %d/%d", k + 1, len(files))
         for p in sorted(ent_dir.glob("*.parquet")):
             n = pl.scan_parquet(p).select(pl.len()).collect().item()
             table = p.name.split("-")[0]
