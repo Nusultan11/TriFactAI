@@ -77,7 +77,26 @@ def chrf(hyp: str, ref: str, max_n: int = 6, beta: float = 2.0) -> float:
     return 0.0 if p + r == 0 else round(100 * (1 + beta**2) * p * r / (beta**2 * p + r), 2)
 
 
-def import_run(name: str, kaggle_out: Path, sentences: Path, sources: list[str]) -> int:
+def load_parts(kaggle_out: Path, only_prefix: str | None = None) -> pl.DataFrame:
+    """Translation parts of one Kaggle run with source / target language from that run's task list."""
+    cfg = json.loads(next((kaggle_out.parent / "in").glob("config.json")).read_text())
+    src_code = {t["file"].removesuffix(".parquet"): t["src"] for t in cfg["tasks"]}
+    parts = []
+    for f in sorted((kaggle_out / "out").glob("*.parquet")):
+        src_file, tgt = f.name.rsplit("-g", 1)[0].rsplit("-", 1)  # <file stem>-<tgt>-g<gpu>-<k>
+        if only_prefix and not src_file.startswith(only_prefix):
+            continue
+        parts.append(
+            pl.read_parquet(f).with_columns(
+                src_lang=pl.lit(NLLB[src_code[src_file]]), tgt_lang=pl.lit(NLLB[tgt])
+            )
+        )
+    return pl.concat(parts) if parts else pl.DataFrame()
+
+
+def import_run(
+    name: str, kaggle_out: Path, sentences: Path, sources: list[str], retry: Path | None = None
+) -> int:
     params = load_params()
     root = (ROOT / params["lake"]["root"]).resolve()
     out = root / "task" / "mt" / name
@@ -89,24 +108,25 @@ def import_run(name: str, kaggle_out: Path, sentences: Path, sources: list[str])
     cfg = json.loads(cfg_path.read_text())
     stage_params = {"model": cfg["model"], "back_model": cfg.get("back_model"), "beams": cfg.get("beams"),
                     "max_new_tokens": cfg.get("max_new_tokens"), "kaggle": json.loads((kaggle_out / "run.json").read_text())}  # fmt: skip
+    extra = sorted((retry / "out").glob(f"retry_{name}_*.parquet")) if retry else []
     fp = fingerprint("translations", {k: v for k, v in stage_params.items() if k != "kaggle"}, [Path(__file__)],
-                     [*files, sentences])  # fmt: skip
+                     [*files, *extra, sentences])  # fmt: skip
+    if retry is not None:
+        stage_params["retry"] = {"kaggle": json.loads((retry / "run.json").read_text()),
+                                 "beams": json.loads(next((retry.parent / "in").glob("config.json")).read_text()).get("beams")}  # fmt: skip
     t0 = time.perf_counter()
     lake = LakeConfig.from_params(params["lake"], root)
     spec = params["curation"]["langid"]
     lid = LangId(model_path("lid176", spec["models"]["lid176"], ROOT / spec["cache"]), "lid176")
     with ResourceMonitor() as mon:
-        parts = []
-        for f in files:
-            stem = f.name.rsplit("-g", 1)[0]  # <file stem>-<tgt>
-            src_file, tgt = stem.rsplit("-", 1)
-            parts.append(pl.read_parquet(f).with_columns(tgt_code=pl.lit(tgt), file=pl.lit(src_file)))
-        df = pl.concat(parts)
-        src_code = {t["file"].removesuffix(".parquet"): t["src"] for t in cfg["tasks"]}
-        df = df.with_columns(
-            src_lang=pl.col("file").replace_strict({k: NLLB[v] for k, v in src_code.items()}),
-            tgt_lang=pl.col("tgt_code").replace_strict(NLLB),
-        )
+        df = load_parts(kaggle_out)
+        retried = 0
+        if retry is not None:  # second pass over the empty outputs: a non-empty retry replaces the empty row
+            r = load_parts(retry, f"retry_{name}_").filter(pl.col("translation").str.strip_chars() != "")
+            retried = r.height
+            df = pl.concat(
+                [df.join(r.select("id", "tgt_lang"), on=["id", "tgt_lang"], how="anti"), r.select(df.columns)]
+            )
         df = df.with_columns(
             chrf_back=pl.struct("back", "text").map_elements(
                 lambda r: chrf(r["back"] or "", r["text"] or ""), return_dtype=pl.Float64
@@ -143,7 +163,11 @@ def import_run(name: str, kaggle_out: Path, sentences: Path, sources: list[str])
         len_ratio_p05=pl.col("len_ratio").quantile(0.05), len_ratio_p95=pl.col("len_ratio").quantile(0.95),
         empty=(pl.col("translation").str.strip_chars() == "").sum(),
     ).sort("src_lang", "tgt_lang")  # fmt: skip
-    metrics: dict[str, Any] = {"by_direction": q.to_dicts(), "kaggle_summary": summary}
+    metrics: dict[str, Any] = {
+        "by_direction": q.to_dicts(),
+        "kaggle_summary": summary,
+        "retried_nonempty": retried,
+    }
     inputs = [raw_input(root, s) for s in sources] + [
         DatasetInput(path=sentences.relative_to(root).as_posix(), sha256=sha256_file(sentences), rows={"multi": pl.scan_parquet(sentences).select(pl.len()).collect().item()})
     ]  # fmt: skip
@@ -171,10 +195,14 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--kaggle-out", type=Path, required=True)
     i.add_argument("--sentences", type=Path, required=True, help="id/text table sent to the job")
     i.add_argument("--sources", required=True)
+    i.add_argument("--retry", type=Path, help="Kaggle output of the re-translation of empty outputs")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
-    return import_run(args.name, args.kaggle_out.resolve(), args.sentences.resolve(), args.sources.split(","))
+    retry = args.retry.resolve() if args.retry else None
+    return import_run(
+        args.name, args.kaggle_out.resolve(), args.sentences.resolve(), args.sources.split(","), retry
+    )
 
 
 if __name__ == "__main__":

@@ -62,7 +62,7 @@ def xnli(root: Path) -> pl.DataFrame:
 
 def kk_pairs(root: Path, en: pl.DataFrame, filt: dict[str, Any]) -> tuple[pl.DataFrame, dict[str, Any]]:
     sent = pl.read_parquet(
-        root / ".cache/kaggle/xnli_kk/sentences_all.parquet"
+        root / "external/kaggle/translate_xnli_kk/sentences_all.parquet"
     )  # id, text sent to the MT job
     mt = pl.scan_parquet(str(root / "task/mt/xnli_kk/kk/translations-*.parquet")).collect()
     mt = mt.join(sent.rename({"text": "src"}), on="id", how="inner")

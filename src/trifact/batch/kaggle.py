@@ -144,7 +144,7 @@ def fetch(ref: str, out: Path) -> None:
 def run(
     job: str, inputs: Path, out: Path, gpu: bool, timeout_h: float, name: str | None = None
 ) -> dict[str, Any]:
-    name = name or job
+    name = (name or job).replace("_", "-")  # Kaggle slugs: lower-case letters, digits and hyphens
     user = username()
     quota0 = kaggle("quota", check=False)
     dataset = push_dataset(user, name, inputs)
@@ -186,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "run":
         rec = run(args.job, args.inputs, args.out, not args.cpu, args.timeout_h, args.name)
         return 0 if rec["status"] == "complete" else 1
-    fetch(f"{username()}/trifact-{args.name or args.job}", args.out)
+    fetch(f"{username()}/trifact-{(args.name or args.job).replace('_', '-')}", args.out)
     return 0
 
 

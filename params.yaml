@@ -323,7 +323,7 @@ retrieval:
     mrl_dim: null           # Qwen3-Embedding only: 256 | 512 | 1024
 
 nli:                        # stage 3.4, trifact.data.build_nli
-  kk_filters: {min_chrf_back: 40, min_lang_score: 0.5, min_len_ratio: 0.5, max_len_ratio: 2.0}
+  kk_filters: {min_chrf_back: 30, min_lang_score: 0.5, min_len_ratio: 0.5, max_len_ratio: 2.0}
 
 mt:                         # NLLB-200 on Kaggle T4 x2 (ADR-0020); revisions resolved 2026-11-18
   model: {hf_id: facebook/nllb-200-distilled-1.3B, revision: 7be3e24664b38ce1cac29b8aeed6911aa0cf0576, license: CC-BY-NC-4.0}
