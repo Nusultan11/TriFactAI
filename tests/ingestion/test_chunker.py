@@ -37,3 +37,10 @@ def test_overlong_sentence_is_windowed() -> None:
     chunks = chunk_text(text.strip(), words, max_tokens=100, overlap_tokens=0)
     assert len(chunks) >= 5
     assert all(c.tokens <= 100 for c in chunks)
+
+
+def test_chunk_many_equals_per_document() -> None:
+    from trifact.ingestion.chunker import chunk_many
+
+    texts = ["", "One short sentence.", " ".join(f"Sentence number {i} has five words." for i in range(30))]
+    assert chunk_many(texts, words, 40, 12) == [chunk_text(t, words, 40, 12) for t in texts]

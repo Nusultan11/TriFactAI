@@ -21,10 +21,13 @@ class Span:
     tokens: int
 
 
-def _units(text: str, count: Callable[[list[str]], list[int]], max_tokens: int) -> list[Span]:
+def _units(
+    text: str, count: Callable[[list[str]], list[int]], max_tokens: int, n_tok: list[int] | None = None
+) -> list[Span]:
     """Sentences (with their token counts); over-long sentences cut at whitespace into windows."""
     sents = sentences(text)
-    n_tok = count([text[a:b] for a, b in sents]) if sents else []
+    if n_tok is None:
+        n_tok = count([text[a:b] for a, b in sents]) if sents else []
     out: list[Span] = []
     for (a, b), n in zip(sents, n_tok, strict=True):
         if n <= max_tokens:
@@ -42,11 +45,32 @@ def _units(text: str, count: Callable[[list[str]], list[int]], max_tokens: int) 
     return out
 
 
+def chunk_many(
+    texts: Sequence[str],
+    count: Callable[[list[str]], list[int]],
+    max_tokens: int = 350,
+    overlap_tokens: int = 50,
+) -> list[list[Span]]:
+    """`chunk_text` for many documents with one tokenizer call for all their sentences (batching matters:
+    a per-document call costs ~1 ms of overhead)."""
+    sents = [sentences(t) for t in texts]
+    flat = [t[a:b] for t, ss in zip(texts, sents, strict=True) for a, b in ss]
+    counts = count(flat) if flat else []
+    out, i = [], 0
+    for t, ss in zip(texts, sents, strict=True):
+        out.append(_chunk(_units(t, count, max_tokens, counts[i : i + len(ss)]), max_tokens, overlap_tokens))
+        i += len(ss)
+    return out
+
+
 def chunk_text(
     text: str, count: Callable[[list[str]], list[int]], max_tokens: int = 350, overlap_tokens: int = 50
 ) -> list[Span]:
     """Chunks of a document as (start, end, tokens) spans of `text`."""
-    units = _units(text, count, max_tokens)
+    return _chunk(_units(text, count, max_tokens), max_tokens, overlap_tokens)
+
+
+def _chunk(units: list[Span], max_tokens: int, overlap_tokens: int) -> list[Span]:
     chunks: list[Span] = []
     cur: list[Span] = []
     tok = 0

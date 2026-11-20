@@ -37,7 +37,7 @@ from trifact.data.curation import (
     sum_by_lang,
     write_report,
 )
-from trifact.ingestion.chunker import chunk_text, hf_counter
+from trifact.ingestion.chunker import chunk_many, hf_counter
 from trifact.lake.layout import LakeConfig
 from trifact.lake.manifest import DATASET_NAME, DatasetManifest, ShardEntry
 from trifact.lake.stats import ResourceMonitor, git_sha, log_mlflow
@@ -70,8 +70,9 @@ def chunk_unit(u: Unit) -> dict[str, Any]:
         cols = ["doc_id", "source", "lang", "domain", "title", "url", "text"]
         for b in iter_batches(Path(_CTX["root"]) / u.path, cols, u.limit):
             rows: dict[str, list[Any]] = {n: [] for n in SCHEMA.names}
-            for r in pl.from_arrow(b).iter_rows(named=True):  # type: ignore[union-attr]
-                spans = chunk_text(r["text"] or "", count, mx, ov)
+            recs = pl.from_arrow(b).to_dicts()  # type: ignore[union-attr]
+            all_spans = chunk_many([r["text"] or "" for r in recs], count, mx, ov)
+            for r, spans in zip(recs, all_spans, strict=True):
                 docs += 1
                 hist[min(7, max(0, math.ceil(math.log2(max(len(spans), 1)))))] += 1
                 for k, s in enumerate(spans):
