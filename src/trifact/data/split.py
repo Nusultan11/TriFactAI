@@ -78,6 +78,9 @@ def examples(root: Path, source: str) -> pl.DataFrame:
         )
     elif source in ("squad_v2", "sberquad", "kazqad"):
         df = lf.select("lang", "_config", "_split", "id", "title", "context", "question").collect()
+        if source == "sberquad":
+            # the official test has no answers, and 12 of its ids repeat train ids: it is left out entirely
+            df = df.filter(pl.col("_split") != "test")
         df = df.with_columns(
             example_id=pl.concat_str(
                 pl.col("_config").fill_null(""), pl.col("id").cast(pl.String), separator="/"
@@ -86,6 +89,7 @@ def examples(root: Path, source: str) -> pl.DataFrame:
                 pl.col("title").fill_null(""), key_expr("context").str.slice(0, 64), separator="|"
             ),
             text=pl.col("question"),
+            ctx_key=key_expr("context").hash(seed=0).cast(pl.String),
         )
         if source == "kazqad":  # nq-* are parallel by id: one key per id, title of the en side is not shared
             df = df.with_columns(
@@ -115,9 +119,11 @@ def examples(root: Path, source: str) -> pl.DataFrame:
         )
     else:
         raise ValueError(source)
+    if "ctx_key" not in df.columns:
+        df = df.with_columns(ctx_key=pl.lit("", dtype=pl.String))
     return df.select(
         source=pl.lit(source), lang="lang", config=pl.col("_config").cast(pl.String), example_id="example_id",
-        orig_split=pl.col("_split"), doc_key="doc_key", text_key=key_expr("text"),
+        orig_split=pl.col("_split"), doc_key="doc_key", text_key=key_expr("text"), ctx_key="ctx_key",
     )  # fmt: skip
 
 
@@ -151,22 +157,30 @@ def assign(df: pl.DataFrame, val: float, test: float, seed: int) -> pl.DataFrame
 
 
 def mark_leaks(df: pl.DataFrame) -> pl.DataFrame:
-    """Drop train/validation examples sharing a doc_key or text_key with a later split of the same task."""
+    """Drop train/validation examples sharing a doc_key, text_key or ctx_key with a later split of the same task.
+
+    ctx_key (QA: hash of the normalized context) catches contexts reused under different documents keys: the
+    NQ part of KazQAD reuses one passage for many question ids (9 196 en contexts), and keys by id let 2 257 en
+    and 1 206 kk test contexts into train. Only train/validation rows are dropped, test stays as it is."""
     out = []
     for _task, g in df.group_by("task", maintain_order=True):
         test = g.filter(pl.col("split") == "test")
         val = g.filter(pl.col("split") == "validation")
         bad_doc_val = set(test["doc_key"]) - {""}
         bad_txt_val = set(test["text_key"]) - {""}
+        bad_ctx_val = set(test["ctx_key"]) - {""}
         bad_doc_tr = bad_doc_val | set(val["doc_key"])
         bad_txt_tr = bad_txt_val | set(val["text_key"])
+        bad_ctx_tr = bad_ctx_val | (set(val["ctx_key"]) - {""})
         leak = (
             (pl.col("split") == "validation")
-            & (pl.col("doc_key").is_in(list(bad_doc_val)) | pl.col("text_key").is_in(list(bad_txt_val)))
+            & (pl.col("doc_key").is_in(list(bad_doc_val)) | pl.col("text_key").is_in(list(bad_txt_val))
+               | pl.col("ctx_key").is_in(list(bad_ctx_val)))
         ) | (
             (pl.col("split") == "train")
-            & (pl.col("doc_key").is_in(list(bad_doc_tr)) | pl.col("text_key").is_in(list(bad_txt_tr)))
-        )
+            & (pl.col("doc_key").is_in(list(bad_doc_tr)) | pl.col("text_key").is_in(list(bad_txt_tr))
+               | pl.col("ctx_key").is_in(list(bad_ctx_tr)))
+        )  # fmt: skip
         out.append(g.with_columns(leak=leak))
     df = pl.concat(out)
     return df.with_columns(split=pl.when(pl.col("leak")).then(pl.lit("drop")).otherwise(pl.col("split")))

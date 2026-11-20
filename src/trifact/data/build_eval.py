@@ -204,14 +204,21 @@ def nli_set(root: Path) -> pl.DataFrame:
 # ----------------------------------------------------------------------------- leakage
 
 
-def train_keys(root: Path) -> dict[str, set[str]]:
-    """Normalized texts of all train/validation task data, by kind."""
-    keys: dict[str, set[str]] = {}
+def train_keys(root: Path) -> dict[str, pl.Series]:
+    """64-bit hashes of the normalized texts of all train/validation task data, by kind (texts of
+    non-empty keys only). Tens of millions of queries, passages and sentences do not fit in memory as
+    Python strings; a hash collision can only add a spurious overlap, never hide one."""
+    parts: dict[str, list[pl.Series]] = {}
 
     def add(kind: str, lf: pl.LazyFrame, expr: pl.Expr) -> None:
-        keys.setdefault(kind, set()).update(
-            lf.select(k=key_expr(expr)).collect(engine="streaming")["k"].to_list()
+        h = (
+            lf.select(k=key_expr(expr))
+            .filter(pl.col("k") != "")
+            .select(pl.col("k").hash(seed=0))
+            .unique()
+            .collect(engine="streaming")["k"]
         )
+        parts.setdefault(kind, []).append(h)
 
     t = root / "task"
     if (t / "ner").is_dir():
@@ -231,18 +238,16 @@ def train_keys(root: Path) -> dict[str, set[str]]:
                 pl.scan_parquet(str(t / f"nli/*/{tab}-*.parquet")),
                 pl.concat_str("premise", "hypothesis", separator=" || "),
             )
-    keys.pop("", None)
-    for v in keys.values():
-        v.discard("")
-    return keys
+    return {k: pl.concat(v).unique() for k, v in parts.items()}
 
 
-def leakage(eval_texts: dict[str, pl.Series], keys: dict[str, set[str]]) -> dict[str, Any]:
+def leakage(eval_texts: dict[str, pl.Series], keys: dict[str, pl.Series]) -> dict[str, Any]:
     out = {}
     for name, s in eval_texts.items():
         kind = name.split(":")[1]
         k = pl.DataFrame({"t": s}).select(k=key_expr("t"))["k"]
-        hit = k.is_in(list(keys.get(kind, set()))) & (k.str.len_chars() >= 20)
+        train = keys.get(kind, pl.Series([], dtype=pl.UInt64))
+        hit = k.hash(seed=0).is_in(train.implode()) & (k.str.len_chars() >= 20)
         out[name] = {"items": len(k), "overlap": int(hit.sum()), "examples": k.filter(hit).head(5).to_list()}
     return out
 

@@ -22,6 +22,9 @@ def load_qa(root: Path, source: str, splits: tuple[str, ...]) -> pl.DataFrame:
     )
     df = (
         scan_raw(root, source)
+        .filter(
+            pl.col("_split") != "test" if source == "sberquad" else pl.lit(True)
+        )  # unlabelled, ids repeat train
         .select("lang", "_config", "id", "title", "context", "question", "answers")
         .collect()
     )
