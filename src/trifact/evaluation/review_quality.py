@@ -50,17 +50,22 @@ def wilson(k: int, n: int, z: float = 1.96) -> list[float]:
     return [round(max(0.0, c - h), 4), round(min(1.0, c + h), 4)]
 
 
-def frames(clean: Path, sources: list[str]) -> tuple[pl.LazyFrame, pl.LazyFrame]:
+def frames(clean: Path, sources: list[str]) -> tuple[pl.LazyFrame, pl.LazyFrame, list[str], list[str]]:
     kept, dropped = [], []
     for s in sources:
         m = DatasetManifest.read(clean / s)
         kept += [str(clean / s / x.path) for x in m.shards if x.table == "part"]
         dropped += [str(clean / s / x.path) for x in m.shards if x.table == "dropped"]
-    cols = ["doc_id", "source", "domain", "lang", "src_lang", "text"]
+    cols = ["doc_id", "source", "domain", "lang", "src_lang"]  # text is fetched for the drawn rows only
     k = pl.scan_parquet(kept).select(*cols, drop_reason=pl.lit(None, dtype=pl.String), status=pl.lit("kept"))
     d = pl.scan_parquet(dropped).select(*cols, "drop_reason", status=pl.lit("dropped"))
     rl = pl.when(pl.col("lang").is_in(TARGET_LANGS)).then("lang").otherwise("src_lang").alias("review_lang")
-    return k.with_columns(rl, stratum=pl.col("domain")), d.with_columns(rl, stratum=pl.col("drop_reason"))
+    return (
+        k.with_columns(rl, stratum=pl.col("domain")),
+        d.with_columns(rl, stratum=pl.col("drop_reason")),
+        kept,
+        dropped,
+    )
 
 
 def allocate(sizes: dict[str, int], total: int) -> dict[str, int]:
@@ -79,26 +84,54 @@ def allocate(sizes: dict[str, int], total: int) -> dict[str, int]:
     return alloc
 
 
-def draw(lf: pl.LazyFrame, per_lang: int, seed: int) -> pl.DataFrame:
+def draw(lf: pl.LazyFrame, files: list[str], per_lang: int, seed: int) -> pl.DataFrame:
+    """The `n` documents of smallest `hash(doc_id)` of every stratum, in one streaming pass: a per-stratum hash
+    threshold keeps ~3n + 50 candidates (all rows of small strata), the exact smallest n are picked among
+    them; their texts are read afterwards with a pyarrow filter on doc_id. Sorting whole strata with their
+    text, or filtering a scan that carries the text (Polars keeps every decoded text buffer), does not fit in
+    memory at the full volume."""
+    lf = lf.with_columns(pl.col("stratum").fill_null("<none>"))
     sizes = lf.group_by("review_lang", "stratum").len().collect(engine="streaming")
-    out = []
+    plan = []
     for lang in TARGET_LANGS:
         s = {
             r["stratum"]: r["len"] for r in sizes.filter(pl.col("review_lang") == lang).iter_rows(named=True)
         }
         for stratum, n in allocate(s, per_lang).items():
-            if n == 0:
-                continue
-            out.append(
-                lf.filter((pl.col("review_lang") == lang) & (pl.col("stratum") == stratum))
-                .with_columns(h=pl.col("doc_id").hash(seed=seed))
-                .sort("h")
-                .head(n)
-                .drop("h")
-                .with_columns(pl.col("text").str.slice(0, TEXT_CHARS), stratum_size=pl.lit(s[stratum]))
-                .collect(engine="streaming")
-            )
-    return pl.concat(out)
+            if n:
+                share = min(1.0, (3 * n + 50) / s[stratum])
+                thr = 2**64 - 1 if share >= 1 else int(share * 2**64)
+                plan.append(
+                    {"review_lang": lang, "stratum": stratum, "n": n, "stratum_size": s[stratum], "thr": thr}
+                )
+    if not plan:
+        return pl.DataFrame()
+    p = pl.DataFrame(plan, schema_overrides={"thr": pl.UInt64, "stratum_size": pl.Int64})
+    cand = (
+        lf.join(p.lazy(), on=["review_lang", "stratum"], how="inner")
+        .with_columns(h=pl.col("doc_id").hash(seed=seed))
+        .filter(pl.col("h") <= pl.col("thr"))
+        .collect(engine="streaming")
+    )
+    out = (
+        cand.sort("h")
+        .with_columns(k=pl.int_range(pl.len()).over("review_lang", "stratum"))
+        .filter(pl.col("k") < pl.col("n"))
+    )
+    short = out.group_by("review_lang", "stratum", "n").len().filter(pl.col("len") < pl.col("n"))
+    if short.height:
+        raise RuntimeError(f"hash threshold kept too few candidates: {short.to_dicts()}")
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.dataset as ds
+
+    want = pa.array(out["doc_id"].unique().to_list(), type=pa.string())
+    t = ds.dataset(files, format="parquet").to_table(
+        columns=["doc_id", "text"], filter=pc.is_in(ds.field("doc_id"), value_set=want)
+    )
+    texts = pl.from_arrow(t).unique("doc_id").select("doc_id", text=pl.col("text").str.slice(0, TEXT_CHARS))  # type: ignore[union-attr]
+    out = out.join(texts, on="doc_id", how="left")
+    return out.drop("h", "k", "n", "thr").sort("review_lang", "stratum", "doc_id")
 
 
 def score(sample: pl.DataFrame, labels: pl.DataFrame) -> dict[str, Any]:
@@ -164,10 +197,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{sheet.height} documents -> {out}; save the filled sheet as labels.csv (doc_id,label,note)")
         return 0
     if args.cmd == "sample":
-        kept, dropped = frames(clean, params["curation"]["sources"])
+        kept, dropped, kept_files, dropped_files = frames(clean, params["curation"]["sources"])
         sample = pl.concat(
-            [draw(kept, KEPT_PER_LANG, params["seed"]), draw(dropped, DROPPED_PER_LANG, params["seed"])]
-        ).sort("review_lang", "status", "stratum", "doc_id")
+            [
+                draw(kept, kept_files, KEPT_PER_LANG, params["seed"]),
+                draw(dropped, dropped_files, DROPPED_PER_LANG, params["seed"]),
+            ]
+        )  # fmt: skip.sort("review_lang", "status", "stratum", "doc_id")
         review.mkdir(parents=True, exist_ok=True)
         sample.write_parquet(review / "sample.parquet")
         print(sample.group_by("review_lang", "status").len().sort("review_lang", "status"))
