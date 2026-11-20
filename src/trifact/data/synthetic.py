@@ -194,7 +194,9 @@ def prepare(kind: str, n: int, out: Path) -> int:
                 ql = rnd.choice([x for x in ("kk", "ru", "en") if x != r["lang"]])
             else:
                 ql = r["lang"]
-            evid = "\n\n".join(f"[{c}] {t}" for c, t in ev)
+            # passages are cited by number: long chunk ids cost prompt and answer tokens (answers hit
+            # max_tokens); import maps the numbers back to chunk ids
+            evid = "\n\n".join(f"[{i}] {t}" for i, (_, t) in enumerate(ev, 1))
             pid = f"qa/{r['chunk_id']}"
             user = (
                 tpl.replace("{evidence}", evid)
@@ -228,8 +230,9 @@ def import_queries(kaggle_out: Path, meta: pl.DataFrame, top_k: int) -> tuple[pl
         for ql in ("kk", "ru", "en"):
             q = lang_key(d, ql) if d else None
             rows.append({"id": r["id"], "chunk_id": r["chunk_id"], "d_lang": r["lang"], "q_lang": ql, "source": r["source"],
-                         "query": (q or "").strip(), "passage": r["passage"], "reason": None if q else "parse"})  # fmt: skip
-    q = pl.DataFrame(rows)
+                         "query": (q or "").strip(), "passage": r["passage"],
+                         "reason": None if q else "not_generated" if r["raw"] is None else "parse"})  # fmt: skip
+    q = pl.DataFrame(rows, infer_schema_length=None)
     n_words = q["query"].str.count_matches(r"\w+")
     q = q.with_columns(
         reason=pl.when(pl.col("reason").is_null() & ~n_words.is_between(3, 20))
@@ -281,6 +284,13 @@ def import_queries(kaggle_out: Path, meta: pl.DataFrame, top_k: int) -> tuple[pl
     )
 
 
+def cite_ids(answer: str, ids: list[str]) -> str:
+    """`[2]` -> `[<chunk id of passage 2>]`; citations that already are chunk ids stay as they are."""
+    return re.sub(
+        r"\[(\d+)\]", lambda m: f"[{ids[int(m[1]) - 1]}]" if 1 <= int(m[1]) <= len(ids) else m[0], answer
+    )
+
+
 def import_qa(kaggle_out: Path, meta: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     gen = pl.read_parquet(sorted(str(p) for p in (kaggle_out / "out").glob("*.parquet")))
     df = meta.join(gen.select("id", raw="text"), on="id", how="left")
@@ -289,9 +299,11 @@ def import_qa(kaggle_out: Path, meta: pl.DataFrame) -> tuple[pl.DataFrame, pl.Da
         d = parse_json(r["raw"] or "") or {}
         qq, aa = d.get("question"), d.get("answer")
         rows.append({**{k: r[k] for k in ("id", "chunk_id", "lang", "chunk_lang", "mode", "source", "evidence_ids", "evidence_texts")},
-                     "question": qq if isinstance(qq, str) else "", "answer": aa if isinstance(aa, str) else "",
-                     "reason": None if isinstance(qq, str) and isinstance(aa, str) and qq.strip() and aa.strip() else "parse"})  # fmt: skip
-    q = pl.DataFrame(rows)
+                     "question": qq if isinstance(qq, str) else "",
+                     "answer": cite_ids(aa, r["evidence_ids"]) if isinstance(aa, str) else "",
+                     "reason": None if isinstance(qq, str) and isinstance(aa, str) and qq.strip() and aa.strip()
+                     else "not_generated" if r["raw"] is None else "parse"})  # fmt: skip
+    q = pl.DataFrame(rows, infer_schema_length=None)
     plain = q["answer"].str.replace_all(r"\[[^\[\]]*\]", "").str.strip_chars()
     lq, _ = lid().predict([x.replace("\n", " ") for x in q["question"].to_list()])
     la, _ = lid().predict([x.replace("\n", " ") for x in plain.to_list()])

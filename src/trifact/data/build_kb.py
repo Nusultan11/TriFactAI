@@ -4,9 +4,12 @@ python -m trifact.data.build_kb [--workers N]
 
 1. Class closure: the P279 (subclass of) graph of all entities, walked downwards from the root classes
    of every core label in `configs/labels.yaml: wikidata_classes` for `wikidata_max_depth` levels, gives
-   the class sets of PER / ORG / LOC (a class reachable from several labels keeps the first of
-   PER > ORG > LOC).
-2. NER type of an entity: the label of the first of its P31 (instance of) classes found in those sets.
+   the class sets of PER / ORG / LOC (a class reachable from several labels keeps the nearest one, ties
+   broken by PER > ORG > LOC).
+2. NER type of an entity: the label of its nearest P31 (instance of) class found in those sets (smallest
+   depth, ties by PER > ORG > LOC). A country is an instance of both `country` (LOC, depth 0) and
+   `sovereign state` (ORG through `political organization`, depth 5): the nearest class makes it LOC, as
+   in every gold NER set, where the old label priority made Germany or Paris an ORG.
 3. Tables, written one raw shard at a time (memory bounded by a shard, ADR-0011):
    * `entities` — entities with a label or alias in at least `linking.kb_min_labels` of kk/ru/en
      (or the multilingual `mul` label): qid, ner_type, labels, descriptions, aliases, sitelinks,
@@ -72,7 +75,7 @@ def class_closure(files: list[str], roots: dict[str, list[str]], depth: int) -> 
     rank = {lab: i for i, lab in enumerate(PRIORITY)}
     return (
         found.with_columns(r=pl.col("ner_type").replace_strict(rank, return_dtype=pl.Int32))
-        .sort("r", "depth")
+        .sort("depth", "r")
         .unique("cls", keep="first")
         .drop("r")
         .sort("cls")
@@ -108,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         n_ent = 0
         shards: list[ShardEntry] = []
         rank = {k: i for i, k in enumerate(PRIORITY)}
-        cmap = classes.select(p31="cls", ner_type="ner_type")
+        cmap = classes.select(p31="cls", ner_type="ner_type", depth="depth")
         has = sum(
             ((pl.col(f"label_{lg}").is_not_null()) | (pl.col(f"aliases_{lg}").list.len() > 0)).cast(pl.Int32)
             for lg in langs[:3]
@@ -119,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
             typed = (
                 df.select("qid", "p31").explode("p31").join(cmap, on="p31", how="inner")
                 .with_columns(r=pl.col("ner_type").replace_strict(rank, return_dtype=pl.Int32))
-                .group_by("qid").agg(pl.col("ner_type").sort_by("r").first())
+                .group_by("qid").agg(pl.col("ner_type").sort_by("depth", "r").first())
             )  # fmt: skip
             df = df.join(typed, on="qid", how="left").with_columns(pl.col("ner_type").fill_null("O"))
             ent = df.filter((has >= min_labels) | pl.col("label_mul").is_not_null()).select(

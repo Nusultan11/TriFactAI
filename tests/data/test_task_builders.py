@@ -4,7 +4,7 @@ import polars as pl
 
 from trifact.data.bm25 import BM25
 from trifact.data.build_sft import mix
-from trifact.data.synthetic import copied, lang_key, parse_json
+from trifact.data.synthetic import cite_ids, copied, lang_key, parse_json
 from trifact.data.task_common import assign_split, norm_key, stable_hash
 from trifact.data.translations import chrf
 
@@ -55,3 +55,9 @@ def test_sft_mix_shares_and_kk_floor() -> None:
     assert abs(got["answerable"] - 0.6) < 0.01 and abs(got["unanswerable"] - 0.15) < 0.01
     assert (out["lang"] == "kk").mean() >= 0.3
     assert st["total_feasible"] == 1000
+
+
+def test_numbered_citations_map_to_chunk_ids() -> None:
+    ids = ["doc/a#0", "doc/b#3"]
+    assert cite_ids("Fact one [2]. Fact two [1].", ids) == "Fact one [doc/b#3]. Fact two [doc/a#0]."
+    assert cite_ids("Out of range [3], kept [doc/a#0].", ids) == "Out of range [3], kept [doc/a#0]."
