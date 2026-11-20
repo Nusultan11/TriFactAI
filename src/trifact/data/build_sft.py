@@ -40,6 +40,7 @@ from trifact.data.task_common import (
     dataset_input_of,
     finish,
     inherited,
+    key_expr,
     raw_input,
     stable_hash,
 )
@@ -191,6 +192,16 @@ def main(argv: list[str] | None = None) -> int:
             from trifact.data.synthetic import synthetic_sft
 
             df = pl.concat([df, synthetic_sft(args.synthetic, template)], how="diagonal_relaxed")
+        # a question of the frozen QA eval never appears in SFT, even from another source (an MT SQuAD question
+        # repeated a SberQuAD test question word for word, task EDA)
+        eval_q = sorted((root / "eval/qa").glob("*/test-*.parquet"))
+        n_eval_q = 0
+        if eval_q:
+            eq = pl.scan_parquet([str(p) for p in eval_q]).select(k=key_expr(pl.col("question")).hash(seed=0))
+            eq_h = eq.collect()["k"]
+            hit = key_expr(pl.col("question")).hash(seed=0).is_in(eq_h.implode())
+            n_eval_q = df.filter(hit).height
+            df = df.filter(~hit)
         cap = stage_params["cap"] if profile == "pilot" else None
         final, mix_stats = mix(df, cfg["mix"], params["scale"]["min_kk_share"], cap, params["seed"])
         if out.exists():
@@ -207,6 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     kk_share = final.filter(pl.col("lang") == "kk").height / max(final.height, 1)
     metrics = {"per_source_pool": per_source, **mix_stats, "final": dist, "kk_share": round(kk_share, 4),
+               "eval_questions_dropped": n_eval_q,
                "type_share": {t: round(final.filter(pl.col("type") == t).height / max(final.height, 1), 4) for t in cfg["mix"]}}  # fmt: skip
     lic = inherited(root, list(QA_SOURCES)) + ([MT_LICENSE] if mt is not None else [])
     inputs = [raw_input(root, s) for s in QA_SOURCES] + [dataset_input_of(root, root / "task/splits")]

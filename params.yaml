@@ -274,6 +274,13 @@ curation:
       qwen3: {hf_id: Qwen/Qwen3-1.7B, revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e, file: tokenizer.json}
       qwen3_5: {hf_id: Qwen/Qwen3.5-2B, revision: 15852e8c16360a2fea060d615a32b45270f8a8fc, file: tokenizer.json}
 
+  # EDA decisions (stage 2, PROGRESS 2026-11-20) applied where the index and training mixes are built (stages 6-7)
+  downstream:
+    kk_min_kk_letter_share: 0.05  # kk docs below it: stripped Kazakh letters or ru text, 1.06 % of curated kk;
+                                  # left out of the index/mixes and sampled for the human review
+    pii_mask: [iin, email]        # checksum-valid IIN (0.02 % of curated kk) and e-mails are masked; the phone
+                                  # pattern also fires on dates and coordinates (45 % of en wikitext), not masked
+
 split:
   by: source_document       # ADR-0007
   val: 0.1

@@ -38,6 +38,7 @@ import pyarrow.parquet as pq
 
 from trifact.core.params import ROOT, load_params
 from trifact.data.curation import fingerprint, write_report
+from trifact.data.eda import MOJIBAKE
 from trifact.data.qa_common import QA_SOURCES, bm25_negatives, load_qa
 from trifact.data.task_common import (
     DatasetWriter,
@@ -339,6 +340,14 @@ def run_builder(name: str, cfg: dict[str, Any]) -> dict[str, Any]:
         from trifact.data.synthetic import synthetic_pairs
 
         pairs, passages = synthetic_pairs(Path(cfg["synthetic"]))
+    # mojibake (double-encoded UTF-8 inherited from MS MARCO: 4.2 % of mMARCO-ru passages, EDA) is not
+    # repairable: such passages are dropped, with the pairs they are the positive of and from negative lists
+    bad = passages.filter(pl.col("text").str.contains(MOJIBAKE))["doc_id"]
+    if bad.len():
+        passages = passages.filter(~pl.col("doc_id").is_in(bad.implode()))
+        pairs = pairs.filter(~pl.col("doc_id").is_in(bad.implode())).with_columns(
+            neg_ids=pl.col("neg_ids").list.set_difference(bad.implode())
+        )
     if cfg["profile"] == "pilot":
         pairs = pairs.filter(
             pl.col("pair_id").hash(seed=seed) % 1000 < max(1, int(1000 * cfg["cap"] / 20_000_000))
