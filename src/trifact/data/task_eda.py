@@ -280,7 +280,11 @@ def retrieval(root: Path, sample: int, seed: int) -> dict[str, Any]:
         )
         smp = mono.with_columns(r=pl.col("pair_id").hash(seed=seed)).sort("r").group_by("source").head(sample)
         ids = pl.concat([smp.select("doc_id"), smp.select(doc_id="neg_ids").explode("doc_id")]).unique()
-        texts = dict(pas.join(ids.lazy(), on="doc_id", how="semi").collect(engine="streaming").iter_rows())
+        texts = dict(
+            pas.filter(pl.col("doc_id").is_in(ids["doc_id"].implode()))
+            .collect(engine="streaming")
+            .iter_rows()
+        )
         res: dict[str, list[tuple[int, float]]] = {}
         for src, q, d, negs in smp.select("source", "query", "doc_id", "neg_ids").iter_rows():
             pool = [d, *[n for n in negs if n in texts]]

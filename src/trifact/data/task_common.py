@@ -99,14 +99,48 @@ def scan_raw(root: Path, source: str, table: str = "part", lang: str | None = No
     """Lazy scan of a raw table with the partition language as column `lang`."""
     m = raw_manifest(root, source)
     base = source_dir(root, "raw", source)
-    frames = [
-        pl.scan_parquet(str(base / s.path)).with_columns(lang=pl.lit(s.lang))
-        for s in m.shards
-        if s.table == table and (lang is None or s.lang == lang)
-    ]
-    if not frames:
+    by_lang: dict[str, list[str]] = {}
+    for s in m.shards:
+        if s.table == table and (lang is None or s.lang == lang):
+            by_lang.setdefault(s.lang, []).append(str(base / s.path))
+    if not by_lang:
         raise FileNotFoundError(f"raw/{source}: no shards of table {table!r} lang {lang!r}")
+    # one multi-file scan per language: a concat of one scan per shard is read by the streaming engine with
+    # all shards in flight at once (86 miracl_corpus shards -> out of memory)
+    frames = [pl.scan_parquet(files).with_columns(lang=pl.lit(lg)) for lg, files in by_lang.items()]
     return pl.concat(frames, how="diagonal_relaxed")
+
+
+def raw_files_by_lang(root: Path, source: str, table: str = "part") -> dict[str, list[str]]:
+    """Raw shard paths of a table by partition language."""
+    base = source_dir(root, "raw", source)
+    out: dict[str, list[str]] = {}
+    for s in raw_manifest(root, source).shards:
+        if s.table == table:
+            out.setdefault(s.lang, []).append(str(base / s.path))
+    return out
+
+
+def rows_with_keys(
+    files: dict[str, list[str]], key: str, keys: dict[str, Iterable[str]], columns: list[str]
+) -> pl.DataFrame:
+    """Rows of a big table whose `key` is in `keys[lang]` of their partition language, with column `lang`.
+
+    pyarrow filters every batch while reading and copies only the matching rows. A Polars filter over a lazy
+    scan keeps string views into every decoded text buffer (6.9 GB miracl_corpus -> out of memory)."""
+    import pyarrow.compute as pc
+    import pyarrow.dataset as ds
+
+    parts = []
+    for lg, fs in files.items():
+        if not (ks := set(keys.get(lg, ()))):
+            continue
+        want = pa.array(sorted(ks), type=pa.string())
+        t = ds.dataset(fs, format="parquet").to_table(
+            columns=columns, filter=pc.is_in(ds.field(key).cast(pa.string()), value_set=want)
+        )
+        parts.append(pl.from_arrow(t).with_columns(lang=pl.lit(lg)))  # type: ignore[union-attr]
+    return pl.concat(parts, how="diagonal_relaxed") if parts else pl.DataFrame()
 
 
 def raw_input(root: Path, source: str) -> DatasetInput:

@@ -48,7 +48,9 @@ from trifact.data.task_common import (
     finish,
     inherited,
     key_expr,
+    raw_files_by_lang,
     raw_input,
+    rows_with_keys,
     scan_raw,
 )
 from trifact.data.translations import MT_LICENSE, qc_ok
@@ -124,14 +126,18 @@ def retrieval_set(root: Path, mt: pl.DataFrame | None) -> tuple[pl.DataFrame, pl
     )
     qr = qr.join(mt_ids, on=["lang", "qid"])
     qrels.append(qr.select(query_id=pl.concat_str(pl.lit("miracl"), "lang", "qid", separator="/"),
-                           doc_id=pl.concat_str(pl.lit("miracl/"), "docid"), relevance="relevance", lang="lang"))  # fmt: skip
+                           doc_id=pl.concat_str(pl.lit("miracl"), "lang", "docid", separator="/"), relevance="relevance", lang="lang"))  # fmt: skip
     queries.append(topics.select(query_id=pl.concat_str(pl.lit("miracl"), "lang", "qid", separator="/"), query="query",
                                  q_lang="lang", d_lang="lang", origin=pl.lit("gold"), source=pl.lit("miracl")))  # fmt: skip
-    ids = qr.select(doc_id=pl.concat_str(pl.lit("miracl/"), "docid")).unique()
-    corpus = scan_raw(root, "miracl_corpus").select(
-        "lang", "title", "text", doc_id=pl.concat_str(pl.lit("miracl/"), "docid")
+    # docids are Wikipedia page ids shared by the ru and en corpora: the id carries the language
+    keys = {str(lg): g["docid"].to_list() for (lg,), g in qr.group_by("lang")}
+    docs.append(
+        rows_with_keys(raw_files_by_lang(root, "miracl_corpus"), "docid", keys, ["docid", "title", "text"])
+        .select(
+            "lang", "title", "text", doc_id=pl.concat_str(pl.lit("miracl"), "lang", "docid", separator="/")
+        )
+        .unique("doc_id")
     )
-    docs.append(corpus.join(ids.lazy(), on="doc_id", how="semi").collect(engine="streaming").unique("doc_id"))
     # KazQAD test (kazqad config + nq part): question -> its context; nq kk <-> en parallel by id
     kq = load_qa(root, "kazqad", ("test",))
     queries.append(kq.select(query_id=pl.concat_str(pl.lit("kazqad"), "lang", "example_id", separator="/"), query="question",

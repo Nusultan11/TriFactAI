@@ -4,7 +4,7 @@ seed: 42
 languages: [kk, ru, en]
 
 scale:
-  profile: pilot            # pilot | full — same code, different volumes (architecture §1)
+  profile: full             # pilot | full — same code, different volumes (architecture §1)
   pilot:   {corpus_docs: 30000, corpus_chunks: 150000,   ner_sentences: 80000,   sft_examples: 24000,   retrieval_pairs: 10000,    eval_examples: 3000}
   full:    {corpus_docs: null,  corpus_chunks: 35000000, ner_sentences: 10000000, sft_examples: 2000000, retrieval_pairs: 20000000, eval_examples: 50000}
   min_kk_share: 0.30        # in SFT and eval

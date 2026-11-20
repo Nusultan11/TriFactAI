@@ -24,18 +24,31 @@ from __future__ import annotations
 
 import argparse
 import logging
+import multiprocessing
 import shutil
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import polars as pl
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from trifact.core.params import ROOT, load_params
 from trifact.data.curation import fingerprint, write_report
 from trifact.data.qa_common import QA_SOURCES, bm25_negatives, load_qa
-from trifact.data.task_common import DatasetWriter, dataset_input_of, finish, inherited, raw_input, scan_raw
+from trifact.data.task_common import (
+    DatasetWriter,
+    dataset_input_of,
+    finish,
+    inherited,
+    raw_files_by_lang,
+    raw_input,
+    rows_with_keys,
+    scan_raw,
+)
 from trifact.data.translations import MT_LICENSE, qc_ok
 from trifact.lake.layout import LakeConfig
 from trifact.lake.stats import ResourceMonitor, log_mlflow
@@ -126,37 +139,39 @@ def ms_marco(root: Path, k_neg: int, val_share: float, seed: int) -> tuple[pl.Da
 
 
 def mmarco(root: Path, k_neg: int, val_share: float, seed: int) -> tuple[pl.DataFrame, pl.DataFrame]:
-    tri = scan_raw(root, "mmarco_ru", "triples").select("qid", "pos_pid", "neg_pid")
+    # ids are numeric strings: 39.8 M triples grouped by UInt32 ids fit in memory, by strings they do not
+    tri = scan_raw(root, "mmarco_ru", "triples").select(
+        pl.col("qid").cast(pl.UInt32), pl.col("pos_pid").cast(pl.UInt32), pl.col("neg_pid").cast(pl.UInt32)
+    )
     g = (
         tri.group_by("qid", "pos_pid")
-        .agg(neg_ids=pl.col("neg_pid").unique(maintain_order=True).head(k_neg))
+        .agg(neg=pl.col("neg_pid").unique(maintain_order=True).head(k_neg))
         .collect(engine="streaming")
     )
     q = (
         scan_raw(root, "mmarco_ru", "queries")
         .filter(pl.col("_split") == "train")
-        .select("qid", query="text")
+        .select(pl.col("qid").cast(pl.UInt32), query="text")
         .unique("qid")
         .collect()
     )
-    pairs = g.join(q, on="qid", how="inner").with_columns(
-        query_id=pl.concat_str(pl.lit("mmarco/"), "qid"), doc_id=pl.concat_str(pl.lit("mmarco/"), "pos_pid"),
-        neg_ids=pl.col("neg_ids").list.eval(pl.concat_str(pl.lit("mmarco/"), pl.element())),
-        q_lang=pl.lit("ru"), d_lang=pl.lit("ru"),
-        split=pl.when((pl.col("qid").hash(seed=seed) % 10_000) < int(val_share * 10_000)).then(pl.lit("validation")).otherwise(pl.lit("train")),
-    )  # fmt: skip
-    used = pl.concat(
-        [pairs.select("doc_id"), pairs.select(doc_id=pl.col("neg_ids")).explode("doc_id")]
-    ).unique()
-    coll = scan_raw(root, "mmarco_ru", "collection").select(
-        doc_id=pl.concat_str(pl.lit("mmarco/"), "pid"), text="text"
-    )
+    g = g.join(q, on="qid", how="inner")
+    used = pl.concat([g.select(pid="pos_pid"), g.select(pid="neg").explode("pid")]).drop_nulls().unique()
+    coll = raw_files_by_lang(root, "mmarco_ru", "collection")
     passages = (
-        coll.join(used.lazy(), on="doc_id", how="semi")
-        .collect(engine="streaming")
-        .unique("doc_id")
+        rows_with_keys(coll, "pid", {"ru": used["pid"].cast(pl.String).to_list()}, ["pid", "text"])
+        .unique("pid")
+        .select(doc_id=pl.concat_str(pl.lit("mmarco/"), "pid"), text="text")
         .with_columns(lang=pl.lit("ru"), source=pl.lit("mmarco_ru"), title=pl.lit(None, dtype=pl.String))
     )
+    pairs = g.select(
+        "query",
+        query_id=pl.concat_str(pl.lit("mmarco/"), pl.col("qid").cast(pl.String)),
+        doc_id=pl.concat_str(pl.lit("mmarco/"), pl.col("pos_pid").cast(pl.String)),
+        neg_ids=pl.col("neg").list.eval(pl.concat_str(pl.lit("mmarco/"), pl.element().cast(pl.String))),
+        q_lang=pl.lit("ru"), d_lang=pl.lit("ru"),
+        split=pl.when((pl.col("qid").cast(pl.String).hash(seed=seed) % 10_000) < int(val_share * 10_000)).then(pl.lit("validation")).otherwise(pl.lit("train")),
+    )  # fmt: skip
     return finish_pairs(pairs, "mmarco_ru", "mt_published"), passages
 
 
@@ -174,23 +189,23 @@ def miracl(root: Path, k_neg: int) -> tuple[pl.DataFrame, pl.DataFrame]:
         .collect()
     )
     pos = qrels.filter(pl.col("rel") > 0)
-    neg = qrels.filter(pl.col("rel") == 0).group_by("lang", "qid").agg(neg_ids=pl.col("docid").head(k_neg))
+    neg = qrels.filter(pl.col("rel") == 0).group_by("lang", "qid").agg(neg=pl.col("docid").head(k_neg))
+    # docids are Wikipedia page ids: the ru and en corpora share 1.06 M of them, so the id carries the language
     pairs = topics.join(pos, on=["lang", "qid"]).join(neg, on=["lang", "qid"], how="left").with_columns(
-        query_id=pl.concat_str(pl.lit("miracl/"), "lang", "qid", separator="/"), doc_id=pl.concat_str(pl.lit("miracl/"), "docid"),
-        neg_ids=pl.col("neg_ids").fill_null([]).list.eval(pl.concat_str(pl.lit("miracl/"), pl.element())),
+        query_id=pl.concat_str(pl.lit("miracl/"), "lang", "qid", separator="/"),
+        doc_id=pl.concat_str(pl.lit("miracl"), "lang", "docid", separator="/"),
+        neg_ids=pl.struct("lang", "neg").map_elements(
+            lambda r: [f"miracl/{r['lang']}/{d}" for d in (r["neg"] or [])], return_dtype=pl.List(pl.String)
+        ),
         q_lang="lang", d_lang="lang",
     )  # fmt: skip
-    used = (
-        pl.concat([pairs.select("doc_id"), pairs.select(doc_id=pl.col("neg_ids")).explode("doc_id")])
-        .drop_nulls()
-        .unique()
-    )
-    corpus = scan_raw(root, "miracl_corpus").select(
-        "lang", "title", "text", doc_id=pl.concat_str(pl.lit("miracl/"), "docid")
-    )
+    keys = {str(lg): g["docid"].to_list() + g["neg"].explode().drop_nulls().to_list()
+            for (lg,), g in pairs.group_by("lang")}  # fmt: skip
     passages = (
-        corpus.join(used.lazy(), on="doc_id", how="semi")
-        .collect(engine="streaming")
+        rows_with_keys(raw_files_by_lang(root, "miracl_corpus"), "docid", keys, ["docid", "title", "text"])
+        .select(
+            "lang", "title", "text", doc_id=pl.concat_str(pl.lit("miracl"), "lang", "docid", separator="/")
+        )
         .unique("doc_id")
         .with_columns(source=pl.lit("miracl_corpus"))
     )
@@ -297,6 +312,63 @@ def kazparc(root: Path) -> tuple[pl.DataFrame, pl.DataFrame]:
     return pairs, passages
 
 
+def run_builder(name: str, cfg: dict[str, Any]) -> dict[str, Any]:
+    """One builder in its own process: pairs and passages to temporary Parquet files, plus their stats."""
+    root, k, val, seed = Path(cfg["root"]), cfg["k"], cfg["val"], cfg["seed"]
+    if name == "ms_marco":
+        pairs, passages = ms_marco(root, k, val, seed)
+    elif name == "mmarco_ru":
+        pairs, passages = mmarco(root, k, val, seed)
+    elif name == "miracl":
+        pairs, passages = miracl(root, k)
+    elif name == "ru_hnp":
+        pairs, passages = ru_hnp(root, val, seed)
+    elif name == "qa":
+        mt = None
+        if cfg["mt_dir"]:
+            mt = (
+                pl.scan_parquet(str(Path(cfg["mt_dir"]) / "*/translations-*.parquet"))
+                .filter(qc_ok(cfg["min_chrf"]))
+                .select("src_lang", "tgt_lang", "text", "translation")
+                .collect()
+            )
+        pairs, passages = qa_pairs(root, k, mt)
+    elif name == "kazparc":
+        pairs, passages = kazparc(root)
+    else:
+        from trifact.data.synthetic import synthetic_pairs
+
+        pairs, passages = synthetic_pairs(Path(cfg["synthetic"]))
+    if cfg["profile"] == "pilot":
+        pairs = pairs.filter(
+            pl.col("pair_id").hash(seed=seed) % 1000 < max(1, int(1000 * cfg["cap"] / 20_000_000))
+        )
+        used = (
+            pl.concat([pairs.select("doc_id"), pairs.select(doc_id="neg_ids").explode("doc_id")])
+            .drop_nulls()
+            .unique()
+        )
+        passages = passages.join(used, on="doc_id", how="semi")
+    tmp = Path(cfg["tmp"])
+    tmp.mkdir(parents=True, exist_ok=True)
+    pp, sp = tmp / f"{name}-pairs.parquet", tmp / f"{name}-passages.parquet"
+    pairs.write_parquet(pp)
+    passages.select("doc_id", "lang", "source", "title", "text").write_parquet(sp)
+    stats = [{"builder": name, "pairs": pairs.height, "passages": passages.height}] + (
+        pairs.group_by("source", "origin", "direction", "split")
+        .agg(n=pl.len(), with_negatives=(pl.col("neg_ids").list.len() > 0).sum())
+        .sort("source", "origin", "direction", "split")
+        .to_dicts()
+    )
+    return {
+        "pairs": str(pp),
+        "passages": str(sp),
+        "stats": stats,
+        "n_pairs": pairs.height,
+        "n_passages": passages.height,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--profile", choices=["pilot", "full"])
@@ -322,52 +394,30 @@ def main(argv: list[str] | None = None) -> int:
         "build_pairs", stage_params, [Path(__file__), ROOT / "src/trifact/data/bm25.py"], inputs_m
     )
     t0 = time.perf_counter()
-    mt = None
-    if mt_dir.is_dir():
-        mt = (
-            pl.scan_parquet(str(mt_dir / "*/translations-*.parquet"))
-            .filter(qc_ok(params["nli"]["kk_filters"]["min_chrf_back"]))
-            .select("src_lang", "tgt_lang", "text", "translation")
-            .collect()
-        )
+    jobs = ["ms_marco", "mmarco_ru", "miracl", "ru_hnp", "qa", "kazparc"] + (
+        ["synthetic"] if args.synthetic else []
+    )
+    cfg = {"root": str(root), "k": k, "val": val, "seed": seed, "profile": profile, "cap": stage_params["cap"],
+           "mt_dir": str(mt_dir) if mt_dir.is_dir() else None, "min_chrf": params["nli"]["kk_filters"]["min_chrf_back"],
+           "synthetic": str(args.synthetic) if args.synthetic else None, "tmp": str(root / ".cache/work/build_pairs")}  # fmt: skip
     with ResourceMonitor() as mon:
         if out.exists():
             shutil.rmtree(out)
         w = DatasetWriter(out, LakeConfig.from_params(params["lake"], root))
         stats: list[dict[str, Any]] = []
-        builders = [
-            ("ms_marco", lambda: ms_marco(root, k, val, seed)), ("mmarco_ru", lambda: mmarco(root, k, val, seed)),
-            ("miracl", lambda: miracl(root, k)), ("ru_hnp", lambda: ru_hnp(root, val, seed)),
-            ("qa", lambda: qa_pairs(root, k, mt)), ("kazparc", lambda: kazparc(root)),
-        ]  # fmt: skip
-        if args.synthetic:
-            from trifact.data.synthetic import synthetic_pairs
-
-            builders.append(("synthetic", lambda: synthetic_pairs(args.synthetic)))
-        cap = stage_params["cap"]
-        for name, fn in builders:
-            pairs, passages = fn()
-            if profile == "pilot":
-                pairs = pairs.filter(
-                    pl.col("pair_id").hash(seed=seed) % 1000 < max(1, int(1000 * cap / 20_000_000))
-                )
-                used = (
-                    pl.concat([pairs.select("doc_id"), pairs.select(doc_id="neg_ids").explode("doc_id")])
-                    .drop_nulls()
-                    .unique()
-                )
-                passages = passages.join(used, on="doc_id", how="semi")
-            w.write("pairs", pairs, lang_col="q_lang")
-            w.write("passages", passages.select("doc_id", "lang", "source", "title", "text"), lang_col=None)
-            stats.append({"builder": name, "pairs": pairs.height, "passages": passages.height})
-            stats += (
-                pairs.group_by("source", "origin", "direction", "split")
-                .agg(n=pl.len(), with_negatives=(pl.col("neg_ids").list.len() > 0).sum())
-                .sort("source", "origin", "direction", "split")
-                .to_dicts()
-            )
-            log.info("%s: %d pairs, %d passages", name, pairs.height, passages.height)
-            del pairs, passages
+        # one fresh process per builder: memory freed by Polars is not returned to the OS, so seven builders in one
+        # process add up past the RAM of the machine
+        ctx = multiprocessing.get_context("spawn")
+        for name in jobs:
+            with ProcessPoolExecutor(1, mp_context=ctx) as pool:
+                res = pool.submit(run_builder, name, cfg).result()
+            for table, lang_col in (("pairs", "q_lang"), ("passages", None)):
+                with pq.ParquetFile(res[table]) as f:
+                    for b in f.iter_batches(batch_size=200_000):
+                        w.write(table, pa.Table.from_batches([b]), lang_col=lang_col)
+                Path(res[table]).unlink()
+            stats += res["stats"]
+            log.info("%s: %d pairs, %d passages", name, res["n_pairs"], res["n_passages"])
         shards = w.close()
     total = sum(s.rows for s in shards if s.table == "pairs")
     by_dir: dict[str, int] = {}
@@ -375,9 +425,9 @@ def main(argv: list[str] | None = None) -> int:
         if "direction" in s:
             by_dir[s["direction"]] = by_dir.get(s["direction"], 0) + s["n"]
     metrics = {"pairs_total": total, "by_direction": dict(sorted(by_dir.items())), "detail": stats}
-    lic = inherited(root, SOURCES) + ([MT_LICENSE] if mt is not None else [])
+    lic = inherited(root, SOURCES) + ([MT_LICENSE] if mt_dir.is_dir() else [])
     inputs = [raw_input(root, s) for s in SOURCES] + [dataset_input_of(root, root / "task/splits")]
-    if mt is not None:
+    if mt_dir.is_dir():
         inputs.append(dataset_input_of(root, mt_dir))
     finish(
         out, name="task/retrieval", layer="task", stage="build_pairs", source="+".join(SOURCES),
