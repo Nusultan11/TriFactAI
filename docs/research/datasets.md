@@ -12,7 +12,8 @@
 | FineWeb-2 KK | `HuggingFaceFW/fineweb-2` `kaz_Cyrl` | ✓ 3 375 998 документов | ✓ 6.9 GB | ODC-By |
 | Multidomain Kazakh | `kz-transformers/multidomain-kazakh-dataset` | ● 24 883 808 записей CSV (карточка и datasets-server дают 15 510 000 — частичный подсчёт) | ● 6.97 GB parquet | Apache-2.0 |
 | KazParC (параллельный kk/ru/en/tr) | `issai/kazparc` | ● 15 103 193 строк (все конфиги, вкл. синтетику) | ● 2.26 GB parquet | CC BY 4.0, gated |
-| Wikidata | dumps.wikimedia.org (JSON) | ≈ 100M+ сущностей | ≈ 100+ GB сжатый | CC0 |
+| Wikidata | dumps.wikimedia.org (JSON) `20261116` | ● 122 308 973 сущностей (2026-11-19); kk-метки у 0.38 %, en у 76.4 % | ● 103.9 GB bz2 → 5.29 GB parquet | CC0 |
+| Wikipedia wikitext (kk целиком, ru части 1–3, en части 1–4) | dumps.wikimedia.org `20261101` pages-articles | ● статьи kk 249 063, ru 467 338, en 216 913 + redirect kk 47 326, ru 530 018, en 119 478 (2026-11-18) | ● 4.46 GB parquet | CC BY-SA 4.0 + GFDL |
 
 ## 2. NER
 
@@ -57,14 +58,14 @@ Silver NER: ссылки внутри статей Wikipedia → QID Wikidata �
 
 | Слой | Целевой объём | Хранение (оценка) |
 |---|---|---|
-| raw-корпуса | ~27 M документов (Wikipedia 8.6 M + FineWeb-2 kk 3.4 M + multidomain kk 15.5 M) | ~40 GB parquet |
-| curated (после чистки/дедупа) | ожидаемо 60–80 % от raw | ~30 GB |
-| **RAG-индекс** | **~35 M чанков** (оценка: ~20 M en, ~7 M ru, ~8 M kk) | векторы fp16 на диске ~72 GB; binary quantization в RAM ~4.5 GB |
-| NER | 5–10 M silver + ~1.3 M gold/реальных предложений | ~5 GB |
-| Retrieval pairs | 10–20 M (MS MARCO, mMARCO, синтетика, KazParC) | ~10 GB |
-| SFT grounded QA | 1–2 M | ~5 GB |
-| NLI | ~1.2 M | ~0.5 GB |
-| Eval (заморожен) | 30–50k, из них ≥ 3k проверены вручную, все 9 языковых направлений | — |
+| raw-корпуса | ~27 M документов (Wikipedia 8.6 M + FineWeb-2 kk 3.4 M + multidomain kk 15.5 M); ● 36.9 M (multidomain kk — 24.9 M записей) | ~40 GB parquet; ● весь raw-слой 48.5 GB (19 источников, вместе с Wikidata и wikitext) |
+| curated (после чистки/дедупа) | ожидаемо 60–80 % от raw; ● 30.85 M документов = 84 % (kk 19.86 M, ru 4.62 M, en 6.37 M; 2026-11-20) | ~30 GB; ● corpus 23.7 GB |
+| **RAG-индекс** | **~35 M чанков** (оценка: ~20 M en, ~7 M ru, ~8 M kk); ● нарезано 59.63 M (kk 29.59 M, ru 11.78 M, en 18.25 M), отбор для индекса — этап 6 | векторы fp16 на диске ~72 GB; binary quantization в RAM ~4.5 GB |
+| NER | 5–10 M silver + ~1.3 M gold/реальных предложений; ● silver 4.52 M (kk 0.24 M), gold 0.44 M (все доступные gold-наборы), 2026-11-20 | ~5 GB |
+| Retrieval pairs | 10–20 M (MS MARCO, mMARCO, синтетика, KazParC); ● 14.98 M, 9 направлений, kk-kk 63.5k; синтетических запросов 33.5k | ~10 GB |
+| SFT grounded QA | 1–2 M; ● 0.31 M (синтетика учителя 1.8k — квота Kaggle, PROGRESS блокер 3) | ~5 GB |
+| NLI | ~1.2 M; ● train 1.0 M (en 393k, ru 393k, kk 210k MT) | ~0.5 GB |
+| Eval (заморожен) | 30–50k, из них ≥ 3k проверены вручную, все 9 языковых направлений; ● qa 32.4k и ner заморожены; retrieval 38.6k запросов и nli 12.7k ждут ручной проверки 3.5k элементов | — |
 | Eval `docproc` (заморожен, этап 4) | ● 150 документов: по 18 на вид (pdf_text, pdf_columns, pdf_tables, pdf_scan, pdf_word, docx, html, txt; по 6 на kk/ru/en) + 6 смешанных kk/ru/en; 239 стр. PDF; 3 длинных PDF по 300 стр.; 17 враждебных файлов. Текст — абзацы `clean/wikipedia` (CC-BY-SA-3.0) | 161 MB |
 
 Ступени построения индекса — эксперимент RET-S, оценки пропускной способности — [архитектура §7.3, §9](../architecture/docs/01-architecture.md).
@@ -76,6 +77,7 @@ Silver NER: ссылки внутри статей Wikipedia → QID Wikidata �
 | Источник | Лицензия | Решение | release | Основание |
 |---|---|---|---|---|
 | Wikipedia, MIRACL corpus | CC BY-SA 3.0 (+ GFDL) | allowed | да | карточка HF, условия Wikimedia |
+| Wikipedia wikitext (дампы `20261101`) | CC BY-SA 4.0 + GFDL | allowed | да | Wikimedia Terms of Use, dumps.wikimedia.org/legal.html (2026-11-18) |
 | FineWeb-2 kk | ODC-By 1.0 + CommonCrawl ToU | allowed | да | карточка HF |
 | Multidomain Kazakh | Apache-2.0 (карточка) | allowed | **нет** | собран из CC100, OSCAR, новостей и книг; лицензия карточки не снимает права третьих лиц на тексты |
 | KazParC | CC BY 4.0 | allowed | да | в карточке HF лицензии нет; авторы: arXiv:2403.19399 и страница релиза ISSAI |
