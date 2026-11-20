@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -93,6 +94,11 @@ def git_sha(root: Path | None = None) -> str:
         return "unknown"
 
 
+def _mlflow_name(name: str) -> str:
+    """MLflow keys allow letters, digits, `_ - . / ` and spaces: `language_moves.kk->kk` -> `language_moves.kk-_kk`."""
+    return re.sub(r"[^\w\-./ ]", "_", name)
+
+
 def log_mlflow(
     experiment: str,
     run_name: str,
@@ -116,8 +122,8 @@ def log_mlflow(
         mlflow.set_tracking_uri(uri)
         mlflow.set_experiment(experiment)
         with mlflow.start_run(run_name=run_name):
-            mlflow.log_params({k: str(v)[:500] for k, v in params.items()})
-            mlflow.log_metrics(metrics)
+            mlflow.log_params({_mlflow_name(k): str(v)[:500] for k, v in params.items()})
+            mlflow.log_metrics({_mlflow_name(k): v for k, v in metrics.items()})
             for a in artifacts or []:
                 mlflow.log_artifact(str(a))
         return True
