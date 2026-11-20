@@ -44,6 +44,7 @@ from trifact.lake.stats import ResourceMonitor, log_mlflow
 log = logging.getLogger("trifact.eda")
 OUT = ROOT / "reports" / "eda"
 BATCH = 20_000
+BATCH_BYTES = 32 * 2**20  # uncompressed bytes per batch: words of a batch are exploded into one row each
 TOP_WORDS = 50_000
 TOP_LINES = 200
 SAMPLE_RATE = 0.02
@@ -290,7 +291,10 @@ def profile_shard(args: tuple[str, str, str, str, list[str], dict[str, Any]]) ->
     id_col = next((c for c in ID_COLS if c in schema), None)
     ids = []
     seed = opt.get("seed", 42)
-    for b in pf.iter_batches(batch_size=BATCH):
+    md = pf.metadata
+    raw_bytes = sum(md.row_group(i).total_byte_size for i in range(md.num_row_groups))
+    batch = max(500, min(BATCH, int(BATCH_BYTES * md.num_rows / max(raw_bytes, 1))))
+    for b in pf.iter_batches(batch_size=batch):
         df = pl.from_arrow(b)
         assert isinstance(df, pl.DataFrame)
         for c in df.columns:
@@ -334,10 +338,15 @@ def profile_shard(args: tuple[str, str, str, str, list[str], dict[str, Any]]) ->
                 pick = s.filter(key < int(SAMPLE_RATE * 2**64)).drop_nulls().to_list()
                 sample.setdefault(c, []).extend(x[:5000] for x in pick)
             n = s.fill_null("").str.len_chars()
-            idx = df.with_columns(_n=n).with_row_index("_r")
-            ex = idx.filter(pl.col("_n") > 0).sort("_n")
+            # indices of the 3 shortest / longest non-empty texts: sorting the batch with its texts doubles it
+            nz = n.to_frame("_n").with_row_index("_r").filter(pl.col("_n") > 0)
+            short_i = nz.bottom_k(3, by="_n").sort("_n")["_r"]
+            long_i = nz.top_k(3, by="_n").sort("_n")["_r"]
             pick_cols = [x for x in [id_col] if x]
-            for name, part in (("shortest", ex.head(3)), ("longest", ex.tail(3))):
+            for name, part in (
+                ("shortest", df.with_columns(_n=n)[short_i]),
+                ("longest", df.with_columns(_n=n)[long_i]),
+            ):
                 for r in part.iter_rows(named=True):
                     extremes.setdefault(f"{c}:{name}", []).append(
                         {
