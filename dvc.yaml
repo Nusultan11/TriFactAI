@@ -114,8 +114,8 @@ stages:
       xnli_kk: {run: data/external/kaggle/translate_xnli_kk, sources: xnli}
       qa: {run: data/external/kaggle/translate_qa, sources: "squad_v2,sberquad,kazqad,miracl"}
     do:
-      cmd: python -m trifact.data.translations import ${key} --kaggle-out ${item.run}/out --sentences ${item.run}/sentences_all.parquet --sources ${item.sources}
-      deps: [src/trifact/data/translations.py, "${item.run}"]
+      cmd: python -m trifact.data.translations import ${key} --kaggle-out ${item.run}/out --sentences ${item.run}/sentences_all.parquet --sources ${item.sources} --retry data/external/kaggle/translate_retry/out
+      deps: [src/trifact/data/translations.py, "${item.run}", data/external/kaggle/translate_retry]
       params: [curation.langid]
       outs: ["data/task/mt/${key}"]
 
@@ -131,13 +131,19 @@ stages:
     params: [scale, chunking, curation.stats.tokenizers.xlmr]
     outs: [{data/task/chunks: {persist: true}}]
 
-  synthetic: # import + filters of the Kaggle teacher runs (ADR-0015, ADR-0020)
-    foreach: [queries, qa]
-    do:
-      cmd: python -m trifact.data.synthetic import --kind ${item} --kaggle-out data/external/kaggle/teacher_${item}/out
-      deps: [src/trifact/data/synthetic.py, data/task/chunks, "data/external/kaggle/teacher_${item}"]
-      params: [teacher, sft.mix, scale.min_kk_share]
-      outs: ["data/task/synthetic/${item}"]
+  synthetic_queries: # import + filters of the Kaggle teacher runs (ADR-0015, ADR-0020)
+    cmd: python -m trifact.data.synthetic import --kind queries --kaggle-out data/external/kaggle/teacher_queries/out
+    deps: [src/trifact/data/synthetic.py, data/task/chunks, data/external/kaggle/teacher_queries]
+    params: [teacher, sft.mix, scale.min_kk_share]
+    outs: [data/task/synthetic/queries]
+
+  synthetic_qa:      # import writes the claim-level NLI pairs that the Kaggle nli_score run scored
+    cmd: >-
+      python -m trifact.data.synthetic import --kind qa --kaggle-out data/external/kaggle/teacher_qa/out &&
+      python -m trifact.data.synthetic finalize --kind qa --scores data/external/kaggle/nli_score_qa
+    deps: [src/trifact/data/synthetic.py, data/task/chunks, data/external/kaggle/teacher_qa, data/external/kaggle/nli_score_qa]
+    params: [teacher, sft.mix, scale.min_kk_share, verification.nli_job]
+    outs: [data/task/synthetic/qa]
 
   build_pairs:
     cmd: python -m trifact.data.build_pairs --synthetic data/task/synthetic/queries

@@ -4,6 +4,9 @@ python -m trifact.data.synthetic prepare  --kind queries|qa --n N --out DIR     
 python -m trifact.data.synthetic import   --kind queries|qa --kaggle-out DIR     # filters -> task/synthetic/<kind>
 python -m trifact.data.synthetic finalize --kind qa --scores DIR                  # NLI filter of answers
 
+`import --kind qa` writes the claim-level NLI pairs to `<work>/nli_in` (Kaggle job `nli_score` input) and the
+candidates to `<work>/qa_candidates.parquet`; `--work` defaults to `data/.cache/work/synthetic_<kind>`.
+
 Queries (`configs/prompts/query_gen.md`): one chunk -> a query in kk, ru and en (3 language directions per chunk, so
 9 directions over the three chunk languages). Filters, in order (drop reason in parentheses): JSON object with the
 three keys (`parse`); 3..20 words (`length`); lid.176 language equals the requested one (`language`); the query is not a
@@ -15,8 +18,10 @@ its verdict (the cross-lingual dense round-trip needs the stage 6 embedder); exa
 Grounded QA (`configs/prompts/grounded_qa_gen.md`): a target chunk + 2 chunks of the same document or language as
 evidence, question language and mode (answerable / unanswerable) drawn to `sft.mix` and `scale.min_kk_share`. Filters:
 JSON (`parse`); question and answer language (`language`); answerable: at least one citation and only evidence ids
-(`citation`); unanswerable: the exact refusal phrase (`refusal`); NLI support of the answer by the cited chunks
-(`finalize`, Kaggle job `nli_score`, entailment >= `teacher.filters.min_nli_entail`, `nli`).
+(`citation`); unanswerable: the exact refusal phrase (`refusal`); NLI support (`nli`, `finalize`): every cited claim
+is scored against 3-sentence windows of its passages, an answer passes when its weakest claim's best window has
+entailment >= `teacher.filters.min_nli_entail`. Passages are numbered in the prompt and the numbers mapped back
+to chunk ids. Prompts the time budget left unanswered are counted as `not_generated`.
 """
 
 from __future__ import annotations
@@ -437,18 +442,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--n", type=int, default=1000)
     ap.add_argument("--out", type=Path, help="prepare: work directory (prompts in <out>/in, meta.parquet)")
     ap.add_argument("--kaggle-out", type=Path)
-    ap.add_argument("--scores", type=Path)
+    ap.add_argument("--scores", type=Path, help="finalize: Kaggle nli_score output over <work>/nli_in")
+    ap.add_argument(
+        "--work", type=Path, help="NLI pairs and QA candidates (default data/.cache/work/synthetic_<kind>)"
+    )
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
     if args.command == "prepare":
         return prepare(args.kind, args.n, args.out)
-    work = args.kaggle_out.parent if args.kaggle_out else args.scores.parent
-    meta = pl.read_parquet(work / "meta.parquet")
+    work = args.work or ROOT / "data" / ".cache" / "work" / f"synthetic_{args.kind}"
+    work.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     with ResourceMonitor():
         if args.command == "import":
+            meta = pl.read_parquet(args.kaggle_out.parent / "meta.parquet")
             run = json.loads((args.kaggle_out / "run.json").read_text())
             summary = json.loads((args.kaggle_out / "summary.json").read_text())
             if args.kind == "queries":
