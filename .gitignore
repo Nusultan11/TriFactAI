@@ -17,6 +17,7 @@ __pycache__/
 /mlruns/
 /reports/*.json
 /reports/eda/
+/reports/docproc/
 
 # Task manager state, local tools
 .shrimp/

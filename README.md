@@ -19,7 +19,7 @@ built for corpora of tens of millions of records.
 
 ```bash
 cp .env.example .env
-uv sync --extra ml --extra dev && uv run pre-commit install   # versions pinned in uv.lock
+uv sync --extra ml --extra dev --extra ingestion && uv run pre-commit install   # versions pinned in uv.lock; OCR also needs the Tesseract 5 binary
 docker compose -f infra/docker-compose.yml up -d --wait       # Postgres, Qdrant, Redis, S3 (+buckets), MLflow, Prometheus, Grafana
 uv run dvc pull                                               # raw layer from the `local` remote, or rebuild:
 uv run dvc repro acquire wikidata                             # needs HF_TOKEN for gated KazNERD / KazQAD / KazParC

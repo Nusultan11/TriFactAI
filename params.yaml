@@ -282,6 +282,63 @@ split:
 chunking:
   max_tokens: 350
   overlap_tokens: 50
+  # ROADMAP 4.3: variants prepared for stage 6, chosen there by retrieval metrics (architecture §6.1).
+  # sections: false lets a chunk cross section boundaries (the corpus has no sections either way).
+  variants:
+    s350:  {max_tokens: 350, overlap_tokens: 50, sections: true}    # default (above)
+    s200:  {max_tokens: 200, overlap_tokens: 30, sections: true}
+    s512:  {max_tokens: 512, overlap_tokens: 64, sections: true}
+    flat350: {max_tokens: 350, overlap_tokens: 50, sections: false}
+
+docproc:                    # stage 4, architecture §7.1, ADR-0021
+  engine: router            # DOC-3 champion; pymupdf | docling | router
+  limits:                   # architecture §6.1 "Устойчивость": failed with a reason, the worker survives
+    max_bytes: 209715200    # 200 MB upload
+    max_pages: 2000
+    timeout_s: 600          # per document, enforced by the isolated parse process
+    max_rss_gb: 6.0         # parse process killed above this
+    max_chars: 50000000     # text of one document
+  pymupdf:
+    min_page_chars: 40      # fewer text-layer characters -> the page needs OCR
+    max_bad_char_share: 0.10  # U+FFFD / private-use share of a text layer -> broken encoding, OCR
+    heading_size_ratio: 1.15  # span size / body size that makes a short block a heading
+    heading_max_chars: 200
+    furniture_band: 0.08    # top/bottom page share where running headers and footers are looked for
+    furniture_min_share: 0.5  # a line repeated on this share of pages (>= 3 pages) is a header/footer
+  ocr:
+    engine: tesseract       # DOC-2 champion: only Tesseract keeps the Kazakh letters (reports/docproc.json)
+    langs: [kaz, rus, eng]
+    dpi: 300
+    tessdata: data/.cache/models/tessdata   # TESSDATA_PREFIX of both PyMuPDF OCR and Docling Tesseract CLI
+    tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"   # overridden by TRIFACT_TESSERACT on Linux
+    models:                 # tessdata_best 4.1.0 (github.com/tesseract-ocr/tessdata_best), Apache-2.0; 2026-11-20
+      kaz: {url: "https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/kaz.traineddata", sha256: 34cbd9204b1ff3cc813d50b29e3c0ae3752bcc201f261a4a393ceca3895aea9d}
+      rus: {url: "https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/rus.traineddata", sha256: b617eb6830ffabaaa795dd87ea7fd251adfe9cf0efe05eb9a2e8128b7728d6b6}
+      eng: {url: "https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/eng.traineddata", sha256: 8280aed0782fe27257a68ea10fe7ef324ca0f8d85bd2fd145d1c2b560bcb66ba}
+      osd: {url: "https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/osd.traineddata", sha256: 9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff}
+  docling:
+    threads: 8
+    table_mode: fast        # TableFormer: fast = cell F1 0.993 vs 1.000 for accurate, 1.4x faster table pages
+    ocr_engine: tesseract   # tesseract | easyocr | rapidocr (DOC-2)
+  router:                   # DOC-3: a page goes to Docling when it has any of these signals (reports/docproc.json)
+    columns: false          # >= 2 text columns (XY-cut): the fast path reads them as well as Docling, 100x faster
+    tables: true            # ruled grid or >= table_min_rows rows of aligned short cells
+    table_min_rows: 3
+    scans: docling          # docling = Docling + Tesseract CLI (CER, headings, tables better) | ocr = PyMuPDF + Tesseract
+  bench:                    # trifact.data.build_docproc + trifact.evaluation.eval_docproc
+    seed: 42
+    docs_per_kind: 6        # per language and document kind
+    min_pages: 2
+    max_pages: 4
+    big_doc_pages: 300      # one text PDF of this size per language for throughput/RAM (NFR: >= 2 pages/s)
+    block_match_min: 80     # rapidfuzz partial ratio that locates a reference block in the output
+    heading_match_min: 90
+    source: clean/wikipedia # real kk/ru/en paragraphs and section titles (CC-BY-SA-3.0, allowed)
+    fonts:                  # first existing file wins (Windows, then Debian DejaVu)
+      sans: ["C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+      sans_bold: ["C:/Windows/Fonts/arialbd.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+      serif: ["C:/Windows/Fonts/times.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"]
+      serif_bold: ["C:/Windows/Fonts/timesbd.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"]
 
 ner:
   base_model: FacebookAI/xlm-roberta-base

@@ -29,6 +29,10 @@ ingestion = [
     "docling>=2.10",
     "fasttext-predict>=0.9.2.4",  # predict-only fastText; fasttext-wheel breaks on numpy 2
     "dateparser>=1.2",
+    "pymupdf>=1.26",
+    "python-docx>=1.1",
+    "rapidfuzz>=3.9",
+    "easyocr>=1.7",
 ]
 ml = [
     "torch>=2.4",

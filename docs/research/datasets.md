@@ -65,6 +65,7 @@ Silver NER: ссылки внутри статей Wikipedia → QID Wikidata �
 | SFT grounded QA | 1–2 M | ~5 GB |
 | NLI | ~1.2 M | ~0.5 GB |
 | Eval (заморожен) | 30–50k, из них ≥ 3k проверены вручную, все 9 языковых направлений | — |
+| Eval `docproc` (заморожен, этап 4) | ● 150 документов: по 18 на вид (pdf_text, pdf_columns, pdf_tables, pdf_scan, pdf_word, docx, html, txt; по 6 на kk/ru/en) + 6 смешанных kk/ru/en; 239 стр. PDF; 3 длинных PDF по 300 стр.; 17 враждебных файлов. Текст — абзацы `clean/wikipedia` (CC-BY-SA-3.0) | 161 MB |
 
 Ступени построения индекса — эксперимент RET-S, оценки пропускной способности — [архитектура §7.3, §9](../architecture/docs/01-architecture.md).
 

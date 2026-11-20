@@ -24,6 +24,8 @@ from typing import Any
 import httpx
 import polars as pl
 
+from trifact.core.schemas import Lang
+
 log = logging.getLogger(__name__)
 
 ISO3_TO_1 = {
@@ -178,3 +180,31 @@ def detect(texts: pl.Series, lid: LangId, cfg: LangConfig) -> pl.DataFrame:
             pl.col("para_lang").fill_null(pl.lit([], dtype=pl.List(pl.String))),
         )
     )
+
+
+KK_LETTERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
+
+
+def script_lang(text: str) -> str:
+    """kk / ru / en by script alone: Kazakh-specific letters, then Cyrillic vs Latin majority."""
+    letters = [c for c in text[:5000] if c.isalpha()]
+    if not letters:
+        return "en"
+    if sum(c in KK_LETTERS for c in letters) / len(letters) >= 0.01:
+        return "kk"
+    cyr = sum("Ѐ" <= c <= "ӿ" for c in letters)
+    return "ru" if cyr * 2 >= len(letters) else "en"
+
+
+class TextLanguageDetector:
+    """`trifact.core.interfaces.LanguageDetector` for chunks: fastText label when it is kk/ru/en, otherwise
+    (or on low confidence) the script heuristic; score is the model probability (0 for the fallback)."""
+
+    def __init__(self, lid: LangId, min_score: float = 0.5, max_chars: int = 1000):
+        self.lid, self.min_score, self.max_chars = lid, min_score, max_chars
+
+    def detect(self, text: str) -> tuple[Lang, float]:
+        langs, scores = self.lid.predict([text[: self.max_chars]])
+        if langs[0] in ("kk", "ru", "en") and scores[0] >= self.min_score:
+            return Lang(langs[0]), scores[0]
+        return Lang(script_lang(text)), 0.0

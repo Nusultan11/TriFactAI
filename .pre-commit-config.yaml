@@ -1,4 +1,4 @@
-# Checks of AGENTS.md §5.1 before every commit. Tools come from uv.lock (`uv sync --extra ml --extra dev`),
+# Checks of AGENTS.md §5.1 before every commit. Tools come from uv.lock (`uv sync --extra ml --extra dev --extra ingestion`),
 # so pre-commit and CI use the same versions. Install once: uv run pre-commit install
 repos:
   - repo: local

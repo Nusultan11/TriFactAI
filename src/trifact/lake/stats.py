@@ -93,7 +93,13 @@ def git_sha(root: Path | None = None) -> str:
         return "unknown"
 
 
-def log_mlflow(experiment: str, run_name: str, params: dict[str, Any], metrics: dict[str, float]) -> bool:
+def log_mlflow(
+    experiment: str,
+    run_name: str,
+    params: dict[str, Any],
+    metrics: dict[str, float],
+    artifacts: list[Path] | None = None,
+) -> bool:
     """Best-effort MLflow logging; the manifest is the primary record, MLflow the comparison view."""
     uri = os.environ.get("MLFLOW_TRACKING_URI")
     if not uri:
@@ -112,6 +118,8 @@ def log_mlflow(experiment: str, run_name: str, params: dict[str, Any], metrics: 
         with mlflow.start_run(run_name=run_name):
             mlflow.log_params({k: str(v)[:500] for k, v in params.items()})
             mlflow.log_metrics(metrics)
+            for a in artifacts or []:
+                mlflow.log_artifact(str(a))
         return True
     except Exception as e:  # noqa: BLE001 - any MLflow failure must not lose a finished download
         log.warning("MLflow logging failed for %s: %s", run_name, e)

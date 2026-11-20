@@ -83,8 +83,8 @@ Reranker — самая дорогая часть онлайн-запроса (N
 | Задача | Кандидаты |
 |---|---|
 | Определение языка | **выбран fastText `lid.176`** (176 языков, CC-BY-SA-3.0) — замер этапа 2 ниже; GlotLID (`cis-lmu/glotlid`, 2000+ языков, Apache-2.0) — кандидат |
-| OCR | Docling (встроенный OCR), Tesseract `kaz+rus+eng`, EasyOCR — бенчмарк этапа 4 |
-| Парсинг | Docling (структура, таблицы) vs PyMuPDF (скорость) — двухуровневая схема, бенчмарк этапа 4 |
+| OCR | **выбран Tesseract 5 `kaz+rus+eng`** (tessdata_best 4.1.0); EasyOCR, RapidOCR — сравнение этапа 4, §6.3 |
+| Парсинг | **выбран маршрутизатор PyMuPDF → Docling** (DOC-3, [ADR-0021](../architecture/adr/0021-document-processing-router.md)), §6.3 |
 | Даты | regex + `dateparser` (kk/ru/en) |
 
 ### 6.1 Определение языка: замер этапа 2 (2026-11-18)
@@ -112,3 +112,20 @@ Reranker — самая дорогая часть онлайн-запроса (N
 
 - Казахский текст у Qwen3 занимает в 2.3 раза больше токенов, чем у XLM-R; у Qwen3.5 — в 1.7 раза. Это прямо уменьшает полезный контекст и увеличивает стоимость генерации на kk (этап 7).
 - Доля `<unk>` у XLM-R ≈ 1e-5; у byte-level BPE Qwen `<unk>` не бывает.
+
+### 6.3 Парсинг и OCR: замер этапа 4 (2026-11-20)
+
+Версии: Docling 2.150.1 (MIT; layout Heron, TableFormer), PyMuPDF 2.1 (AGPL-3.0 или коммерческая лицензия Artifex), Tesseract 5.4.0 + tessdata_best 4.1.0 `kaz`/`rus`/`eng` (Apache-2.0), EasyOCR 1.7.2 (Apache-2.0), RapidOCR 3.10 с PP-OCRv5 `cyrillic` (Apache-2.0). CPU Ryzen 7 5800HS, 8 потоков, torch CPU. Набор — `data/eval/docproc` (datasets.md §6), источник цифр — `reports/docproc.json`.
+
+- **Казахские буквы в OCR.** Кириллическая модель EasyOCR (`cyrillic_g2`, 207 символов) содержит ғ қ ө ү і, но не содержит ә ң ұ һ; казахского языка в EasyOCR нет. RapidOCR `cyrillic` на казахском заменяет қ→к, ң→н, ү→у.
+- **CER на сканах (pdf_scan), %, bootstrap 95% CI:**
+
+| Движок | kk | ru | en | с/стр | Пик RSS, MB |
+|---|---|---|---|---|---|
+| Docling + Tesseract CLI `kaz+rus+eng` | 0.74 [0.43, 1.02] | 0.54 [0.39, 0.72] | 0.50 [0.29, 0.70] | 8.6 | 1535 |
+| PyMuPDF + Tesseract (вся страница, 300 dpi) | 3.52 [1.06, 7.17] | 2.97 [0.64, 5.81] | 3.56 [0.87, 6.30] | 5.4 | 587 |
+| Docling + RapidOCR `cyrillic` | 20.85 | 19.28 | 10.30 | 10.1 | 1890 |
+| Docling + EasyOCR `ru,en` | 36.06 | 5.43 | 5.41 | 27.0 | 4053 |
+
+- Отставание PyMuPDF + Tesseract в основном даёт чтение таблиц сканов по столбцам и потеря заголовков (F1 заголовков 0.70 против 0.99).
+- Docling заменяет длинное тире на дефис в тексте PDF. На текстовых PDF это даёт +0.03 п.п. CER к PyMuPDF.

@@ -159,12 +159,13 @@ stages:
     deps: [src/trifact/data/build_eval.py, data/task/splits, data/task/ner, data/task/nli, data/task/mt/qa,
            data/task/retrieval, data/task/sft]
     params: [evaluation, seed]
-    outs: [{data/eval: {persist: true}}]
+    outs: [{data/eval/ner: {persist: true}}, {data/eval/qa: {persist: true}}, {data/eval/retrieval: {persist: true}},
+           {data/eval/nli: {persist: true}}, {data/eval/review: {persist: true}}]
     metrics: [{reports/eval.json: {cache: false}}]
 
   task_eda:    # ROADMAP 3.7
     cmd: python -m trifact.data.task_eda
-    deps: [src/trifact/data/task_eda.py, data/task, data/eval]
+    deps: [src/trifact/data/task_eda.py, data/task, data/eval/ner, data/eval/qa, data/eval/retrieval, data/eval/nli]
     outs: [reports/eda/task.json]
 
   # ------------------------------------------------ corpus index
@@ -181,9 +182,17 @@ stages:
     metrics: [{reports/index.json: {cache: false}}]
 
   # ------------------------------------------------ stage 4: document processing
-  eval_docproc:
+  build_docproc:  # ROADMAP 4.1; frozen after the first build (manifest.yaml), never rebuilt by repro
+    cmd: python -m trifact.data.build_docproc
+    deps: [src/trifact/data/build_docproc.py, data/clean/wikipedia]
+    params: [docproc.bench]
+    outs: [{data/eval/docproc: {persist: true}}]
+
+  eval_docproc:   # ROADMAP 4.2-4.4: DOC-0 … DOC-3, office parsers, long documents, robustness, chunking variants
     cmd: python -m trifact.evaluation.eval_docproc
-    deps: [src/trifact/evaluation/eval_docproc.py, src/trifact/ingestion, data/eval]
+    deps: [src/trifact/evaluation/eval_docproc.py, src/trifact/ingestion, data/eval/docproc]
+    params: [docproc, chunking, evaluation]
+    outs: [{reports/docproc: {cache: false}}]
     metrics: [{reports/docproc.json: {cache: false}}]
 
   # ------------------------------------------------ stage 5: extraction

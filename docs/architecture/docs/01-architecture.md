@@ -230,12 +230,12 @@ sequenceDiagram
 
 | Шаг | Решение | Обоснование |
 |---|---|---|
-| Parse | Быстрый путь PyMuPDF для простых PDF, Docling для сложной структуры и таблиц; выбор по бенчмарку этапа 4 | Нужны точные `page` и `section` для цитат; Docling медленнее на порядок |
-| OCR | Только для страниц без текстового слоя; Docling OCR / Tesseract `kaz+rus+eng` | Качество на казахских сканах проверяется отдельным мини-бенчмарком |
+| Parse | Маршрутизатор DOC-3: каждая страница PDF анализируется PyMuPDF, страницы с таблицами и сканы уходят в Docling, остальные (в том числе многоколоночные) — быстрый путь; DOCX/HTML/TXT — нативные парсеры ([ADR-0021](../adr/0021-document-processing-router.md)) | Нужны точные `page` и `section` для цитат; Docling на CPU медленнее на два порядка |
+| OCR | Только для страниц без текстового слоя или с битым слоем: Docling + Tesseract CLI `kaz+rus+eng` | EasyOCR и RapidOCR теряют казахские буквы, PyMuPDF + Tesseract теряет заголовки и таблицы (бенчмарк этапа 4) |
 | Chunk | Секции → предложения → ~350 токенов, перекрытие ~50; окончательный выбор по метрикам retrieval этапа 6 | Компромисс между точностью цитаты и полнотой контекста |
 | NER + dates | XLM-R (ONNX int8) → PER/ORG/LOC; DATE — regex + dateparser | [ADR-0006](../adr/0006-unified-ner-label-schema.md) |
 | Linking | Нормализованный алиас → кандидаты (`kb_aliases`, приор из ссылок Wikipedia) → ранжирование по типу и контексту | «Астана» / «Astana» / «Астана қаласы» → один QID |
-| Устойчивость | Таймаут и лимит страниц на документ, повтор задачи ×3, затем `failed` с причиной | Битые и огромные файлы не роняют воркер |
+| Устойчивость | Парсер в изолированном процессе (`SafeParser`): таймаут, лимит RSS, лимиты размера и страниц (`docproc.limits`); повтор задачи ×3, затем `failed` с причиной (`ParseError.reason`) | Битые, зашифрованные и огромные файлы не роняют воркер |
 
 ### 6.2 Вопрос → ответ
 
@@ -302,8 +302,11 @@ sequenceDiagram
 |---|---|---|
 | DOC-0 | PyMuPDF (текстовый слой) | CER/WER, порядок чтения, страниц/с |
 | DOC-1 | Docling (layout + таблицы) | + точность заголовков и таблиц |
-| DOC-2 | DOC-1 + OCR: Docling OCR vs Tesseract vs EasyOCR | CER на сканах по языкам |
+| DOC-2 | DOC-1 + OCR: Docling с Tesseract CLI / EasyOCR / RapidOCR; PyMuPDF + Tesseract | CER на сканах по языкам |
 | DOC-3 | Маршрутизатор: быстрый путь → Docling по признакам сложности | качество ≈ DOC-1 при скорости ≈ DOC-0 |
+| OFFICE | DOCX/HTML: нативные парсеры vs Docling-бэкенды; TXT — нативный | те же |
+
+Бенчмарк — `data/eval/docproc` (стадия `build_docproc`): реальные абзацы и заголовки Википедии kk/ru/en, свёрстанные в документы известной структуры, — PDF в одну и две колонки (половина — с перемешанным порядком потока), с таблицами, сканы (растр с шумом, размытием и наклоном), PDF и DOCX из Microsoft Word, HTML со служебной обвязкой, TXT в разных кодировках, смешанные kk/ru/en PDF со сканированной страницей. Плюс длинные PDF (300 стр.) и набор враждебных файлов. Метрики и сравнение — `eval_docproc`, `reports/docproc.json`, MLflow `docproc`. Выбор — [ADR-0021](../adr/0021-document-processing-router.md), конфигурация — `params.yaml: docproc`.
 
 ### 7.2 Extraction (этап 5)
 
@@ -502,14 +505,14 @@ Grafana: дашборды «Service» и «Quality», алерты на p95, р�
 src/trifact/
   core/          схемы, конфиг, интерфейсы (ни от чего не зависит)
   lake/          раскладка слоёв, манифесты, чтение/запись шардов
-  ingestion/     parser, ocr, normalize, langdetect, chunker   (онлайн + офлайн)
+  ingestion/     parser, engines, pdf, docling_backend, ocr, sandbox, normalize, langdetect, chunker   (онлайн + офлайн)
   extraction/    ner, dates, linking
   retrieval/     embedder, store (Qdrant), hybrid (RRF), reranker
   generation/    prompt, llm_client
   verification/  claims, citations, nli
   api/ worker/ inference/                                      рантаймы сервинга
   data/          CPU-стадии DVC: acquire, wikidata, clean, dedup, decontaminate, validate, split,
-                 build_eval, build_ner, build_pairs, build_sft, build_nli, chunk_corpus, build_kb
+                 build_eval, build_ner, build_pairs, build_sft, build_nli, chunk_corpus, build_kb, build_docproc
   batch/         шардированные задания: embed_corpus, annotate_corpus, teacher_generate, index_corpus
   training/      train_ner, train_retriever, train_reranker, train_nli, train_llm
   evaluation/    eval_docproc, eval_ner, eval_retrieval, eval_generation, eval_verification, eval_e2e, gate
@@ -534,7 +537,7 @@ dvc.yaml  params.yaml  pyproject.toml
 | 1 Data Platform & Acquisition | Data Lake, Data Pipeline: Source Loader, Wikidata Parser | `lake`, `data.acquire`, `data.wikidata` | `acquire`, `wikidata` | 0010, 0011, 0014, 0017 |
 | 2 Data Quality & Curation | Normalizer, Quality Filters, Deduplicator, Decontaminator | `ingestion.normalize`, `data.clean/dedup/decontaminate` | `clean`, `dedup`, `decontaminate` | 0011 |
 | 3 Task Datasets | Splitter, NER/Pair/SFT/NLI/Eval Builders, Teacher Job | `data.validate/split/build_*`, `batch.teacher_generate` | `validate`, `split`, `build_*` | 0007, 0015 |
-| 4 Document Processing | Worker: Parser, OCR, Chunker; DocProc Eval | `ingestion.*`, `evaluation.eval_docproc` | `eval_docproc` | 0001 |
+| 4 Document Processing | Worker: Parser, OCR, Chunker; DocProc Eval | `ingestion.*`, `data.build_docproc`, `evaluation.eval_docproc` | `build_docproc`, `eval_docproc` | 0001, 0021 |
 | 5 Extraction | NER/Date/Linker, KB Builder, Annotate Job | `extraction.*`, `data.build_kb`, `batch.annotate_corpus` | `train_ner`, `eval_ner`, `build_kb` | 0006, 0016 |
 | 6 Retrieval at Scale | Hybrid Retriever, Embed/Index Jobs, Qdrant | `retrieval.*`, `data.chunk_corpus`, `batch.embed_corpus/index_corpus` | `train_retriever`, `train_reranker`, `eval_retrieval` | 0002, 0003, 0004, 0013 |
 | 7 Generation | LLM Server, Prompt Builder | `generation.*`, `training.train_llm` | `train_llm`, `eval_generation` | 0012 |

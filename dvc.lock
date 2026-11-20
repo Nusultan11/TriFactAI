@@ -913,3 +913,176 @@ stages:
       md5: 907c1fecd3a71c26e48a1bc7ab6eea5b.dir
       size: 6965125161
       nfiles: 33
+  build_docproc:
+    cmd: python -m trifact.data.build_docproc
+    deps:
+    - path: data/clean/wikipedia
+      hash: md5
+      md5: 20dfa96a62c9b1510d9800ec51cf855f.dir
+      size: 11452893862
+      nfiles: 188
+    - path: src/trifact/data/build_docproc.py
+      hash: md5
+      md5: 03085ea40d4e42645ffdbd3c492ddcab
+      size: 36195
+    params:
+      params.yaml:
+        docproc.bench:
+          seed: 42
+          docs_per_kind: 6
+          min_pages: 2
+          max_pages: 4
+          big_doc_pages: 300
+          block_match_min: 80
+          heading_match_min: 90
+          source: clean/wikipedia
+          fonts:
+            sans:
+            - C:/Windows/Fonts/arial.ttf
+            - /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+            sans_bold:
+            - C:/Windows/Fonts/arialbd.ttf
+            - /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+            serif:
+            - C:/Windows/Fonts/times.ttf
+            - /usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf
+            serif_bold:
+            - C:/Windows/Fonts/timesbd.ttf
+            - /usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf
+    outs:
+    - path: data/eval/docproc
+      hash: md5
+      md5: a8c39815eb1ff09c19dac3f82a7d2018.dir
+      size: 167640519
+      nfiles: 324
+  eval_docproc:
+    cmd: python -m trifact.evaluation.eval_docproc
+    deps:
+    - path: data/eval/docproc
+      hash: md5
+      md5: a8c39815eb1ff09c19dac3f82a7d2018.dir
+      size: 167640519
+      nfiles: 324
+    - path: src/trifact/evaluation/eval_docproc.py
+      hash: md5
+      md5: df29e531100e35a61e749dffafe33769
+      size: 24312
+    - path: src/trifact/ingestion
+      hash: md5
+      md5: 4720f57f235611f9beb18b6976c84830.dir
+      size: 78811
+      nfiles: 11
+    params:
+      params.yaml:
+        chunking:
+          max_tokens: 350
+          overlap_tokens: 50
+          variants:
+            s350:
+              max_tokens: 350
+              overlap_tokens: 50
+              sections: true
+            s200:
+              max_tokens: 200
+              overlap_tokens: 30
+              sections: true
+            s512:
+              max_tokens: 512
+              overlap_tokens: 64
+              sections: true
+            flat350:
+              max_tokens: 350
+              overlap_tokens: 50
+              sections: false
+        docproc:
+          engine: router
+          limits:
+            max_bytes: 209715200
+            max_pages: 2000
+            timeout_s: 600
+            max_rss_gb: 6.0
+            max_chars: 50000000
+          pymupdf:
+            min_page_chars: 40
+            max_bad_char_share: 0.1
+            heading_size_ratio: 1.15
+            heading_max_chars: 200
+            furniture_band: 0.08
+            furniture_min_share: 0.5
+          ocr:
+            engine: tesseract
+            langs:
+            - kaz
+            - rus
+            - eng
+            dpi: 300
+            tessdata: data/.cache/models/tessdata
+            tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
+            models:
+              kaz:
+                url: 
+                  https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/kaz.traineddata
+                sha256: 
+                  34cbd9204b1ff3cc813d50b29e3c0ae3752bcc201f261a4a393ceca3895aea9d
+              rus:
+                url: 
+                  https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/rus.traineddata
+                sha256: 
+                  b617eb6830ffabaaa795dd87ea7fd251adfe9cf0efe05eb9a2e8128b7728d6b6
+              eng:
+                url: 
+                  https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/eng.traineddata
+                sha256: 
+                  8280aed0782fe27257a68ea10fe7ef324ca0f8d85bd2fd145d1c2b560bcb66ba
+              osd:
+                url: 
+                  https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/osd.traineddata
+                sha256: 
+                  9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff
+          docling:
+            threads: 8
+            table_mode: fast
+            ocr_engine: tesseract
+          router:
+            columns: false
+            tables: true
+            table_min_rows: 3
+            scans: docling
+          bench:
+            seed: 42
+            docs_per_kind: 6
+            min_pages: 2
+            max_pages: 4
+            big_doc_pages: 300
+            block_match_min: 80
+            heading_match_min: 90
+            source: clean/wikipedia
+            fonts:
+              sans:
+              - C:/Windows/Fonts/arial.ttf
+              - /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+              sans_bold:
+              - C:/Windows/Fonts/arialbd.ttf
+              - /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+              serif:
+              - C:/Windows/Fonts/times.ttf
+              - /usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf
+              serif_bold:
+              - C:/Windows/Fonts/timesbd.ttf
+              - /usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf
+        evaluation:
+          bootstrap_samples: 1000
+          ci: 0.95
+          human_verified_min: 3000
+          review_per_kind: 500
+          real_docs_min: 50
+    outs:
+    - path: reports/docproc
+      hash: md5
+      md5: 2e9036aa0b806419cd8a964432b13181.dir
+      size: 322564
+      nfiles: 12
+    - path: reports/docproc.json
+      hash: md5
+      md5: daff6bb2f05ad40c16300c0ab623d94b
+      size: 116607
