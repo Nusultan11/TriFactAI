@@ -45,6 +45,9 @@ log = logging.getLogger("trifact.eda")
 OUT = ROOT / "reports" / "eda"
 BATCH = 20_000
 BATCH_BYTES = 32 * 2**20  # uncompressed bytes per batch: words of a batch are exploded into one row each
+VOCAB_CHARS = (
+    200_000  # vocabulary and line counts read the first N characters of a document (a few are 100+ MB)
+)
 TOP_WORDS = 50_000
 TOP_LINES = 200
 SAMPLE_RATE = 0.02
@@ -318,13 +321,14 @@ def profile_shard(args: tuple[str, str, str, str, list[str], dict[str, Any]]) ->
             s = df[c].cast(pl.String)
             res["text"][c] = merge(res["text"].get(c), text_profile(s))
             if opt.get("vocab", True):
-                w = words_of(s)
+                head = s.str.slice(0, VOCAB_CHARS)
+                w = words_of(head)
                 words[c] = (
                     w if c not in words else pl.concat([words[c], w]).group_by("w").agg(pl.col("len").sum())
                 )
                 if words[c].height > 4 * TOP_WORDS:
                     words[c] = words[c].sort("len", descending=True).head(2 * TOP_WORDS)
-                ln = lines_of(s)
+                ln = lines_of(head)
                 lines[c] = (
                     ln
                     if c not in lines
