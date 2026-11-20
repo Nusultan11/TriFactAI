@@ -111,25 +111,31 @@ def copied(query: str, passage: str) -> bool:
 
 def sample_chunks(root: Path, n: int, seed: int, min_kk: float) -> pl.DataFrame:
     """`n` chunks: kk >= `min_kk`, the rest split between ru and en; within a language spread over sources/domains."""
-    lf = (
-        pl.scan_parquet(str(root / "task/chunks/*/*/part-*.parquet"))
-        .select("chunk_id", "doc_id", "source", "lang", "domain", "title", "text", "n_tokens")
-        .filter(pl.col("n_tokens") >= 64)
-    )
     quota = {
         "kk": int(n * max(min_kk, 0.34)),
         "ru": int(n * 0.33),
         "en": n - int(n * max(min_kk, 0.34)) - int(n * 0.33),
     }
+    sizes = DatasetManifest.read(root / "task/chunks").metrics["chunks_by_lang"]
+    # hash threshold per language (~4x the quota passes), applied file by file: no global sort, bounded memory
+    thr = {lg: int(min(1.0, 4 * q / max(sizes.get(lg, 1), 1)) * (2**64 - 1)) for lg, q in quota.items()}
+    cols = ["chunk_id", "doc_id", "source", "lang", "domain", "title", "text", "n_tokens"]
+    picked = []
+    for f in sorted((root / "task/chunks").glob("*/*/part-*.parquet")):
+        lang = f.parent.name
+        if lang not in thr:
+            continue
+        d = (
+            pl.scan_parquet(f).select(cols).filter(pl.col("n_tokens") >= 64)
+            .with_columns(r=pl.col("chunk_id").hash(seed=seed))
+            .filter(pl.col("r") < pl.lit(thr[lang], dtype=pl.UInt64)).collect()
+        )  # fmt: skip
+        # filtered string views still reference the whole file's buffers: copy the few picked rows out
+        picked.append(pl.from_arrow(d.to_arrow()))
+    allp = pl.concat(picked)
     out = []
     for lang, q in quota.items():
-        part = (
-            lf.filter(pl.col("lang") == lang)
-            .with_columns(r=pl.col("chunk_id").hash(seed=seed))
-            .sort("r")
-            .head(q * 3)
-            .collect(engine="streaming")
-        )
+        part = allp.filter(pl.col("lang") == lang).sort("r").head(q * 3)
         # balance domains: round-robin by domain rank
         part = part.with_columns(k=pl.int_range(pl.len()).over("domain")).sort("k", "r").head(q)
         out.append(part.drop("r", "k"))
