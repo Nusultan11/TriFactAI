@@ -416,7 +416,7 @@ llm:                        # ADR-0012
 verification:
   nli_model: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
   nli_job: {model: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7, revision: b5113eb38ab63efdd7f280f8c144ea8b13f978ce,
-            batch_size: 128, max_length: 384}   # Kaggle nli_score: label consistency (stage 3)
+            batch_size: 128, max_length: 512}   # Kaggle nli_score: label consistency (stage 3)
   nli_challengers: [MoritzLaurer/bge-m3-zeroshot-v2.0]
   nei_ratio_threshold: 0.3
 

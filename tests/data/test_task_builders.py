@@ -4,7 +4,7 @@ import polars as pl
 
 from trifact.data.bm25 import BM25
 from trifact.data.build_sft import mix
-from trifact.data.synthetic import cite_ids, copied, lang_key, parse_json
+from trifact.data.synthetic import cite_ids, claim_pairs, copied, lang_key, parse_json
 from trifact.data.task_common import assign_split, norm_key, stable_hash
 from trifact.data.translations import chrf
 
@@ -61,3 +61,24 @@ def test_numbered_citations_map_to_chunk_ids() -> None:
     ids = ["doc/a#0", "doc/b#3"]
     assert cite_ids("Fact one [2]. Fact two [1].", ids) == "Fact one [doc/b#3]. Fact two [doc/a#0]."
     assert cite_ids("Out of range [3], kept [doc/a#0].", ids) == "Out of range [3], kept [doc/a#0]."
+
+
+def test_claim_pairs_check_each_claim_against_its_citations() -> None:
+    ids, texts = ["d#0", "d#1"], ["Abai was born in 1845.", "He died in 1904."]
+    got = claim_pairs(
+        "qa/x", "Abai was born in 1845 [d#0]. He died in 1904 [d#1][d#0]. And more text here.", ids, texts
+    )
+    assert [g["id"] for g in got] == ["qa/x@c0@w0", "qa/x@c1@w0", "qa/x@c2@w0"]
+    assert got[0] == {
+        "id": "qa/x@c0@w0",
+        "premise": "Abai was born in 1845.",
+        "hypothesis": "Abai was born in 1845",
+    }
+    assert got[1]["premise"] == "He died in 1904. Abai was born in 1845."
+    assert got[2]["hypothesis"] == "And more text here"
+
+
+def test_claim_pairs_window_long_passages() -> None:
+    passage = " ".join(f"Sentence number {i} is here." for i in range(6))
+    got = claim_pairs("q", "Claim text [p].", ["p"], [passage], window=3)
+    assert [g["premise"].split()[2] for g in got] == ["0", "2", "3"]  # windows 0-2, 2-4, and the last 3-5

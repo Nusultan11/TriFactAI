@@ -291,6 +291,40 @@ def cite_ids(answer: str, ids: list[str]) -> str:
     )
 
 
+CLAIM = re.compile(r"(.*?)((?:\s*\[[^\[\]\s]+\])+)\s*[.!?…]?", re.DOTALL)
+
+
+def claim_pairs(
+    qid: str, answer: str, ids: list[str], texts: list[str], window: int = 3
+) -> list[dict[str, str]]:
+    """NLI pairs `<qid>@c<k>@w<j>`: each claim of an answer (the text before a group of citations) against
+    windows of `window` sentences (stride `window - 1`) of the passages it cites; trailing uncited text is
+    checked against all cited passages. A claim is supported when its best window entails it (finalize takes
+    the max over windows, then the min over claims): NLI models judge a whole 350-token passage poorly even
+    when it states the claim verbatim (SummaC-style windowing)."""
+    text = dict(zip(ids, texts, strict=True))
+    out, end, cited_all = [], 0, []
+    for m in CLAIM.finditer(answer):
+        claim = m[1].strip(" .,;:")
+        cited = [c for c in CITE.findall(m[2]) if c in text]
+        end = m.end()
+        cited_all += cited
+        if claim and cited:
+            out.append((claim, cited))
+    tail = answer[end:].strip(" .,;:")
+    if len(tail.split()) >= 3 and cited_all:
+        out.append((tail, cited_all))
+    pairs = []
+    for k, (h, cs) in enumerate(out):
+        sents = [text[c][a:b].strip() for c in dict.fromkeys(cs) for a, b in sentences(text[c])]
+        step = max(window - 1, 1)
+        wins = [" ".join(sents[j : j + window]) for j in range(0, max(len(sents) - window, 0) + 1, step)]
+        if sents and len(sents) > window and (len(sents) - window) % step:
+            wins.append(" ".join(sents[-window:]))
+        pairs += [{"id": f"{qid}@c{k}@w{j}", "premise": w, "hypothesis": h} for j, w in enumerate(wins) if w]
+    return pairs
+
+
 def import_qa(kaggle_out: Path, meta: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     gen = pl.read_parquet(sorted(str(p) for p in (kaggle_out / "out").glob("*.parquet")))
     df = meta.join(gen.select("id", raw="text"), on="id", how="left")
@@ -423,12 +457,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 kept, dropped = import_qa(args.kaggle_out, meta)
-                # NLI pairs for the Kaggle job: cited evidence -> answer without citations
-                ev = kept.select(
-                    "id", "answer_plain", ids="evidence_ids", texts="evidence_texts", cited="cited"
+                # NLI pairs for the Kaggle job: every cited claim against the passages it cites
+                ev = kept.filter(pl.col("mode") == "answerable").select(
+                    "id", "answer", "evidence_ids", "evidence_texts"
                 )
-                pairs = [{"id": i, "premise": " ".join(t for c, t in zip(ids, texts, strict=True) if c in set(cited)), "hypothesis": a}
-                         for i, a, ids, texts, cited in ev.iter_rows() if cited]  # fmt: skip
+                pairs = [p for i, a, ids, texts in ev.iter_rows() for p in claim_pairs(i, a, ids, texts)]
                 (work / "nli_in").mkdir(exist_ok=True)
                 pl.DataFrame(pairs).write_parquet(work / "nli_in" / "pairs.parquet")
                 (work / "nli_in" / "config.json").write_text(
@@ -441,6 +474,11 @@ def main(argv: list[str] | None = None) -> int:
         else:
             kept = pl.read_parquet(work / "qa_candidates.parquet")
             s = pl.concat([pl.read_parquet(f) for f in sorted(args.scores.glob("out/*.parquet"))])
+            # an answer is as supported as its weakest claim
+            s = (
+                s.group_by(c=pl.col("id").str.replace(r"@w\d+$", "")).agg(pl.col("p_entailment").max())
+                .group_by(id=pl.col("c").str.replace(r"@c\d+$", "")).agg(pl.col("p_entailment").min())
+            )  # fmt: skip
             kept = kept.join(s.select("id", "p_entailment"), on="id", how="left")
             thr = float(params["teacher"]["filters"]["min_nli_entail"])
             bad = (pl.col("mode") == "answerable") & (pl.col("p_entailment").fill_null(0) < thr)
