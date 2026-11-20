@@ -299,26 +299,24 @@ def tag_unit(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
 # ----------------------------------------------------------------------------- noise
 
 
-def gazetteer(silver: pl.LazyFrame, min_count: int, min_share: float) -> pl.DataFrame:
-    """(lang, surface, ner_type): majority type of every silver entity surface."""
-    ents = (
-        silver.select("lang", "tokens", "tags")
-        .with_columns(
-            ents=pl.col("tags").map_elements(
-                lambda t: [list(e[:2]) + [e[2]] for e in entities(list(t))],
-                return_dtype=pl.List(pl.List(pl.String)),
-            )
-        )
-        .collect(engine="streaming")
-    )
-    rows = []
-    for lang, toks, es in ents.select("lang", "tokens", "ents").iter_rows():
-        for s, e, t in es:
-            rows.append((lang, " ".join(toks[int(s) : int(e)]).lower(), t))
-    df = pl.DataFrame(rows, schema=["lang", "surface", "ner_type"], orient="row")
+def surface_counts(df: pl.DataFrame) -> pl.DataFrame:
+    """(lang, surface, ner_type, n): entity surfaces (lowercased) of silver sentences with their counts."""
+    rows = [
+        (lang, " ".join(toks[s:e]).lower(), t)
+        for lang, toks, tags in df.select("lang", "tokens", "tags").iter_rows()
+        for s, e, t in entities(list(tags))
+    ]
+    out = pl.DataFrame(rows, schema=["lang", "surface", "ner_type"], orient="row")
+    return out.group_by("lang", "surface", "ner_type").agg(n=pl.len())
+
+
+def gazetteer(counts: list[str], min_count: int, min_share: float) -> pl.DataFrame:
+    """(lang, surface, ner_type): majority type of every silver entity surface, from `surface_counts` files."""
     agg = (
-        df.group_by("lang", "surface", "ner_type")
-        .len()
+        pl.scan_parquet(counts)
+        .group_by("lang", "surface", "ner_type")
+        .agg(len=pl.col("n").sum())
+        .collect(engine="streaming")
         .with_columns(total=pl.col("len").sum().over("lang", "surface"))
     )
     return (
@@ -371,8 +369,8 @@ def prf(gold: list[list[str]], pred: list[list[str]]) -> dict[str, Any]:
     return out
 
 
-def silver_noise(silver: pl.LazyFrame, gold: pl.DataFrame, cfg: dict[str, Any]) -> dict[str, Any]:
-    gaz = gazetteer(silver, cfg["gazetteer_min_count"], cfg["gazetteer_min_share"])
+def silver_noise(counts: list[str], gold: pl.DataFrame, cfg: dict[str, Any]) -> dict[str, Any]:
+    gaz = gazetteer(counts, cfg["gazetteer_min_count"], cfg["gazetteer_min_share"])
     # (a) type agreement on shared surfaces
     gold_ents = []
     for lang, toks, tags in gold.select("lang", "tokens", "tags").iter_rows():
@@ -448,7 +446,7 @@ def review_sheet(silver: pl.DataFrame, path: Path, per_lang: int, seed: int) -> 
 
 def build_silver(
     root: Path, work: Path, params: dict[str, Any], workers: int, limit_shards: int | None
-) -> tuple[pl.LazyFrame, dict[str, Any]]:
+) -> tuple[list[str], dict[str, Any]]:
     cfg = params["ner"]["silver"]
     m = SourceManifest.read(source_dir(root, "raw", "wikipedia_wikitext"))
     base = source_dir(root, "raw", "wikipedia_wikitext")
@@ -543,7 +541,34 @@ def build_silver(
         stats["types"].update(r["types"])
     log.info("silver pass 3: %s", dict(stats["reasons"]))
     files = sorted(str(p) for p in (work / "tag").glob("*.parquet"))
-    return pl.scan_parquet(files), {k: dict(v) for k, v in stats.items()}
+    return files, {k: dict(v) for k, v in stats.items()}
+
+
+def select_silver(
+    files: list[str], eval_keys: pl.Series, cap: int, seed: int
+) -> tuple[pl.DataFrame, dict[str, int]]:
+    """(file, row, lang, rank) of the kept silver sentences: sentences of gold validation/test and duplicates
+    (by the 64-bit hash of the normalized text) dropped, at most `cap` per language in hash order. Only the
+    keys are held in memory, never the sentences."""
+    keys = pl.concat([
+        pl.scan_parquet(f).select("lang", kh=key_expr(pl.col("tokens").list.join(" ")).hash(seed))
+        .with_row_index("row").with_columns(file=pl.lit(i, dtype=pl.Int32)).collect()
+        for i, f in enumerate(files)
+    ])  # fmt: skip
+    n0 = keys.height
+    keys = keys.filter(~pl.col("kh").is_in(eval_keys.implode()))
+    n1 = keys.height
+    keys = keys.unique("kh", keep="first", maintain_order=True)
+    n2 = keys.height
+    keys = keys.with_columns(rank=pl.col("kh").hash(seed).rank("ordinal").over("lang")).filter(
+        pl.col("rank") <= cap
+    )
+    stats = {
+        "leaked_eval_sentences_dropped": n0 - n1,
+        "duplicates_dropped": n1 - n2,
+        "over_cap_dropped": n2 - keys.height,
+    }
+    return keys.select("file", "row", "lang", "rank"), stats
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -607,38 +632,41 @@ def main(argv: list[str] | None = None) -> int:
             .to_dicts(),
         }
         if silver is not None:
-            eval_keys = set(
+            eval_keys = (
                 gold.filter(pl.col("split").is_in(["validation", "test"]))
-                .select(k=key_expr(pl.col("tokens").list.join(" ")))["k"]
-                .to_list()
+                .select(key_expr(pl.col("tokens").list.join(" ")).hash(params["seed"]))
+                .to_series()
             )
-            cap = stage_params["max_per_lang"]
-            s = silver.with_columns(k=key_expr(pl.col("tokens").list.join(" "))).collect(engine="streaming")
-            leaked = s.filter(pl.col("k").is_in(list(eval_keys)))
-            s = s.filter(~pl.col("k").is_in(list(eval_keys)))
-            before_dedup = s.height
-            s = s.unique("k", keep="first")
-            dup_removed = before_dedup - s.height
-            s = s.with_columns(r=pl.col("k").hash(seed=params["seed"])).sort("r")
-            s = s.with_columns(n=pl.int_range(pl.len()).over("lang")).filter(pl.col("n") < cap)
-            s = s.with_columns(
-                sent_id=pl.concat_str(pl.lit("wiki/"), "lang", "page_id", pl.int_range(pl.len()).over("lang", "page_id"), separator="/"),
-                doc_key=pl.concat_str(pl.lit("wiki/"), "lang", "title", separator="/"),
-                source=pl.lit("wikipedia_wikitext"), origin=pl.lit("silver"), tags_full=pl.col("tags"),
-            ).sort("lang", "page_id")  # fmt: skip
-            for (lang,), part in s.group_by("lang", maintain_order=True):
-                for k in range(0, part.height, 500_000):
-                    w.write("silver_train", part.slice(k, 500_000).select(cols))
+            keep, sel = select_silver(silver, eval_keys, stage_params["max_per_lang"], params["seed"])
+            gaz_dir = work / "gaz"
+            shutil.rmtree(gaz_dir, ignore_errors=True)
+            gaz_dir.mkdir()
+            ents, review, kept = [], [], []
+            # one tagged part at a time: memory is bounded by a part (<= 200k sentences)
+            for i, f in enumerate(silver):
+                k = keep.filter(pl.col("file") == i).select("row", "rank")
+                if k.is_empty():
+                    continue
+                df = pl.read_parquet(f).with_row_index("row").join(k, on="row").with_columns(
+                    sent_id=pl.format("wiki/{}/{}/{}-{}", "lang", "page_id", pl.lit(Path(f).stem), "row"),
+                    doc_key=pl.format("wiki/{}/{}", "lang", "title"),
+                    source=pl.lit("wikipedia_wikitext"), origin=pl.lit("silver"), tags_full=pl.col("tags"),
+                )  # fmt: skip
+                w.write("silver_train", df.select(cols))
+                surface_counts(df).write_parquet(gaz_dir / f"{i:05d}.parquet")
+                ents.append(df.select("lang", e=pl.col("tags").list.eval(pl.element().filter(pl.element().str.starts_with("B-"))))
+                            .explode("e").drop_nulls().group_by("lang", "e").len())  # fmt: skip
+                kept.append(df.group_by("lang").len())
+                review.append(df.filter(pl.col("rank") <= 200).select("sent_id", "lang", "tokens", "tags"))
             metrics["silver"] = {
-                **smeta, "leaked_eval_sentences_dropped": leaked.height,
-                "duplicates_dropped": dup_removed, "over_cap_dropped": None,
-                "kept_by_lang": by_lang(s),
-                "entities_by_lang_type": s.select("lang", e=pl.col("tags").list.eval(pl.element().filter(pl.element().str.starts_with("B-")))).explode("e")
-                .drop_nulls().group_by("lang", "e").len().sort("lang", "e").to_dicts(),
+                **smeta, **sel,
+                "kept_by_lang": {str(a): int(b) for a, b in pl.concat(kept).group_by("lang").agg(pl.col("len").sum()).sort("lang").iter_rows()},
+                "entities_by_lang_type": pl.concat(ents).group_by("lang", "e").agg(pl.col("len").sum()).sort("lang", "e").to_dicts(),
             }  # fmt: skip
-            metrics["silver_noise"] = silver_noise(s.lazy(), gold.filter(pl.col("split") != "drop"), cfg)
+            counts = sorted(str(p) for p in gaz_dir.glob("*.parquet"))
+            metrics["silver_noise"] = silver_noise(counts, gold.filter(pl.col("split") != "drop"), cfg)
             metrics["review_sheet"] = review_sheet(
-                s, root / "review" / "ner_silver" / "to_label.csv", 200, params["seed"]
+                pl.concat(review), root / "review" / "ner_silver" / "to_label.csv", 200, params["seed"]
             )
         shards = w.close()
     sources = GOLD + ([] if args.skip_silver else ["wikipedia_wikitext", "wikidata"])
