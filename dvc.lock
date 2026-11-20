@@ -9,9 +9,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -57,9 +57,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -109,9 +109,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -181,9 +181,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -246,9 +246,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -301,9 +301,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -349,9 +349,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -402,9 +402,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -449,9 +449,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -497,9 +497,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -544,9 +544,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -600,9 +600,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -650,9 +650,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -700,9 +700,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -766,9 +766,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -823,9 +823,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -873,9 +873,9 @@ stages:
       size: 25564
     - path: src/trifact/lake
       hash: md5
-      md5: d5fd5293e418f53249563ce080fadc77.dir
-      size: 19555
-      nfiles: 5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
     params:
       params.yaml:
         lake:
@@ -1086,3 +1086,1591 @@ stages:
       hash: md5
       md5: daff6bb2f05ad40c16300c0ab623d94b
       size: 116607
+  wikidata:
+    cmd: python -m trifact.data.wikidata
+    deps:
+    - path: src/trifact/data/wikidata.py
+      hash: md5
+      md5: f95ed95c40901f9657e6c858ba64d2c0
+      size: 31895
+    - path: src/trifact/lake
+      hash: md5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
+    params:
+      params.yaml:
+        lake:
+          root: data
+          layers:
+          - raw
+          - clean
+          - curated
+          - task
+          - eval
+          shard_rows: 1000000
+          shard_max_mb: 512
+          compression: zstd
+          peak_ram_gb: 10
+          downloads: data/.cache/downloads
+          acquire_workers: 4
+        sources.wikidata:
+          url: 
+            https://dumps.wikimedia.org/wikidatawiki/entities/20261116/wikidata-20261116-all.json.bz2
+          checksum_url: 
+            https://dumps.wikimedia.org/wikidatawiki/entities/20261116/wikidata-20261116-sha1sums.txt
+          revision: '20261116'
+          role: kb
+          connections: 3
+          mirrors:
+          - https://dumps.wikimedia.your.org/wikidatawiki/entities/20261116/wikidata-20261116-all.json.bz2
+          mirror_connections: 3
+          workers: 12
+          range_mb: 512
+          license:
+            license: CC0-1.0
+            use: allowed
+            release: true
+            evidence: wikidata.org/wiki/Wikidata:Licensing; checked 2026-11-18
+    outs:
+    - path: data/raw/wikidata
+      hash: md5
+      md5: 635d03e100853bce995796680357cac2.dir
+      size: 5289503895
+      nfiles: 212
+  wikitext:
+    cmd: python -m trifact.data.wikitext
+    deps:
+    - path: src/trifact/data/wikidata.py
+      hash: md5
+      md5: f95ed95c40901f9657e6c858ba64d2c0
+      size: 31895
+    - path: src/trifact/data/wikitext.py
+      hash: md5
+      md5: 6841e7abe3b37b23481ca5cc9f092e0b
+      size: 9208
+    - path: src/trifact/lake
+      hash: md5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
+    params:
+      params.yaml:
+        lake:
+          root: data
+          layers:
+          - raw
+          - clean
+          - curated
+          - task
+          - eval
+          shard_rows: 1000000
+          shard_max_mb: 512
+          compression: zstd
+          peak_ram_gb: 10
+          downloads: data/.cache/downloads
+          acquire_workers: 4
+        sources.wikipedia_wikitext:
+          base_url: https://dumps.wikimedia.org
+          revision: '20261101'
+          role: corpus_links
+          connections: 2
+          workers: 4
+          license:
+            license: CC-BY-SA-4.0 AND GFDL
+            use: allowed
+            release: true
+            evidence: Wikimedia Terms of Use, dumps.wikimedia.org/legal.html; 
+              checked 2026-11-18
+          files:
+          - wiki: kkwiki
+            lang: kk
+            name: kkwiki-20261101-pages-articles.xml.bz2
+          - wiki: ruwiki
+            lang: ru
+            name: ruwiki-20261101-pages-articles1.xml-p1p224167.bz2
+          - wiki: ruwiki
+            lang: ru
+            name: ruwiki-20261101-pages-articles2.xml-p224168p1042043.bz2
+          - wiki: ruwiki
+            lang: ru
+            name: ruwiki-20261101-pages-articles3.xml-p1042044p2198269.bz2
+          - wiki: enwiki
+            lang: en
+            name: enwiki-20261101-pages-articles1.xml-p1p41242.bz2
+          - wiki: enwiki
+            lang: en
+            name: enwiki-20261101-pages-articles2.xml-p41243p151573.bz2
+          - wiki: enwiki
+            lang: en
+            name: enwiki-20261101-pages-articles3.xml-p151574p311329.bz2
+          - wiki: enwiki
+            lang: en
+            name: enwiki-20261101-pages-articles4.xml-p311330p558391.bz2
+    outs:
+    - path: data/raw/wikipedia_wikitext
+      hash: md5
+      md5: f2a4fafad0404e738098205e54d52894.dir
+      size: 4460593453
+      nfiles: 22
+  eval_langid:
+    cmd: python -m trifact.evaluation.eval_langid score
+    deps:
+    - path: data/review/langid
+      hash: md5
+      md5: 2078c8334b5c20adab609c50686ab96f.dir
+      size: 400603
+      nfiles: 3
+    - path: src/trifact/evaluation/eval_langid.py
+      hash: md5
+      md5: 379349bb7aeeb91ed013516cbdd83206
+      size: 12918
+    - path: src/trifact/ingestion/langdetect.py
+      hash: md5
+      md5: 0da9bee4b9c394a423e85d396f63a02a
+      size: 8685
+    params:
+      params.yaml:
+        curation.langid:
+          model: lid176
+          candidates:
+          - lid176
+          - glotlid
+          - glotlid_small
+          min_score: 0.65
+          min_para_chars: 20
+          max_para_chars: 1000
+          cache: data/.cache/models
+          models:
+            lid176:
+              url: 
+                https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
+              sha256: 
+                7e69ec5451bc261cc7844e49e4792a85d7f09c06789ec800fc4a44aec362764e
+              license: CC-BY-SA-3.0
+            glotlid:
+              hf_id: cis-lmu/glotlid
+              revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522
+              file: model.bin
+              sha256: 
+                3b26297652e105cb63acde0fbf5aa228161528b519331e58a7c94ea9fe58474c
+              license: Apache-2.0
+            glotlid_small:
+              hf_id: cis-lmu/glotlid
+              revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522
+              file: model_v4_small.bin
+              sha256: 
+                7fdfc49052d42653a1b8db5fbb0754497d670a6a4fae32398692f8e5b3811bdd
+              license: Apache-2.0
+        evaluation.bootstrap_samples: 1000
+        seed: 42
+    outs:
+    - path: reports/langid.json
+      hash: md5
+      md5: f2c63f9674d8b536c7eb6b2640ac937c
+      size: 8871
+  clean:
+    cmd: python -m trifact.data.clean
+    deps:
+    - path: data/raw/fineweb2_kk
+      hash: md5
+      md5: 7bc8ae13416a572b953eeac43a982c07.dir
+      size: 6837716768
+      nfiles: 15
+    - path: data/raw/multidomain_kk
+      hash: md5
+      md5: 907c1fecd3a71c26e48a1bc7ab6eea5b.dir
+      size: 6965125161
+      nfiles: 33
+    - path: data/raw/wikipedia
+      hash: md5
+      md5: 48295e756359913ae8b9129b17248dce.dir
+      size: 11377397330
+      nfiles: 64
+    - path: src/trifact/data/clean.py
+      hash: md5
+      md5: d0bc8208ba66622cbfa095f431b3c638
+      size: 19599
+    - path: src/trifact/data/curation.py
+      hash: md5
+      md5: 3d53f5b851eb2ef36fb54eda03914ed1
+      size: 10993
+    - path: src/trifact/data/quality.py
+      hash: md5
+      md5: b9a23b10b9faa3abd6e768ad10cc4f76
+      size: 7760
+    - path: src/trifact/ingestion/langdetect.py
+      hash: md5
+      md5: 0da9bee4b9c394a423e85d396f63a02a
+      size: 8685
+    - path: src/trifact/ingestion/normalize.py
+      hash: md5
+      md5: c6301e9b093d2a1989bcda08f70d4284
+      size: 7301
+    - path: src/trifact/lake
+      hash: md5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
+    params:
+      params.yaml:
+        curation.boilerplate:
+          sample_docs: 20000
+          max_line_chars: 200
+          min_doc_share: 0.001
+          min_docs: 20
+        curation.domains:
+          wikipedia: wikipedia
+          fineweb2_kk: web
+          multidomain_kk:
+            cc100-monolingual-crawled-data.csv: cc100
+            kazakhBooks.csv: books
+            kazakhNews.csv: news
+            leipzig.csv: leipzig
+            oscar.csv: oscar
+        curation.dropped_text_chars: 2000
+        curation.langid:
+          model: lid176
+          candidates:
+          - lid176
+          - glotlid
+          - glotlid_small
+          min_score: 0.65
+          min_para_chars: 20
+          max_para_chars: 1000
+          cache: data/.cache/models
+          models:
+            lid176:
+              url: 
+                https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
+              sha256: 
+                7e69ec5451bc261cc7844e49e4792a85d7f09c06789ec800fc4a44aec362764e
+              license: CC-BY-SA-3.0
+            glotlid:
+              hf_id: cis-lmu/glotlid
+              revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522
+              file: model.bin
+              sha256: 
+                3b26297652e105cb63acde0fbf5aa228161528b519331e58a7c94ea9fe58474c
+              license: Apache-2.0
+            glotlid_small:
+              hf_id: cis-lmu/glotlid
+              revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522
+              file: model_v4_small.bin
+              sha256: 
+                7fdfc49052d42653a1b8db5fbb0754497d670a6a4fae32398692f8e5b3811bdd
+              license: Apache-2.0
+        curation.quality:
+          default:
+            min_lang_conf: 0.0
+            min_chars: 100
+            min_words: 15
+            min_alpha_ratio: 0.6
+            max_replacement_ratio: 0.001
+            max_dup_line_ratio: 0.3
+            max_dup_ngram_ratio: 0.3
+            min_mean_word_len: 3.0
+            max_mean_word_len: 12.0
+            max_bullet_ratio: 0.9
+            max_ellipsis_ratio: 0.3
+            min_stopword_ratio: 0.02
+            stopword_min_words: 50
+          languages:
+            kk:
+              min_stopword_ratio: 0.01
+            ru:
+              min_stopword_ratio: 0.03
+            en:
+              min_stopword_ratio: 0.05
+          domains:
+            wikipedia:
+              min_lang_score: 0.5
+              max_dup_line_ratio: 0.5
+              min_stopword_ratio: 0.0
+            cc100:
+              min_chars: 40
+              min_words: 5
+              min_stopword_ratio: 0.0
+            leipzig:
+              min_chars: 40
+              min_words: 5
+              min_stopword_ratio: 0.0
+        curation.sources:
+        - wikipedia
+        - fineweb2_kk
+        - multidomain_kk
+        lake:
+          root: data
+          layers:
+          - raw
+          - clean
+          - curated
+          - task
+          - eval
+          shard_rows: 1000000
+          shard_max_mb: 512
+          compression: zstd
+          peak_ram_gb: 10
+          downloads: data/.cache/downloads
+          acquire_workers: 4
+        scale.full.corpus_docs:
+    outs:
+    - path: data/clean
+      hash: md5
+      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
+      size: 25278751250
+      nfiles: 375
+    - path: reports/clean.json
+      hash: md5
+      md5: 7f32af032295966c55cc2483f888fe3a
+      size: 8339
+  dedup:
+    cmd: python -m trifact.data.dedup
+    deps:
+    - path: data/clean
+      hash: md5
+      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
+      size: 25278751250
+      nfiles: 375
+    - path: src/trifact/data/curation.py
+      hash: md5
+      md5: 3d53f5b851eb2ef36fb54eda03914ed1
+      size: 10993
+    - path: src/trifact/data/dedup.py
+      hash: md5
+      md5: 36c88939ef61f6f63288aec8a0148b2d
+      size: 20398
+    - path: src/trifact/data/hashing.py
+      hash: md5
+      md5: 662f2541fb5acfbee94311513d19957c
+      size: 5512
+    - path: src/trifact/lake
+      hash: md5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
+    params:
+      params.yaml:
+        curation.minhash:
+          num_perm: 126
+          bands: 14
+          ngram: 5
+          keep_near_within:
+          - wikipedia
+        curation.sources:
+        - wikipedia
+        - fineweb2_kk
+        - multidomain_kk
+        lake:
+          root: data
+          layers:
+          - raw
+          - clean
+          - curated
+          - task
+          - eval
+          shard_rows: 1000000
+          shard_max_mb: 512
+          compression: zstd
+          peak_ram_gb: 10
+          downloads: data/.cache/downloads
+          acquire_workers: 4
+        seed: 42
+    outs:
+    - path: data/curated/dedup
+      hash: md5
+      md5: c2dee6882f55a0db80f1a8a26a75e499.dir
+      size: 24018899849
+      nfiles: 423
+    - path: reports/dedup.json
+      hash: md5
+      md5: dee4ddf4bbb0da662a9f14428e572162
+      size: 22161
+  decontaminate:
+    cmd: python -m trifact.data.decontaminate
+    deps:
+    - path: data/curated/dedup
+      hash: md5
+      md5: c2dee6882f55a0db80f1a8a26a75e499.dir
+      size: 24018899849
+      nfiles: 423
+    - path: data/raw/kaznerd
+      hash: md5
+      md5: d5bea7015f3b198e4f0784b39fec07b8.dir
+      size: 5065686
+      nfiles: 4
+    - path: data/raw/kazqad
+      hash: md5
+      md5: 719ed958566b7973b5a099a785aed63f.dir
+      size: 48553080
+      nfiles: 6
+    - path: data/raw/miracl
+      hash: md5
+      md5: 423e5168537d74997ff9663f1f9ef433.dir
+      size: 985817
+      nfiles: 13
+    - path: data/raw/miracl_corpus
+      hash: md5
+      md5: 74af02d07eb06130ad596c58296d0aa7.dir
+      size: 7316259439
+      nfiles: 87
+    - path: data/raw/nerel
+      hash: md5
+      md5: 8b8fa36f098a3304f1dfd33620eec4f5.dir
+      size: 2717238
+      nfiles: 6
+    - path: data/raw/sberquad
+      hash: md5
+      md5: ee0a59be2aef1bb2553b2d4605ae16b3.dir
+      size: 12813436
+      nfiles: 4
+    - path: data/raw/squad_v2
+      hash: md5
+      md5: 129c2f4ca71f5b93600f793ccc6e5d75.dir
+      size: 11732444
+      nfiles: 3
+    - path: data/raw/wikiann
+      hash: md5
+      md5: 8a08302b9d472b5cb7671c2395fb4dbc.dir
+      size: 4104522
+      nfiles: 10
+    - path: data/raw/wikineural
+      hash: md5
+      md5: 557edf6c43be8cdef78cd8687cb2020b.dir
+      size: 16588854
+      nfiles: 7
+    - path: data/raw/xnli
+      hash: md5
+      md5: b7a0f6eca198a57ae4e5cf19af5ac668.dir
+      size: 76078155
+      nfiles: 7
+    - path: src/trifact/data/curation.py
+      hash: md5
+      md5: 3d53f5b851eb2ef36fb54eda03914ed1
+      size: 10993
+    - path: src/trifact/data/decontaminate.py
+      hash: md5
+      md5: 83ca62d8f777c159dad000d427487d59
+      size: 22194
+    - path: src/trifact/data/hashing.py
+      hash: md5
+      md5: 662f2541fb5acfbee94311513d19957c
+      size: 5512
+    - path: src/trifact/ingestion/normalize.py
+      hash: md5
+      md5: c6301e9b093d2a1989bcda08f70d4284
+      size: 7301
+    - path: src/trifact/lake
+      hash: md5
+      md5: 2c57464b5b599e253b964bc53c004b24.dir
+      size: 71523
+      nfiles: 9
+    params:
+      params.yaml:
+        curation.decontamination:
+          ngram: 13
+          min_matches: 1
+          max_removed_share: 0.5
+          max_gram_docs: 100
+          sources:
+            kazqad:
+              columns:
+              - context
+              - question
+            sberquad:
+              columns:
+              - context
+              - question
+            squad_v2:
+              columns:
+              - context
+              - question
+            xnli:
+              columns:
+              - premise
+              - hypothesis
+            kaznerd:
+              tokens: tokens
+            wikiann:
+              tokens: tokens
+            wikineural:
+              tokens: tokens
+            nerel:
+              columns:
+              - text
+            miracl:
+              passages_from: miracl_corpus
+        lake:
+          root: data
+          layers:
+          - raw
+          - clean
+          - curated
+          - task
+          - eval
+          shard_rows: 1000000
+          shard_max_mb: 512
+          compression: zstd
+          peak_ram_gb: 10
+          downloads: data/.cache/downloads
+          acquire_workers: 4
+    outs:
+    - path: data/curated/corpus
+      hash: md5
+      md5: 4fbf82117cb68cea0ac5dd6ce3fa3f06.dir
+      size: 23676049031
+      nfiles: 408
+    - path: reports/decontamination.json
+      hash: md5
+      md5: 5d45d6366e295d5ad0a75c1215a5302a
+      size: 4704
+  corpus_stats:
+    cmd: python -m trifact.data.corpus_stats
+    deps:
+    - path: data/curated/corpus
+      hash: md5
+      md5: 4fbf82117cb68cea0ac5dd6ce3fa3f06.dir
+      size: 23676049031
+      nfiles: 408
+    - path: src/trifact/data/corpus_stats.py
+      hash: md5
+      md5: 6df1a0cf9b7dde0fad1a11c85793a99d
+      size: 9171
+    params:
+      params.yaml:
+        curation.stats:
+          length_bins:
+          - 0
+          - 100
+          - 300
+          - 1000
+          - 3000
+          - 10000
+          - 30000
+          - 100000
+          sample_docs: 3000
+          max_chars: 4000
+          tokenizers:
+            xlmr:
+              hf_id: FacebookAI/xlm-roberta-base
+              revision: e73636d4f797dec63c3081bb6ed5c7b0bb3f2089
+              file: tokenizer.json
+              unk: <unk>
+            qwen3:
+              hf_id: Qwen/Qwen3-1.7B
+              revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+              file: tokenizer.json
+            qwen3_5:
+              hf_id: Qwen/Qwen3.5-2B
+              revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
+              file: tokenizer.json
+        seed: 42
+    outs:
+    - path: reports/corpus_stats.json
+      hash: md5
+      md5: 4b0749e1dda7fac15ea40b3861f6acb7
+      size: 18557
+  eda@raw:
+    cmd: python -m trifact.data.eda raw
+    deps:
+    - path: data/clean
+      hash: md5
+      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
+      size: 25278751250
+      nfiles: 375
+    - path: data/curated
+      hash: md5
+      md5: 23aa79fb907edf0666a0a8bf92ff1708.dir
+      size: 47694948880
+      nfiles: 831
+    - path: data/raw
+      hash: md5
+      md5: 504ddd4b5534aabb680d6b8b27169535.dir
+      size: 48514916358
+      nfiles: 603
+    - path: src/trifact/data/eda.py
+      hash: md5
+      md5: 66a8e1179627fc6d7eded8ddaa11c4e1
+      size: 33901
+    params:
+      params.yaml:
+        curation.workers: 4
+        seed: 42
+    outs:
+    - path: reports/eda/raw.json
+      hash: md5
+      md5: 49c73618be40962e2174cafac16ceee2
+      size: 2491317
+  eda@clean:
+    cmd: python -m trifact.data.eda clean
+    deps:
+    - path: data/clean
+      hash: md5
+      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
+      size: 25278751250
+      nfiles: 375
+    - path: data/curated
+      hash: md5
+      md5: 23aa79fb907edf0666a0a8bf92ff1708.dir
+      size: 47694948880
+      nfiles: 831
+    - path: data/raw
+      hash: md5
+      md5: 504ddd4b5534aabb680d6b8b27169535.dir
+      size: 48514916358
+      nfiles: 603
+    - path: src/trifact/data/eda.py
+      hash: md5
+      md5: 66a8e1179627fc6d7eded8ddaa11c4e1
+      size: 33901
+    params:
+      params.yaml:
+        curation.workers: 4
+        seed: 42
+    outs:
+    - path: reports/eda/clean.json
+      hash: md5
+      md5: 6f53b3571342f92264cc12cc4ba152d0
+      size: 1385992
+  eda@curated:
+    cmd: python -m trifact.data.eda curated
+    deps:
+    - path: data/clean
+      hash: md5
+      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
+      size: 25278751250
+      nfiles: 375
+    - path: data/curated
+      hash: md5
+      md5: 23aa79fb907edf0666a0a8bf92ff1708.dir
+      size: 47694948880
+      nfiles: 831
+    - path: data/raw
+      hash: md5
+      md5: 504ddd4b5534aabb680d6b8b27169535.dir
+      size: 48514916358
+      nfiles: 603
+    - path: src/trifact/data/eda.py
+      hash: md5
+      md5: 66a8e1179627fc6d7eded8ddaa11c4e1
+      size: 33901
+    params:
+      params.yaml:
+        curation.workers: 4
+        seed: 42
+    outs:
+    - path: reports/eda/curated.json
+      hash: md5
+      md5: 9d59cd38673cd111e3587ecdb7367874
+      size: 876011
+  eda@entities:
+    cmd: python -m trifact.data.eda entities
+    deps:
+    - path: data/clean
+      hash: md5
+      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
+      size: 25278751250
+      nfiles: 375
+    - path: data/curated
+      hash: md5
+      md5: 23aa79fb907edf0666a0a8bf92ff1708.dir
+      size: 47694948880
+      nfiles: 831
+    - path: data/raw
+      hash: md5
+      md5: 504ddd4b5534aabb680d6b8b27169535.dir
+      size: 48514916358
+      nfiles: 603
+    - path: src/trifact/data/eda.py
+      hash: md5
+      md5: 66a8e1179627fc6d7eded8ddaa11c4e1
+      size: 33901
+    params:
+      params.yaml:
+        curation.workers: 4
+        seed: 42
+    outs:
+    - path: reports/eda/entities.json
+      hash: md5
+      md5: 1ac23745fca6a3d26ea75bde0f5344df
+      size: 16877
+  eda_report:
+    cmd: python -m trifact.data.eda_report
+    deps:
+    - path: reports/corpus_stats.json
+      hash: md5
+      md5: 4b0749e1dda7fac15ea40b3861f6acb7
+      size: 18557
+    - path: reports/eda/clean.json
+      hash: md5
+      md5: 6f53b3571342f92264cc12cc4ba152d0
+      size: 1385992
+    - path: reports/eda/curated.json
+      hash: md5
+      md5: 9d59cd38673cd111e3587ecdb7367874
+      size: 876011
+    - path: reports/eda/entities.json
+      hash: md5
+      md5: 1ac23745fca6a3d26ea75bde0f5344df
+      size: 16877
+    - path: reports/eda/raw.json
+      hash: md5
+      md5: 49c73618be40962e2174cafac16ceee2
+      size: 2491317
+    - path: reports/eda/task.json
+      hash: md5
+      md5: 038da1a050dc62e2fb478374a4bbb64a
+      size: 69284
+    - path: src/trifact/data/eda_report.py
+      hash: md5
+      md5: 03e38a3ca870aa8cd95bb38e12288bd1
+      size: 24860
+    - path: src/trifact/data/task_eda.py
+      hash: md5
+      md5: 3f7ec810a20ed922eed40212066d46f8
+      size: 26378
+    outs:
+    - path: reports/eda/figures
+      hash: md5
+      md5: e710dbd862526d2e160b16e7a5ca9d38.dir
+      size: 1987615
+      nfiles: 43
+    - path: reports/eda/findings.json
+      hash: md5
+      md5: e2c2e101eb96c46ba4c9087f9c90b069
+      size: 6349
+    - path: reports/eda/report.md
+      hash: md5
+      md5: 34404ed3166fba8db521516e9483d7a9
+      size: 148670
+  validate:
+    cmd: python -m trifact.data.validate
+    deps:
+    - path: configs/labels.yaml
+      hash: md5
+      md5: 6414cd2a379c4a8a02864dfee04270b4
+      size: 2780
+    - path: data/raw/kaznerd
+      hash: md5
+      md5: d5bea7015f3b198e4f0784b39fec07b8.dir
+      size: 5065686
+      nfiles: 4
+    - path: data/raw/kazqad
+      hash: md5
+      md5: 719ed958566b7973b5a099a785aed63f.dir
+      size: 48553080
+      nfiles: 6
+    - path: data/raw/miracl
+      hash: md5
+      md5: 423e5168537d74997ff9663f1f9ef433.dir
+      size: 985817
+      nfiles: 13
+    - path: data/raw/miracl_corpus
+      hash: md5
+      md5: 74af02d07eb06130ad596c58296d0aa7.dir
+      size: 7316259439
+      nfiles: 87
+    - path: data/raw/nerel
+      hash: md5
+      md5: 8b8fa36f098a3304f1dfd33620eec4f5.dir
+      size: 2717238
+      nfiles: 6
+    - path: data/raw/sberquad
+      hash: md5
+      md5: ee0a59be2aef1bb2553b2d4605ae16b3.dir
+      size: 12813436
+      nfiles: 4
+    - path: data/raw/squad_v2
+      hash: md5
+      md5: 129c2f4ca71f5b93600f793ccc6e5d75.dir
+      size: 11732444
+      nfiles: 3
+    - path: data/raw/wikiann
+      hash: md5
+      md5: 8a08302b9d472b5cb7671c2395fb4dbc.dir
+      size: 4104522
+      nfiles: 10
+    - path: data/raw/wikineural
+      hash: md5
+      md5: 557edf6c43be8cdef78cd8687cb2020b.dir
+      size: 16588854
+      nfiles: 7
+    - path: data/raw/xnli
+      hash: md5
+      md5: b7a0f6eca198a57ae4e5cf19af5ac668.dir
+      size: 76078155
+      nfiles: 7
+    - path: src/trifact/data/task_common.py
+      hash: md5
+      md5: 0c30913498698ada457c5a57972eab45
+      size: 9171
+    - path: src/trifact/data/validate.py
+      hash: md5
+      md5: 5fa4a3b2e712224b100d26e0b690ebfc
+      size: 11064
+    outs:
+    - path: reports/data_quality.json
+      hash: md5
+      md5: 2994fec7b9c510678eb854dc3a372f77
+      size: 29818
+  split:
+    cmd: python -m trifact.data.split
+    deps:
+    - path: reports/data_quality.json
+      hash: md5
+      md5: 2994fec7b9c510678eb854dc3a372f77
+      size: 29818
+    - path: src/trifact/data/split.py
+      hash: md5
+      md5: 8c908eac6a0e537c84bc4b0ad4936803
+      size: 12220
+    - path: src/trifact/data/task_common.py
+      hash: md5
+      md5: 0c30913498698ada457c5a57972eab45
+      size: 9171
+    params:
+      params.yaml:
+        seed: 42
+        split:
+          by: source_document
+          val: 0.1
+          test: 0.1
+    outs:
+    - path: data/task/splits
+      hash: md5
+      md5: 43322d29ad096dbe5372761546e4e13e.dir
+      size: 163234637
+      nfiles: 5
+  build_kb:
+    cmd: python -m trifact.data.build_kb
+    deps:
+    - path: configs/labels.yaml
+      hash: md5
+      md5: 6414cd2a379c4a8a02864dfee04270b4
+      size: 2780
+    - path: data/raw/wikidata
+      hash: md5
+      md5: 635d03e100853bce995796680357cac2.dir
+      size: 5289503895
+      nfiles: 212
+    - path: src/trifact/data/build_kb.py
+      hash: md5
+      md5: ec7a77a28f558a11f47f34cee6e25adc
+      size: 9470
+    params:
+      params.yaml:
+        linking:
+          kb_min_labels: 1
+          candidates_k: 20
+    outs:
+    - path: data/task/kb
+      hash: md5
+      md5: b2ed6f4516c077d07b508453faddbb38.dir
+      size: 4037272592
+      nfiles: 425
+  build_ner:
+    cmd: python -m trifact.data.build_ner
+    deps:
+    - path: configs/labels.yaml
+      hash: md5
+      md5: 6414cd2a379c4a8a02864dfee04270b4
+      size: 2780
+    - path: data/raw/wikipedia_wikitext
+      hash: md5
+      md5: f2a4fafad0404e738098205e54d52894.dir
+      size: 4460593453
+      nfiles: 22
+    - path: data/task/kb
+      hash: md5
+      md5: b2ed6f4516c077d07b508453faddbb38.dir
+      size: 4037272592
+      nfiles: 425
+    - path: data/task/splits
+      hash: md5
+      md5: 43322d29ad096dbe5372761546e4e13e.dir
+      size: 163234637
+      nfiles: 5
+    - path: src/trifact/data/build_ner.py
+      hash: md5
+      md5: 1fff32dd99a45ecd2f77abdcd5bfc580
+      size: 32186
+    - path: src/trifact/data/ner_common.py
+      hash: md5
+      md5: 89a6ade45662e990857367f7517b8470
+      size: 2355
+    - path: src/trifact/data/wikimarkup.py
+      hash: md5
+      md5: 3c66348eccbc387b59ef98d6251e4978
+      size: 4246
+    params:
+      params.yaml:
+        ner.silver:
+          min_tokens: 5
+          max_tokens: 80
+          capital_filter: true
+          gazetteer_min_count: 3
+          gazetteer_min_share: 0.9
+        scale:
+          profile: full
+          pilot:
+            corpus_docs: 30000
+            corpus_chunks: 150000
+            ner_sentences: 80000
+            sft_examples: 24000
+            retrieval_pairs: 10000
+            eval_examples: 3000
+          full:
+            corpus_docs:
+            corpus_chunks: 35000000
+            ner_sentences: 10000000
+            sft_examples: 2000000
+            retrieval_pairs: 20000000
+            eval_examples: 50000
+          min_kk_share: 0.3
+          index_steps:
+          - 1000000
+          - 10000000
+          - 35000000
+        seed: 42
+    outs:
+    - path: data/task/ner
+      hash: md5
+      md5: 26a82965d014550a7e37e07f0dd84d5a.dir
+      size: 394222717
+      nfiles: 18
+  mt@xnli_kk:
+    cmd: python -m trifact.data.translations import xnli_kk --kaggle-out 
+      data/external/kaggle/translate_xnli_kk/out --sentences 
+      data/external/kaggle/translate_xnli_kk/sentences_all.parquet --sources 
+      xnli --retry data/external/kaggle/translate_retry/out
+    deps:
+    - path: data/external/kaggle/translate_retry
+      hash: md5
+      md5: 845b10ff60b3e63743f2b4910d5a9801.dir
+      size: 12201445
+      nfiles: 28
+    - path: data/external/kaggle/translate_xnli_kk
+      hash: md5
+      md5: 4ddc7f307e9f17bdf04e94cc748edda6.dir
+      size: 105935676
+      nfiles: 78
+    - path: src/trifact/data/translations.py
+      hash: md5
+      md5: 714bf3fe22bee395ecb2a00ac72d3656
+      size: 10104
+    params:
+      params.yaml:
+        curation.langid:
+          model: lid176
+          candidates:
+          - lid176
+          - glotlid
+          - glotlid_small
+          min_score: 0.65
+          min_para_chars: 20
+          max_para_chars: 1000
+          cache: data/.cache/models
+          models:
+            lid176:
+              url: 
+                https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
+              sha256: 
+                7e69ec5451bc261cc7844e49e4792a85d7f09c06789ec800fc4a44aec362764e
+              license: CC-BY-SA-3.0
+            glotlid:
+              hf_id: cis-lmu/glotlid
+              revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522
+              file: model.bin
+              sha256: 
+                3b26297652e105cb63acde0fbf5aa228161528b519331e58a7c94ea9fe58474c
+              license: Apache-2.0
+            glotlid_small:
+              hf_id: cis-lmu/glotlid
+              revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522
+              file: model_v4_small.bin
+              sha256: 
+                7fdfc49052d42653a1b8db5fbb0754497d670a6a4fae32398692f8e5b3811bdd
+              license: Apache-2.0
+    outs:
+    - path: data/task/mt/xnli_kk
+      hash: md5
+      md5: c8be7e290f3af3e9eee7d74955949822.dir
+      size: 63133401
+      nfiles: 3
+  mt@qa:
+    cmd: python -m trifact.data.translations import qa --kaggle-out 
+      data/external/kaggle/translate_qa/out --sentences 
+      data/external/kaggle/translate_qa/sentences_all.parquet --sources 
+      squad_v2,sberquad,kazqad,miracl --retry 
+      data/external/kaggle/translate_retry/out
+    deps:
+    - path: data/external/kaggle/translate_qa
+      hash: md5
+      md5: cbdd6c12106ff4b6963a451789707469.dir
+      size: 77257099
+      nfiles: 100
+    - path: data/external/kaggle/translate_retry
+      hash: md5
+      md5: 845b10ff60b3e63743f2b4910d5a9801.dir
+      size: 12201445
+      nfiles: 28
+    - path: src/trifact/data/translations.py
+      hash: md5
+      md5: 714bf3fe22bee395ecb2a00ac72d3656
+      size: 10104
+    params:
+      params.yaml:
+        curation.langid:
+          model: lid176
+          candidates:
+          - lid176
+          - glotlid
+          - glotlid_small
+          min_score: 0.65
+          min_para_chars: 20
+          max_para_chars: 1000
+          cache: data/.cache/models
+          models:
+            lid176:
+              url: 
+                https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin
+              sha256: 
+                7e69ec5451bc261cc7844e49e4792a85d7f09c06789ec800fc4a44aec362764e
+              license: CC-BY-SA-3.0
+            glotlid:
+              hf_id: cis-lmu/glotlid
+              revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522
+              file: model.bin
+              sha256: 
+                3b26297652e105cb63acde0fbf5aa228161528b519331e58a7c94ea9fe58474c
+              license: Apache-2.0
+            glotlid_small:
+              hf_id: cis-lmu/glotlid
+              revision: e9592e0a9bc3b6f2a946de94faaa188d1dd6f522
+              file: model_v4_small.bin
+              sha256: 
+                7fdfc49052d42653a1b8db5fbb0754497d670a6a4fae32398692f8e5b3811bdd
+              license: Apache-2.0
+    outs:
+    - path: data/task/mt/qa
+      hash: md5
+      md5: c5706c6a44464cd70a6b106a9f73ba30.dir
+      size: 63595715
+      nfiles: 5
+  build_nli:
+    cmd: python -m trifact.data.build_nli --scores 
+      data/external/kaggle/nli_score_xnli/out
+    deps:
+    - path: data/external/kaggle/nli_score_xnli
+      hash: md5
+      md5: 12b0cd9acdd751df63a440babd155aed.dir
+      size: 62122366
+      nfiles: 9
+    - path: data/raw/xnli
+      hash: md5
+      md5: b7a0f6eca198a57ae4e5cf19af5ac668.dir
+      size: 76078155
+      nfiles: 7
+    - path: data/task/mt/xnli_kk
+      hash: md5
+      md5: c8be7e290f3af3e9eee7d74955949822.dir
+      size: 63133401
+      nfiles: 3
+    - path: data/task/splits
+      hash: md5
+      md5: 43322d29ad096dbe5372761546e4e13e.dir
+      size: 163234637
+      nfiles: 5
+    - path: src/trifact/data/build_nli.py
+      hash: md5
+      md5: 9d17c6b5efc6fa99e623cd3b28bbb221
+      size: 10234
+    params:
+      params.yaml:
+        nli:
+          kk_filters:
+            min_chrf_back: 30
+            min_lang_score: 0.5
+            min_len_ratio: 0.5
+            max_len_ratio: 2.0
+    outs:
+    - path: data/task/nli
+      hash: md5
+      md5: 3b38c4f7b6cf55c73cce7ba703738d3c.dir
+      size: 99599887
+      nfiles: 11
+  chunk_corpus:
+    cmd: python -m trifact.data.chunk_corpus
+    deps:
+    - path: data/curated/corpus
+      hash: md5
+      md5: 4fbf82117cb68cea0ac5dd6ce3fa3f06.dir
+      size: 23676049031
+      nfiles: 408
+    - path: src/trifact/data/chunk_corpus.py
+      hash: md5
+      md5: 8e9ce0b92dae1585b6ba05d97630ba78
+      size: 8287
+    - path: src/trifact/ingestion/chunker.py
+      hash: md5
+      md5: 9692f2cbbb3f774c3744f2ea50ee20f1
+      size: 7321
+    - path: src/trifact/ingestion/segment.py
+      hash: md5
+      md5: a50e0a253742d8874bbc3c0f6e641ead
+      size: 1100
+    params:
+      params.yaml:
+        chunking:
+          max_tokens: 350
+          overlap_tokens: 50
+          variants:
+            s350:
+              max_tokens: 350
+              overlap_tokens: 50
+              sections: true
+            s200:
+              max_tokens: 200
+              overlap_tokens: 30
+              sections: true
+            s512:
+              max_tokens: 512
+              overlap_tokens: 64
+              sections: true
+            flat350:
+              max_tokens: 350
+              overlap_tokens: 50
+              sections: false
+        curation.stats.tokenizers.xlmr:
+          hf_id: FacebookAI/xlm-roberta-base
+          revision: e73636d4f797dec63c3081bb6ed5c7b0bb3f2089
+          file: tokenizer.json
+          unk: <unk>
+        scale:
+          profile: full
+          pilot:
+            corpus_docs: 30000
+            corpus_chunks: 150000
+            ner_sentences: 80000
+            sft_examples: 24000
+            retrieval_pairs: 10000
+            eval_examples: 3000
+          full:
+            corpus_docs:
+            corpus_chunks: 35000000
+            ner_sentences: 10000000
+            sft_examples: 2000000
+            retrieval_pairs: 20000000
+            eval_examples: 50000
+          min_kk_share: 0.3
+          index_steps:
+          - 1000000
+          - 10000000
+          - 35000000
+    outs:
+    - path: data/task/chunks
+      hash: md5
+      md5: 7846402a0010600118b33dcb7627fdab.dir
+      size: 24448651281
+      nfiles: 262
+  synthetic_queries:
+    cmd: python -m trifact.data.synthetic import --kind queries --kaggle-out 
+      data/external/kaggle/teacher_queries/out
+    deps:
+    - path: data/external/kaggle/teacher_queries
+      hash: md5
+      md5: dc044607cda8636cf70844ab511dc474.dir
+      size: 31624255
+      nfiles: 12
+    - path: data/task/chunks
+      hash: md5
+      md5: 7846402a0010600118b33dcb7627fdab.dir
+      size: 24448651281
+      nfiles: 262
+    - path: src/trifact/data/synthetic.py
+      hash: md5
+      md5: 2b1e5f9fc3c4a24e1f32668230295b43
+      size: 26745
+    params:
+      params.yaml:
+        scale.min_kk_share: 0.3
+        sft.mix:
+          answerable: 0.6
+          cross_lingual: 0.25
+          unanswerable: 0.15
+        teacher:
+          model: Qwen/Qwen3.5-35B-A3B
+          filters:
+            round_trip_top_k: 10
+            min_nli_entail: 0.7
+          serve:
+            repo: unsloth/Qwen3.5-35B-A3B-GGUF
+            revision: bc014a17be43adabd7066b7a86075ff935c6a4e2
+            file: Qwen3.5-35B-A3B-UD-IQ4_XS.gguf
+            llama_cpp_ref: b12032
+            parallel: 16
+            ctx_per_slot: 4096
+            temperature: 0.7
+            top_p: 0.9
+            extra_args:
+            - -kvu
+          time_budget_h: 11.0
+    outs:
+    - path: data/task/synthetic/queries
+      hash: md5
+      md5: bdbeae96844a804cc1e3ba7e10bb6706.dir
+      size: 21528132
+      nfiles: 8
+  synthetic_qa:
+    cmd: python -m trifact.data.synthetic import --kind qa --kaggle-out 
+      data/external/kaggle/teacher_qa/out && python -m trifact.data.synthetic 
+      finalize --kind qa --scores data/external/kaggle/nli_score_qa
+    deps:
+    - path: data/external/kaggle/nli_score_qa
+      hash: md5
+      md5: 259d00bb72afe7d96ee621bfef188030.dir
+      size: 893195
+      nfiles: 7
+    - path: data/external/kaggle/teacher_qa
+      hash: md5
+      md5: 9d2469d8fc6f69e970b05c32b7569916.dir
+      size: 27439595
+      nfiles: 8
+    - path: data/task/chunks
+      hash: md5
+      md5: 7846402a0010600118b33dcb7627fdab.dir
+      size: 24448651281
+      nfiles: 262
+    - path: src/trifact/data/synthetic.py
+      hash: md5
+      md5: 2b1e5f9fc3c4a24e1f32668230295b43
+      size: 26745
+    params:
+      params.yaml:
+        scale.min_kk_share: 0.3
+        sft.mix:
+          answerable: 0.6
+          cross_lingual: 0.25
+          unanswerable: 0.15
+        teacher:
+          model: Qwen/Qwen3.5-35B-A3B
+          filters:
+            round_trip_top_k: 10
+            min_nli_entail: 0.7
+          serve:
+            repo: unsloth/Qwen3.5-35B-A3B-GGUF
+            revision: bc014a17be43adabd7066b7a86075ff935c6a4e2
+            file: Qwen3.5-35B-A3B-UD-IQ4_XS.gguf
+            llama_cpp_ref: b12032
+            parallel: 16
+            ctx_per_slot: 4096
+            temperature: 0.7
+            top_p: 0.9
+            extra_args:
+            - -kvu
+          time_budget_h: 11.0
+        verification.nli_job:
+          model: MoritzLaurer/mDeBERTa-v3-base-xnli-multilingual-nli-2mil7
+          revision: b5113eb38ab63efdd7f280f8c144ea8b13f978ce
+          batch_size: 128
+          max_length: 512
+    outs:
+    - path: data/task/synthetic/qa
+      hash: md5
+      md5: 83a2e323fda7922d255a42a78dbe2c44.dir
+      size: 4042848
+      nfiles: 8
+  build_pairs:
+    cmd: python -m trifact.data.build_pairs --synthetic 
+      data/task/synthetic/queries
+    deps:
+    - path: data/raw/kazparc
+      hash: md5
+      md5: 47fc2ec408813e0a3a27f95ff846523d.dir
+      size: 2255639833
+      nfiles: 40
+    - path: data/raw/kazqad
+      hash: md5
+      md5: 719ed958566b7973b5a099a785aed63f.dir
+      size: 48553080
+      nfiles: 6
+    - path: data/raw/miracl
+      hash: md5
+      md5: 423e5168537d74997ff9663f1f9ef433.dir
+      size: 985817
+      nfiles: 13
+    - path: data/raw/miracl_corpus
+      hash: md5
+      md5: 74af02d07eb06130ad596c58296d0aa7.dir
+      size: 7316259439
+      nfiles: 87
+    - path: data/raw/mmarco_ru
+      hash: md5
+      md5: 2c344b4cea464cddef769995c78e2ca0.dir
+      size: 2139049261
+      nfiles: 53
+    - path: data/raw/ms_marco
+      hash: md5
+      md5: 223abc9b8f8e551b2c74d9876b02ad48.dir
+      size: 1639641126
+      nfiles: 13
+    - path: data/raw/ru_hnp
+      hash: md5
+      md5: ee06e4c23a705d83ecee8a7ad8998777.dir
+      size: 55350860
+      nfiles: 4
+    - path: data/raw/sberquad
+      hash: md5
+      md5: ee0a59be2aef1bb2553b2d4605ae16b3.dir
+      size: 12813436
+      nfiles: 4
+    - path: data/raw/squad_v2
+      hash: md5
+      md5: 129c2f4ca71f5b93600f793ccc6e5d75.dir
+      size: 11732444
+      nfiles: 3
+    - path: data/task/mt/qa
+      hash: md5
+      md5: c5706c6a44464cd70a6b106a9f73ba30.dir
+      size: 63595715
+      nfiles: 5
+    - path: data/task/splits
+      hash: md5
+      md5: 43322d29ad096dbe5372761546e4e13e.dir
+      size: 163234637
+      nfiles: 5
+    - path: data/task/synthetic/queries
+      hash: md5
+      md5: bdbeae96844a804cc1e3ba7e10bb6706.dir
+      size: 21528132
+      nfiles: 8
+    - path: src/trifact/data/bm25.py
+      hash: md5
+      md5: 14272fc46183220221a03ffdaafe849d
+      size: 3204
+    - path: src/trifact/data/build_pairs.py
+      hash: md5
+      md5: 0ea8f3b9e20aa89e09a7c9ae9187c9c5
+      size: 21915
+    - path: src/trifact/data/qa_common.py
+      hash: md5
+      md5: 555e664c5bd4014268f06453a5138db1
+      size: 3173
+    params:
+      params.yaml:
+        retrieval.hard_negatives_per_query: 4
+        scale:
+          profile: full
+          pilot:
+            corpus_docs: 30000
+            corpus_chunks: 150000
+            ner_sentences: 80000
+            sft_examples: 24000
+            retrieval_pairs: 10000
+            eval_examples: 3000
+          full:
+            corpus_docs:
+            corpus_chunks: 35000000
+            ner_sentences: 10000000
+            sft_examples: 2000000
+            retrieval_pairs: 20000000
+            eval_examples: 50000
+          min_kk_share: 0.3
+          index_steps:
+          - 1000000
+          - 10000000
+          - 35000000
+        seed: 42
+        split:
+          by: source_document
+          val: 0.1
+          test: 0.1
+    outs:
+    - path: data/task/retrieval
+      hash: md5
+      md5: b193e36e4e4d6f2dbff43df02d97d4b9.dir
+      size: 2744637025
+      nfiles: 31
+  build_sft:
+    cmd: python -m trifact.data.build_sft --synthetic data/task/synthetic/qa
+    deps:
+    - path: configs/prompts/grounded_answer.md
+      hash: md5
+      md5: 0863e007cb507944c73a7b0ceee3aae8
+      size: 801
+    - path: data/task/mt/qa
+      hash: md5
+      md5: c5706c6a44464cd70a6b106a9f73ba30.dir
+      size: 63595715
+      nfiles: 5
+    - path: data/task/splits
+      hash: md5
+      md5: 43322d29ad096dbe5372761546e4e13e.dir
+      size: 163234637
+      nfiles: 5
+    - path: data/task/synthetic/qa
+      hash: md5
+      md5: 83a2e323fda7922d255a42a78dbe2c44.dir
+      size: 4042848
+      nfiles: 8
+    - path: src/trifact/data/build_sft.py
+      hash: md5
+      md5: 4500d0cd03053865e1159f5050e14952
+      size: 12881
+    - path: src/trifact/data/qa_common.py
+      hash: md5
+      md5: 555e664c5bd4014268f06453a5138db1
+      size: 3173
+    params:
+      params.yaml:
+        nli.kk_filters:
+          min_chrf_back: 30
+          min_lang_score: 0.5
+          min_len_ratio: 0.5
+          max_len_ratio: 2.0
+        scale:
+          profile: full
+          pilot:
+            corpus_docs: 30000
+            corpus_chunks: 150000
+            ner_sentences: 80000
+            sft_examples: 24000
+            retrieval_pairs: 10000
+            eval_examples: 3000
+          full:
+            corpus_docs:
+            corpus_chunks: 35000000
+            ner_sentences: 10000000
+            sft_examples: 2000000
+            retrieval_pairs: 20000000
+            eval_examples: 50000
+          min_kk_share: 0.3
+          index_steps:
+          - 1000000
+          - 10000000
+          - 35000000
+        sft:
+          mix:
+            answerable: 0.6
+            cross_lingual: 0.25
+            unanswerable: 0.15
+          distractors: 3
+    outs:
+    - path: data/task/sft
+      hash: md5
+      md5: d2af410a0bc7544a1f1b96600c32114b.dir
+      size: 587495015
+      nfiles: 8
+  build_eval:
+    cmd: python -m trifact.data.build_eval build
+    deps:
+    - path: data/task/mt/qa
+      hash: md5
+      md5: c5706c6a44464cd70a6b106a9f73ba30.dir
+      size: 63595715
+      nfiles: 5
+    - path: data/task/ner
+      hash: md5
+      md5: 26a82965d014550a7e37e07f0dd84d5a.dir
+      size: 394222717
+      nfiles: 18
+    - path: data/task/nli
+      hash: md5
+      md5: 3b38c4f7b6cf55c73cce7ba703738d3c.dir
+      size: 99599887
+      nfiles: 11
+    - path: data/task/retrieval
+      hash: md5
+      md5: b193e36e4e4d6f2dbff43df02d97d4b9.dir
+      size: 2744637025
+      nfiles: 31
+    - path: data/task/sft
+      hash: md5
+      md5: d2af410a0bc7544a1f1b96600c32114b.dir
+      size: 587495015
+      nfiles: 8
+    - path: data/task/splits
+      hash: md5
+      md5: 43322d29ad096dbe5372761546e4e13e.dir
+      size: 163234637
+      nfiles: 5
+    - path: src/trifact/data/build_eval.py
+      hash: md5
+      md5: 64cf4189911c24c1808d14e0e885457e
+      size: 24818
+    params:
+      params.yaml:
+        evaluation:
+          bootstrap_samples: 1000
+          ci: 0.95
+          human_verified_min: 3000
+          review_per_kind: 500
+          real_docs_min: 50
+        seed: 42
+    outs:
+    - path: data/eval/ner
+      hash: md5
+      md5: 3a67e4db21dbef4856bf9f6f274ce46b.dir
+      size: 5372317
+      nfiles: 6
+    - path: data/eval/nli
+      hash: md5
+      md5: 40d56f14698d0d818b83ff5291db0628.dir
+      size: 728376
+      nfiles: 6
+    - path: data/eval/qa
+      hash: md5
+      md5: e88496479bbf01353ae055df90d4fa01.dir
+      size: 7614122
+      nfiles: 6
+    - path: data/eval/retrieval
+      hash: md5
+      md5: 6a0aa883c6e9928c2e7f68a3eb5fb11a.dir
+      size: 19093284
+      nfiles: 8
+    - path: data/eval/review
+      hash: md5
+      md5: 6a3e1b1d518bccf359aa53498a437424.dir
+      size: 872043
+      nfiles: 1
+    - path: reports/eval.json
+      hash: md5
+      md5: 5a2f4fb54b68212db367adfc31257284
+      size: 6199
+  task_eda:
+    cmd: python -m trifact.data.task_eda
+    deps:
+    - path: data/eval/ner
+      hash: md5
+      md5: 3a67e4db21dbef4856bf9f6f274ce46b.dir
+      size: 5372317
+      nfiles: 6
+    - path: data/eval/nli
+      hash: md5
+      md5: 40d56f14698d0d818b83ff5291db0628.dir
+      size: 728376
+      nfiles: 6
+    - path: data/eval/qa
+      hash: md5
+      md5: e88496479bbf01353ae055df90d4fa01.dir
+      size: 7614122
+      nfiles: 6
+    - path: data/eval/retrieval
+      hash: md5
+      md5: 6a0aa883c6e9928c2e7f68a3eb5fb11a.dir
+      size: 19093284
+      nfiles: 8
+    - path: data/task
+      hash: md5
+      md5: 08eb7330ab29fbd3e731696ff0fb3558.dir
+      size: 32627413250
+      nfiles: 784
+    - path: src/trifact/data/task_eda.py
+      hash: md5
+      md5: 3f7ec810a20ed922eed40212066d46f8
+      size: 26378
+    outs:
+    - path: reports/eda/task.json
+      hash: md5
+      md5: 038da1a050dc62e2fb478374a4bbb64a
+      size: 69284
