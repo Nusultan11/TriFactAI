@@ -6,6 +6,8 @@ Date: 2026-11-18
 
 Accepted
 
+Amended by [22. Протокол оценки](0022-evaluation-protocol.md)
+
 ## Context
 
 Моделей несколько (NER, embedder, reranker, LLM-адаптер), и нужно гарантировать, что сервис использует проверенные версии.
