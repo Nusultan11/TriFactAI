@@ -21,16 +21,9 @@
 | Фото телефоном, рукопись, формулы | эксперимент с VLM-OCR | — |
 | DOCX, HTML, TXT | нативные парсеры | — (Docling-бэкенды проиграли по замеру этапа 4) |
 
-## Кандидаты VLM-OCR (состояние на 2026-11)
+## Кандидаты VLM-OCR
 
-Лидеры end-to-end лидерборда OmniDocBench v1.6 (github.com/opendatalab/OmniDocBench) — специализированные VLM размером 0.9–1.3B: PaddleOCR-VL-1.6 (Apache-2.0), MinerU2.5-Pro, GLM-OCR (MIT), а также dots.ocr (MIT, 3B, многоязычный). На olmOCR-Bench — olmOCR 2 (Apache-2.0, 7B) и Chandra OCR 2.
-
-Ограничения переноса:
-
-- OmniDocBench — 1 651 страница; языки в основном китайский и английский, треть итоговой оценки дают формулы.
-- olmOCR-Bench штрафует колонтитулы в выходе, а для цитат и счетов они иногда важны.
-- На фотографиях страниц (Wild-OmniDocBench) лидеры теряют 10–20 пунктов.
-- Казахский ни один из этих бенчмарков не проверяет.
+Список, лицензии, опубликованные оценки и ограничения бенчмарков — [models.md §6.4](../../../../docs/research/models.md). Главное ограничение: казахский эти бенчмарки не проверяют, поэтому опубликованная оценка — только фильтр для короткого списка.
 
 Поэтому:
 
@@ -41,6 +34,4 @@
 
 ## Источники
 
-- OmniDocBench: arXiv:2412.07626, лидерборд v1.6 — github.com/opendatalab/OmniDocBench (проверено 2026-11-21).
-- olmOCR: arXiv:2502.18443; olmOCR-Bench — github.com/allenai/olmocr.
-- PaddleOCR-VL — github.com/PaddlePaddle/PaddleOCR; MinerU — arXiv:2409.18839, github.com/opendatalab/MinerU; dots.ocr — github.com/rednote-hilab/dots.ocr.
+- OmniDocBench: arXiv:2412.07626; olmOCR: arXiv:2502.18443; MinerU: arXiv:2409.18839.
