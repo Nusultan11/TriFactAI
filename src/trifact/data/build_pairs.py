@@ -17,7 +17,8 @@ Hard negatives: MS MARCO — the non-selected passages Bing returned for the que
 published BM25 negatives of the triples; MIRACL — passages judged non-relevant; ru-HNP — its negatives;
 QA sources — BM25 (`trifact.data.bm25`) over the contexts of the same source and language, excluding the
 positive context and contexts with the same title; KazParC — none (in-batch negatives at training).
-Test splits never enter: they are the frozen eval of `build_eval` (ADR-0007).
+Test splits never enter: they are the frozen eval of `build_eval` (ADR-0007); a pair whose normalized query equals
+an eval query or QA question (any source) is dropped (`metrics.eval_query_dropped`).
 """
 
 from __future__ import annotations
@@ -43,8 +44,10 @@ from trifact.data.qa_common import QA_SOURCES, bm25_negatives, load_qa
 from trifact.data.task_common import (
     DatasetWriter,
     dataset_input_of,
+    eval_query_hashes,
     finish,
     inherited,
+    key_expr,
     raw_files_by_lang,
     raw_input,
     rows_with_keys,
@@ -414,6 +417,8 @@ def main(argv: list[str] | None = None) -> int:
             shutil.rmtree(out)
         w = DatasetWriter(out, LakeConfig.from_params(params["lake"], root))
         stats: list[dict[str, Any]] = []
+        eval_h = eval_query_hashes(root).implode()
+        eval_dropped: dict[str, int] = {}
         # one fresh process per builder: memory freed by Polars is not returned to the OS, so seven builders in one
         # process add up past the RAM of the machine
         ctx = multiprocessing.get_context("spawn")
@@ -423,7 +428,14 @@ def main(argv: list[str] | None = None) -> int:
             for table, lang_col in (("pairs", "q_lang"), ("passages", None)):
                 with pq.ParquetFile(res[table]) as f:
                     for b in f.iter_batches(batch_size=200_000):
-                        w.write(table, pa.Table.from_batches([b]), lang_col=lang_col)
+                        t = pa.Table.from_batches([b])
+                        if table == "pairs":
+                            df = pl.from_arrow(t)
+                            hit = df.select(key_expr("query").hash(seed=0).is_in(eval_h)).to_series()  # type: ignore[union-attr]
+                            if hit.any():
+                                eval_dropped[name] = eval_dropped.get(name, 0) + int(hit.sum())
+                                t = df.filter(~hit).to_arrow()  # type: ignore[union-attr]
+                        w.write(table, t, lang_col=lang_col)
                 Path(res[table]).unlink()
             stats += res["stats"]
             log.info("%s: %d pairs, %d passages", name, res["n_pairs"], res["n_passages"])
@@ -433,7 +445,8 @@ def main(argv: list[str] | None = None) -> int:
     for s in stats:
         if "direction" in s:
             by_dir[s["direction"]] = by_dir.get(s["direction"], 0) + s["n"]
-    metrics = {"pairs_total": total, "by_direction": dict(sorted(by_dir.items())), "detail": stats}
+    metrics = {"pairs_total": total, "by_direction": dict(sorted(by_dir.items())), "detail": stats,
+               "eval_query_dropped": eval_dropped}  # fmt: skip
     lic = inherited(root, SOURCES) + ([MT_LICENSE] if mt_dir.is_dir() else [])
     inputs = [raw_input(root, s) for s in SOURCES] + [dataset_input_of(root, root / "task/splits")]
     if mt_dir.is_dir():

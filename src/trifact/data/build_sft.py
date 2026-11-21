@@ -38,6 +38,7 @@ from trifact.data.qa_common import QA_SOURCES, bm25_negatives, load_qa
 from trifact.data.task_common import (
     DatasetWriter,
     dataset_input_of,
+    eval_query_hashes,
     finish,
     inherited,
     key_expr,
@@ -193,15 +194,11 @@ def main(argv: list[str] | None = None) -> int:
 
             df = pl.concat([df, synthetic_sft(args.synthetic, template)], how="diagonal_relaxed")
         # a question of the frozen QA eval never appears in SFT, even from another source (an MT SQuAD question
-        # repeated a SberQuAD test question word for word, task EDA)
-        eval_q = sorted((root / "eval/qa").glob("*/test-*.parquet"))
-        n_eval_q = 0
-        if eval_q:
-            eq = pl.scan_parquet([str(p) for p in eval_q]).select(k=key_expr(pl.col("question")).hash(seed=0))
-            eq_h = eq.collect()["k"]
-            hit = key_expr(pl.col("question")).hash(seed=0).is_in(eq_h.implode())
-            n_eval_q = df.filter(hit).height
-            df = df.filter(~hit)
+        # repeated a SberQuAD test question word for word, task EDA), nor a query of the retrieval eval
+        eq_h = eval_query_hashes(root)
+        hit = key_expr(pl.col("question")).hash(seed=0).is_in(eq_h.implode())
+        n_eval_q = df.filter(hit).height
+        df = df.filter(~hit)
         cap = stage_params["cap"] if profile == "pilot" else None
         final, mix_stats = mix(df, cfg["mix"], params["scale"]["min_kk_share"], cap, params["seed"])
         if out.exists():

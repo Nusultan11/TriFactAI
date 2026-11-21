@@ -61,6 +61,22 @@ def stable_hash(text: str, seed: int = 0) -> int:
     return int.from_bytes(hashlib.blake2b(f"{seed}:{text}".encode(), digest_size=8).digest(), "big")
 
 
+def eval_query_hashes(root: Path) -> pl.Series:
+    """Hashes (`key_expr`, seed 0) of every eval query and question (`eval/retrieval` queries incl. translations,
+    `eval/qa` questions): train builders drop examples with these texts, from any source (ADR-0007). The same
+    popular question occurs in several sources, e.g. NQ-derived KazQAD test and MS MARCO train."""
+    files = [str(p) for p in sorted((root / "eval/retrieval").glob("*/queries-*.parquet"))]
+    qa = [str(p) for p in sorted((root / "eval/qa").glob("*/test-*.parquet"))]
+    parts = []
+    if files:
+        parts.append(pl.scan_parquet(files).select(k=key_expr("query")))
+    if qa:
+        parts.append(pl.scan_parquet(qa).select(k=key_expr("question")))
+    if not parts:
+        return pl.Series("k", [], dtype=pl.UInt64)
+    return pl.concat(parts).filter(pl.col("k") != "").select(pl.col("k").hash(seed=0)).unique().collect()["k"]
+
+
 def hash_expr(col: str | pl.Expr, seed: int) -> pl.Expr:
     """Stable per-value hash in [0, 1) for split assignment (blake2b via map_elements on unique keys)."""
     e = pl.col(col) if isinstance(col, str) else col

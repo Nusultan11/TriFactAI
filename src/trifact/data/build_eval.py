@@ -3,6 +3,7 @@
 python -m trifact.data.build_eval build      # (re)build sets that are not frozen yet, write review sheets
 python -m trifact.data.build_eval status     # human review progress per sheet
 python -m trifact.data.build_eval freeze     # apply finished reviews, freeze every set that may be frozen
+python -m trifact.data.build_eval leakage    # overlap of all eval sets with the current train data
 
 Sets in `data/eval/<set>/` (each a dataset with manifest, data card and `frozen.json`):
 * `ner` — gold test sentences of KazNERD, WikiANN, WikiNEuRal, NEREL (task/ner `gold_test`);
@@ -52,6 +53,7 @@ from trifact.data.task_common import (
     raw_input,
     rows_with_keys,
     scan_raw,
+    stable_hash,
 )
 from trifact.data.translations import MT_LICENSE, qc_ok
 from trifact.lake.layout import LakeConfig, sha256_file
@@ -413,11 +415,79 @@ def build(params: dict[str, Any], root: Path) -> int:
     return 0
 
 
+MODEL_REVIEWER = r"(?i)llm|claude|gpt|qwen|machine|auto"
+
+
+def human_done(sheets: pl.DataFrame) -> pl.DataFrame:
+    """Rows with a verdict and a person's name (a reviewer naming a model is not a human review, ADR-0022)."""
+    who = pl.col("reviewer").fill_null("").str.strip_chars()
+    return sheets.filter(
+        pl.col("verdict").is_in(["ok", "fix", "drop"]) & (who != "") & ~who.str.contains(MODEL_REVIEWER)
+    )
+
+
+def query_cluster(qid: pl.Expr) -> pl.Expr:
+    """ADR-0022 cluster of a retrieval query: the source query with all its translations (our NLLB `/mt/<lang>`
+    suffix; the KazQAD nq part shares one example id across `kk`, `en`, `kk-en`, `en-kk`)."""
+    return qid.str.replace(r"/mt/[a-z]+$", "").str.replace(r"^kazqad/[a-z-]+/nq/", "kazqad/nq/")
+
+
+def nli_cluster(df: pl.DataFrame, en: pl.DataFrame) -> pl.Series:
+    """ADR-0022 cluster of an XNLI pair: its English premise (three hypotheses share it, translations too)."""
+    ex = pl.col("pair_id").str.replace(r"^xnli/(kk|ru|en)/", "")
+    prem = en.select(ex=ex, p=pl.col("premise"))
+    keys = {p: f"xnli/{stable_hash(p):016x}" for p in prem["p"].unique().to_list()}
+    m = dict(zip(prem["ex"].to_list(), [keys[p] for p in prem["p"].to_list()], strict=True))
+    return df.select(ex.replace_strict(m, default=None, return_dtype=pl.String)).to_series()
+
+
+def eval_texts(root: Path) -> dict[str, pl.Series]:
+    """Normalizable texts of every built eval set (frozen or not), by `<set>:<kind>` as in `leakage`."""
+
+    def read(name: str, table: str, cols: list[str]) -> pl.DataFrame:
+        files = sorted((root / "eval" / name).glob(f"*/{table}-*.parquet"))
+        return pl.read_parquet([str(f) for f in files], columns=cols) if files else pl.DataFrame()
+
+    out: dict[str, pl.Series] = {}
+    if (ner := read("ner", "test", ["tokens"])).height:
+        out["ner:sentence"] = ner["tokens"].list.join(" ")
+    if (qa := read("qa", "test", ["question", "context"])).height:
+        out["qa:query"], out["qa:passage"] = qa["question"], qa["context"].unique()
+    if (q := read("retrieval", "queries", ["query"])).height:
+        out["retrieval:query"] = q["query"]
+        out["retrieval:passage"] = read("retrieval", "docs", ["text"])["text"]
+    if (n := read("nli", "test", ["premise", "hypothesis"])).height:
+        out["nli:nli"] = n.select(pl.concat_str("premise", "hypothesis", separator=" || "))[:, 0]
+    return out
+
+
+def leakage_check(params: dict[str, Any], root: Path) -> int:
+    """Overlap of every eval set (frozen ones included) with the current train/validation task data
+    (`reports/eval_leakage.json`, DVC stage `eval_leakage`); queries and NLI pairs must not overlap. Retrieval
+    passages may: MIRACL dev and train share one corpus, and judged passages of eval topics serve as negatives
+    of train topics (PROGRESS, stage 3)."""
+    t0 = time.perf_counter()
+    with ResourceMonitor() as mon:
+        res = leakage(eval_texts(root), train_keys(root))
+    res = {
+        "sets": res,
+        "seconds": round(time.perf_counter() - t0, 1),
+        "peak_rss_mb": round(mon.peak_rss / 2**20),
+    }
+    write_report(ROOT / "reports" / "eval_leakage.json", res)
+    log_mlflow(
+        "eval",
+        "eval_leakage",
+        {"seed": params["seed"]},
+        {k.replace(":", "_"): v["overlap"] for k, v in res["sets"].items()},
+    )
+    print(json.dumps({k: v["overlap"] for k, v in res["sets"].items()}))
+    return 0
+
+
 def status(params: dict[str, Any], root: Path) -> int:
     sheets = read_sheets(root / "eval" / "review")
-    done = sheets.filter(
-        pl.col("verdict").is_in(["ok", "fix", "drop"]) & (pl.col("reviewer").str.strip_chars() != "")
-    )
+    done = human_done(sheets)
     need = int(params["evaluation"]["human_verified_min"])
     out: dict[str, Any] = {"items": sheets.height, "human_verified": done.height, "required": need,
                            "by_verdict": dict(done.group_by("verdict").len().iter_rows()) if done.height else {}, "sets": {}}  # fmt: skip
@@ -433,66 +503,104 @@ def status(params: dict[str, Any], root: Path) -> int:
     return 0
 
 
+def rewrite(d: Path, m: DatasetManifest, table: str, fn: Any) -> int:
+    """Apply `fn` to every shard of `table` in place (shards keep their language partition); rows written."""
+    rows, shards = 0, []
+    for s in m.shards:
+        if s.table != table:
+            shards.append(s)
+            continue
+        f = d / s.path
+        df = fn(pl.read_parquet(f))
+        df.write_parquet(f)
+        rows += df.height
+        shards.append(
+            s.model_copy(update={"rows": df.height, "bytes": f.stat().st_size, "sha256": sha256_file(f)})
+        )
+    m.shards = shards
+    return rows
+
+
 def freeze(params: dict[str, Any], root: Path) -> int:
+    """Apply the human verdicts and freeze `retrieval` and `nli`: drop `drop` items and MT rows nobody reviewed,
+    replace fixed texts (`fixed_text` -> query / hypothesis, `fixed_source` -> NLI premise), add `cluster_id`
+    (ADR-0022), drop qrels of removed queries, record shard hashes in `frozen.json`."""
     sheets = read_sheets(root / "eval" / "review")
-    done = sheets.filter(
-        pl.col("verdict").is_in(["ok", "fix", "drop"]) & (pl.col("reviewer").str.strip_chars() != "")
-    )
+    done = human_done(sheets)
     need = int(params["evaluation"]["human_verified_min"])
     if done.height < need:
         print(f"human-verified items: {done.height} < evaluation.human_verified_min = {need}; nothing frozen")
         return 1
+    if "fixed_source" not in done.columns:
+        done = done.with_columns(fixed_source=pl.lit(""))
     reviewed = set(done["item_id"].to_list())
     drop = set(done.filter(pl.col("verdict") == "drop")["item_id"].to_list())
-    fixes = dict(done.filter(pl.col("verdict") == "fix").select("item_id", "fixed_text").iter_rows())
-    for name, id_col, table, text_col, prefix in (
-        ("retrieval", "query_id", "queries", "query", "retrieval/"),
-        ("nli", "pair_id", "test", "hypothesis", "nli/"),
-    ):
+    fx = done.filter(pl.col("verdict") == "fix")
+    fixes = {i: t for i, t in fx.select("item_id", "fixed_text").iter_rows() if (t or "").strip()}
+    fixes_src = {i: t for i, t in fx.select("item_id", "fixed_source").iter_rows() if (t or "").strip()}
+
+    def keep(df: pl.DataFrame, id_col: str, prefix: str) -> pl.DataFrame:
+        item = pl.lit(prefix) + pl.col(id_col)
+        return df.filter(~item.is_in(list(drop)) & (~pl.col("needs_review") | item.is_in(list(reviewed))))
+
+    def fixed(df: pl.DataFrame, id_col: str, prefix: str, col: str, table: dict[str, str]) -> pl.DataFrame:
+        item = (pl.lit(prefix) + pl.col(id_col)).alias("_item")
+        return df.with_columns(
+            pl.struct(item, col)
+            .map_elements(lambda r: table.get(r["_item"], r[col]), return_dtype=pl.String)
+            .alias(col)
+        )
+
+    for name in ("retrieval", "nli"):
         d = root / "eval" / name
         fz = frozen(d)
         if not fz or fz["status"] == "frozen":
             continue
         m = DatasetManifest.read(d)
-        files = [d / s.path for s in m.shards if s.table == table]
-        df = pl.concat([pl.read_parquet(f) for f in files])
-        item = pl.lit(prefix) + pl.col(id_col)
-        df = df.with_columns(_item=item).filter(
-            ~pl.col("_item").is_in(list(drop))
-            & (~pl.col("needs_review") | pl.col("_item").is_in(list(reviewed)))
-        )
-        df = df.with_columns(
-            pl.struct("_item", text_col)
-            .map_elements(lambda r, c=text_col: fixes.get(r["_item"], r[c]), return_dtype=pl.String)
-            .alias(text_col)
-        )
-        df = df.drop("_item").with_columns(needs_review=pl.lit(False))
-        for f in files:
-            f.unlink()
-        df.write_parquet(files[0])
-        m.shards = [s for s in m.shards if s.table != table] + [
-            s.model_copy(update={"rows": df.height, "bytes": files[0].stat().st_size, "sha256": sha256_file(files[0])})
-            for s in m.shards if s.table == table and (d / s.path) == files[0]
-        ]  # fmt: skip
+        if name == "retrieval":
+            rows = rewrite(d, m, "queries", lambda df: fixed(keep(df, "query_id", "retrieval/"), "query_id", "retrieval/", "query", fixes)
+                           .with_columns(cluster_id=query_cluster(pl.col("query_id")), needs_review=pl.lit(False)))  # fmt: skip
+            qids = pl.concat(
+                [pl.read_parquet(d / s.path, columns=["query_id"]) for s in m.shards if s.table == "queries"]
+            )
+            rewrite(
+                d, m, "qrels", lambda df, q=qids: df.filter(pl.col("query_id").is_in(q["query_id"].implode()))
+            )
+        else:
+            en = pl.concat(
+                [pl.read_parquet(d / s.path) for s in m.shards if s.table == "test" and s.lang == "en"]
+            )
+
+            def nli_fn(df: pl.DataFrame, en: pl.DataFrame = en) -> pl.DataFrame:
+                df = keep(df, "pair_id", "nli/")
+                df = fixed(
+                    fixed(df, "pair_id", "nli/", "hypothesis", fixes), "pair_id", "nli/", "premise", fixes_src
+                )
+                return df.with_columns(cluster_id=nli_cluster(df, en), needs_review=pl.lit(False))
+
+            rows = rewrite(d, m, "test", nli_fn)
         m.metrics["needs_review_rows"] = 0
-        m.metrics["human_review"] = {"verified": len(reviewed), "dropped": len(drop), "fixed": len(fixes)}
+        m.metrics["human_review"] = {"verified": len(reviewed), "dropped": len(drop), "fixed": len(fixes) + len(fixes_src),
+                                     "assist": dict(done.group_by("assist").len().iter_rows()) if "assist" in done.columns else {}}  # fmt: skip
         m.write(d)
         (d / "frozen.json").write_text(json.dumps({**fz, "status": "frozen", "at": datetime.now(UTC).isoformat(timespec="seconds"),
                                                    "human_verified": done.height, "needs_review_rows": 0,
                                                    "shards": {s.path: s.sha256 for s in m.shards}}, indent=1), encoding="utf-8")  # fmt: skip
-        log.info("%s frozen after human review", name)
+        log.info("%s frozen after human review: %d rows", name, rows)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["build", "status", "freeze"], nargs="?", default="build")
+    ap.add_argument("command", choices=["build", "status", "freeze", "leakage"], nargs="?", default="build")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
     root = (ROOT / params["lake"]["root"]).resolve()
-    return {"build": build, "status": status, "freeze": freeze}[args.command](params, root)
+    return {"build": build, "status": status, "freeze": freeze, "leakage": leakage_check}[args.command](
+        params, root
+    )
 
 
 if __name__ == "__main__":
