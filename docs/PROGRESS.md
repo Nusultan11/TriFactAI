@@ -66,6 +66,31 @@
 - Бенчмарк `docproc` синтетический по вёрстке (реальный текст, известная разметка). Перенос на реальные файлы проверяется набором `real_docs` (≥ 50, `evaluation.real_docs_min`, этап 10). В первую очередь там смотреть пороги маршрутизатора (`docproc.router`, `docproc.pymupdf`) и таблицы без линеек.
 - Варианты чанкинга (`chunking.variants`) выбираются на этапе 6 по retrieval. `chunk_corpus` пока режет корпус без секций (`flat`), а `DocumentChunker` режет загрузки по секциям.
 - `dvc.yaml`: выходы `build_eval` перечислены по наборам (`data/eval/{ner,qa,retrieval,nli,review}`), потому что `data/eval/docproc` — выход стадии `build_docproc`.
+- В `params.yaml: promotion` нет порогов гейта Verification (точность `contradicted`, ECE; архитектура §10). Завести их до первого прогона этапа 8.
+- Kaggle T4 не поддерживает bf16 (ADR-0020), а дообучение Qwen3.5 — только bf16 LoRA (ADR-0012). Поэтому GEN-1…GEN-3 этапа 7 требуют облачной GPU Ampere+ и утверждённого `cloud.budget_usd`.
+
+---
+
+## Инструменты агента — библиотека Agent Skills (2026-11-21)
+
+Вне этапов ROADMAP: методическая база для автономного агента.
+
+- **Состав.** 11 скиллов в [.agents/skills/](../.agents/skills/README.md):
+  - `trifact-data-pipeline`, `trifact-eda`, `trifact-document-processing`, `trifact-ner-linking`;
+  - `trifact-training-hpo`, `trifact-retrieval`, `trifact-rag-pipeline`, `trifact-llm-finetuning`;
+  - `trifact-verification`, `trifact-evaluation`, `trifact-mlops`.
+
+  Каждый скилл содержит условия применения, ссылки на документы-владельцы, метод, критерии выбора инструментов, типичные ошибки, критерии готовности и источники. Числа проекта не копируются.
+- **Совместимость.** Формат — спецификация agentskills.io, во frontmatter только `name` и `description`.
+  - Codex читает `.agents/skills/` напрямую.
+  - Claude Code читает зеркало `.claude/skills/`. Его генерирует [scripts/sync_skills.py](../scripts/sync_skills.py), потому что symlink не подходит: `core.symlinks=false` на Windows.
+  - Тест [tests/test_skills.py](../tests/test_skills.py) и хук pre-commit проверяют спецификацию, ссылки и синхронность зеркала.
+- **Проверка.**
+  - `codex debug prompt-input` (codex-cli 0.144.0): все 11 скиллов в списке модели, описания и кириллица целы.
+  - Лексическая проверка выбора скилла на 18 типовых задачах RU/EN: 18/18.
+  - Тест YAML поймал двоеточия в описаниях, из-за которых Claude Code загрузил бы скилл без метаданных; исправлено.
+  - Claude Code (desktop) подхватил все 11 скиллов из `.claude/skills/` без перезапуска сессии, `trifact-evaluation` загружен через Skill.
+- **Исправлено попутно:** docstring `train_llm`, `llm_client` (Qwen3-1.7B + QLoRA → Qwen3.5 + bf16 LoRA, ADR-0012) и `retrieval.store` (две коллекции, ADR-0013).
 
 ---
 
