@@ -279,6 +279,12 @@ curation:
              file: tokenizer.json, unk: "<unk>"}
       qwen3: {hf_id: Qwen/Qwen3-1.7B, revision: 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e, file: tokenizer.json}
       qwen3_5: {hf_id: Qwen/Qwen3.5-2B, revision: 15852e8c16360a2fea060d615a32b45270f8a8fc, file: tokenizer.json}
+    toxicity:                 # ROADMAP 2.6 sensitive content; trained on en/ru/tt/uk/... (not kk), openrail++
+      hf_id: textdetox/bert-multilingual-toxicity-classifier
+      revision: 8fe5526e9c6b69cf1a615104a2ad037fb266c670
+      toxic_label: 1
+      max_tokens: 256
+      threshold: 0.5
 
   # EDA decisions (stage 2, PROGRESS 2026-11-20) applied where the index and training mixes are built (stages 6-7)
   downstream:

@@ -12,6 +12,10 @@ python -m trifact.data.corpus_stats [--corpus DIR] [--report FILE]
    hash of `doc_id` (reproducible, spread over all shards), first `max_chars` characters of each.
    For every pinned tokenizer (`tokenizers` library, `tokenizer.json` at a fixed HF revision):
    tokens per whitespace word (fertility), tokens per 1000 characters, and the unknown-token rate.
+4. Toxicity (ROADMAP 2.6, sensitive content) on the same sample: `curation.stats.toxicity` classifier
+   (textdetox multilingual mBERT, trained on en/ru/tt and others, not on kk: the kk share is reported but
+   unvalidated) over the first `max_tokens` tokens; share above `threshold` with Wilson 95% intervals per
+   (source, lang) and the top-scored documents for a manual look.
 """
 
 from __future__ import annotations
@@ -166,6 +170,41 @@ def fertility(texts: pl.DataFrame, specs: dict[str, dict[str, Any]], cache: Path
     return out
 
 
+def toxicity(texts: pl.DataFrame, spec: dict[str, Any]) -> dict[str, Any]:
+    import torch
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    from trifact.evaluation.review_quality import wilson
+
+    tok = AutoTokenizer.from_pretrained(spec["hf_id"], revision=spec["revision"])
+    mdl = AutoModelForSequenceClassification.from_pretrained(spec["hf_id"], revision=spec["revision"]).eval()
+    torch.set_num_threads(max(1, torch.get_num_threads()))
+    probs: list[float] = []
+    t0 = time.perf_counter()
+    rows = texts["text"].to_list()
+    with torch.inference_mode():
+        for i in range(0, len(rows), 32):
+            enc = tok(
+                rows[i : i + 32],
+                truncation=True,
+                max_length=int(spec["max_tokens"]),
+                padding=True,
+                return_tensors="pt",
+            )
+            probs += mdl(**enc).logits.softmax(-1)[:, int(spec["toxic_label"])].tolist()
+    df = texts.with_columns(p_toxic=pl.Series(probs, dtype=pl.Float64))
+    thr = float(spec["threshold"])
+    by = []
+    for (src, lang), g in sorted(df.group_by("source", "lang"), key=lambda x: (str(x[0][0]), str(x[0][1]))):
+        k = int((g["p_toxic"] >= thr).sum())
+        top = g.sort("p_toxic", descending=True).head(3)
+        by.append({"source": src, "lang": lang, "docs": g.height, "toxic": k, "share": round(k / g.height, 4),
+                   "ci95": wilson(k, g.height), "validated_language": lang != "kk",
+                   "top": [{"doc_id": d, "p": round(p, 3), "text": t[:200]} for d, p, t in top.select("doc_id", "p_toxic", "text").iter_rows()]})  # fmt: skip
+    return {"model": spec["hf_id"], "revision": spec["revision"], "threshold": thr, "by_source_lang": by,
+            "docs_per_s": round(len(rows) / max(time.perf_counter() - t0, 1e-9), 1)}  # fmt: skip
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument(
@@ -197,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         **vol,
         "fertility_sample": texts.group_by("source", "lang").len().sort("source", "lang").to_dicts(),
         "fertility": fertility(texts, cfg["tokenizers"], ROOT / params["curation"]["langid"]["cache"]),
+        "toxicity": toxicity(texts, cfg["toxicity"]),
         "seconds": round(time.perf_counter() - t0, 1),
     }
     rep_path = args.report or (

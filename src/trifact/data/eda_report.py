@@ -499,6 +499,16 @@ def stage_section() -> list[str]:
             "",
             table(rows, ["tokenizer", "lang", "docs", "tokens/word", "tokens/1k chars", "unk rate"]),
         ]
+    if cs and cs.get("toxicity"):
+        tx = cs["toxicity"]
+        rows = [[r["source"], r["lang"], r["docs"], r["toxic"], r["share"], f"{r['ci95'][0]}-{r['ci95'][1]}",
+                 "yes" if r["validated_language"] else "no (kk not in training data)"] for r in tx["by_source_lang"]]  # fmt: skip
+        md += [
+            "",
+            f"### Toxicity (curated sample, `{tx['model']}`, p >= {tx['threshold']})",
+            "",
+            table(rows, ["source", "lang", "docs", "toxic", "share", "95% CI", "model trained on lang"]),
+        ]
     md.append("")
     return md
 
