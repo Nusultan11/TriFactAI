@@ -14,6 +14,7 @@ description: Evaluation, statistics and error analysis for TriFact components an
 ## Опорные документы
 
 - Наборы, значимость, гейт, ablation — архитектура [§10](../../../docs/architecture/docs/01-architecture.md); [ADR-0007](../../../docs/architecture/adr/0007-leakage-safe-splits.md), [ADR-0009](../../../docs/architecture/adr/0009-model-registry-and-promotion-gate.md).
+- Протокол оценки проекта (кластерный бутстреп, определение faithfulness, LLM-судьи, загрязнение, выходы по примерам) — [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md). Скилл объясняет методы, ADR фиксирует решение.
 - Числа: `params.yaml: evaluation` (бутстреп, уровень CI, ручная проверка), `promotion` (пороги гейта).
 - Рабочий пример бутстрепа и агрегации по виду × языку — `trifact.evaluation.eval_docproc` (`bootstrap_ci`, `aggregate`).
 - Правило: проверка ИИ не заменяет человеческую (`build_eval`, PROGRESS блокеры).

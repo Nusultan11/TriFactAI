@@ -36,7 +36,7 @@ description: LLM engineering for grounded KK/RU/EN QA with Qwen3.5 in TriFact �
 ## Baseline (GEN-0)
 
 - Все кандидаты и контрольный baseline — с одним и тем же промптом, контекстом и декодированием.
-- Метрики по языкам и направлениям на `qa` eval: answer F1, faithfulness, точность ссылок, refusal P/R, язык ответа.
+- Метрики по языкам и направлениям на `qa` eval: answer F1, faithfulness (определение и ручная проверка вердиктов — [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md)), точность ссылок, refusal P/R, язык ответа.
 - KazLLM и Sherkala (NC) используются только для оценки.
 - Лучший GEN-0 по каждому языку — планка, которую дообучение обязано пройти (гейт).
 

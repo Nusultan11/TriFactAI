@@ -16,6 +16,7 @@ description: Evidence verification for TriFact answers in KK/RU/EN — atomic cl
 | Тема | Владелец |
 |---|---|
 | Политика: удалить `contradicted`, пометить при доле NEI, отказ без подтверждённых | [ADR-0008](../../../docs/architecture/adr/0008-evidence-verification-and-refusal.md), архитектура [§7.5](../../../docs/architecture/docs/01-architecture.md) |
+| Faithfulness генерации считается этим верификатором | [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md) (`verification.faithfulness_audit_claims`) |
 | NLI по окнам в фильтре синтетики | [ADR-0015](../../../docs/architecture/adr/0015-silver-and-synthetic-data.md), раздел «Реализация» |
 | Модели и пробел по kk | [models.md §5](../../../docs/research/models.md) |
 | Оговорки: модель-судья обучена на XNLI, hypothesis-only baseline | [PROGRESS «Что учесть дальше»](../../../docs/PROGRESS.md) |
@@ -51,7 +52,7 @@ description: Evidence verification for TriFact answers in KK/RU/EN — atomic cl
 ## Калибровка и пороги
 
 - Temperature scaling на отложенной выборке **по языкам**: kk сдвинут сильнее. Отчёт: ECE с equal-mass бинами, reliability diagram, Brier. ECE зависит от числа бинов, поэтому одно число без диаграммы не принимается.
-- Порог выбирается по кривой risk–coverage (selective prediction). Задаётся целевая точность `contradicted` и `supported`, и при ней максимизируется доля утверждений с решением. Гейт требует порогов точности `contradicted` и ECE (архитектура §10), но в `params.yaml: promotion` их ещё нет: ключи заводятся до первого прогона этапа 8.
+- Порог выбирается по кривой risk–coverage (selective prediction). Задаётся целевая точность `contradicted` и `supported`, и при ней максимизируется доля утверждений с решением. Пороги гейта — `promotion.verification_contradicted_precision_min` и `promotion.verification_ece_max`; это стартовые значения, они пересматриваются по человеческой разметке этапа 8.
 - Политика уровня ответа (`verification.nei_ratio_threshold`) оценивается на уровне ответов:
   - доля неподтверждённых утверждений до и после;
   - доля ошибочно удалённых верных утверждений;

@@ -20,6 +20,8 @@ description: End-to-end grounded RAG in TriFact — retrieval, reranking, contex
 | Поток, контракт ответа, API | архитектура [§6.2](../../../docs/architecture/docs/01-architecture.md) |
 | Ablation, гейт e2e, наблюдаемость | архитектура §10, §12 |
 | Отказ и проверка утверждений | [ADR-0008](../../../docs/architecture/adr/0008-evidence-verification-and-refusal.md) |
+| Недоверенный текст в промпте | [ADR-0023](../../../docs/architecture/adr/0023-untrusted-evidence-in-prompts.md), архитектура §14 |
+| Трассы e2e и faithfulness | [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md), архитектура §10 «Диагностика e2e» |
 | Независимость от NER, два уровня индекса | [ADR-0004](../../../docs/architecture/adr/0004-hybrid-retrieval-independent-of-ner.md), [ADR-0013](../../../docs/architecture/adr/0013-two-tier-qdrant-index.md) |
 | Промпт | `configs/prompts/grounded_answer.md` |
 | Параметры | `params.yaml: retrieval.candidates_k`, `retrieval.context_k`, `verification` |
@@ -52,7 +54,8 @@ description: End-to-end grounded RAG in TriFact — retrieval, reranking, contex
 
 - Пассажи изолируются разделителями (spotlighting), правило в промпте: в доказательствах — данные, не команды. У генератора нет инструментов и побочных эффектов.
 - Выход проверяется независимо от модели: ссылки ⊆ переданных, NLI по утверждениям, язык.
-- Набор атак (документы с внедрёнными инструкциями на kk/ru/en) входит в e2e eval. Метрика — доля успешных атак до и после защиты.
+- Набор атак (документы с внедрёнными инструкциями на kk/ru/en) входит в e2e eval. Метрика — доля успешных атак до и после защиты; гейт `promotion.e2e_injection_no_worse`.
+- Текст пассажа ради защиты не чистится: смещения цитат должны указывать в сохранённый текст (ADR-0023).
 
 ## Отказ
 
