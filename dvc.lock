@@ -1227,8 +1227,8 @@ stages:
       size: 12918
     - path: src/trifact/ingestion/langdetect.py
       hash: md5
-      md5: 0da9bee4b9c394a423e85d396f63a02a
-      size: 8685
+      md5: 985f50e29388de5201a4ebdcb8b37916
+      size: 8957
     params:
       params.yaml:
         curation.langid:
@@ -1267,8 +1267,8 @@ stages:
     outs:
     - path: reports/langid.json
       hash: md5
-      md5: f2c63f9674d8b536c7eb6b2640ac937c
-      size: 8871
+      md5: 6b03143932045101c0d12f7a9b05cc07
+      size: 8875
   clean:
     cmd: python -m trifact.data.clean
     deps:
@@ -1946,8 +1946,8 @@ stages:
     deps:
     - path: configs/labels.yaml
       hash: md5
-      md5: 6414cd2a379c4a8a02864dfee04270b4
-      size: 2780
+      md5: dd3e7293f54661d32bca362738ce5465
+      size: 3562
     - path: data/raw/wikidata
       hash: md5
       md5: 635d03e100853bce995796680357cac2.dir
@@ -1955,8 +1955,8 @@ stages:
       nfiles: 212
     - path: src/trifact/data/build_kb.py
       hash: md5
-      md5: ec7a77a28f558a11f47f34cee6e25adc
-      size: 9470
+      md5: 8458353693c408e41c81065695b3d10e
+      size: 9725
     params:
       params.yaml:
         linking:
@@ -1965,8 +1965,8 @@ stages:
     outs:
     - path: data/task/kb
       hash: md5
-      md5: b2ed6f4516c077d07b508453faddbb38.dir
-      size: 4037272592
+      md5: fc24abb34687c1d3823fd3a062c82850.dir
+      size: 4037715852
       nfiles: 425
   build_ner:
     cmd: python -m trifact.data.build_ner

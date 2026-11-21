@@ -55,10 +55,12 @@ wikidata_classes:
   LOC: [Q17334923, Q618123, Q486972, Q6256, Q515, Q35657, Q10864048, Q56061, Q82794, Q41176]
        # physical location, geographical feature, human settlement, country, city,
        # US state, first-level admin division, administrative territorial entity, geographic region, building
-# Classes that are not PER/ORG/LOC names (type O). They compete with the roots above by depth, ties go to O:
+# Classes that are not PER/ORG/LOC names (type O). They compete with the roots above by depth; a tie keeps the
+# core label. `nation` and `historical period` are not excluded: countries, empires and dynasties are instances
+# of them and are LOC in the gold sets:
 # Wikidata reaches `organization` from religions, ideologies and peoples and `physical location` from wars, so
 # silver tagged Islam, Christianity, democracy, Baroque, Jewish people as ORG and the Eastern Front as LOC
 # (stage 3 review of the most frequent silver surfaces, 2026-11-21).
-wikidata_exclude: [Q9174, Q7257, Q968159, Q1792644, Q11514315, Q41710, Q6266, Q1307214, Q1190554, Q34770]
-       # religion, ideology, art movement, art style, historical period, ethnic group, nation,
+wikidata_exclude: [Q9174, Q7257, Q968159, Q1792644, Q41710, Q1307214, Q1190554, Q34770]
+       # religion, ideology, art movement, art style, ethnic group,
        # form of government, occurrence (events, wars, elections), language

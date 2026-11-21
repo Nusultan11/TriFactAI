@@ -27,7 +27,7 @@ def test_class_closure_walks_p279_and_prefers_the_nearest_label(tmp_path: Path) 
     assert "Q400" not in got
 
 
-def test_excluded_classes_win_over_core_labels_at_the_same_or_smaller_depth(tmp_path: Path) -> None:
+def test_excluded_classes_win_over_core_labels_only_when_nearer(tmp_path: Path) -> None:
     # Q10 religion-like class: under the O root (Q9174) at depth 1 and under organization at depth 2
     df = pl.DataFrame(
         {
@@ -40,5 +40,5 @@ def test_excluded_classes_win_over_core_labels_at_the_same_or_smaller_depth(tmp_
     roots = {"PER": ["Q5"], "ORG": ["Q43229"], "LOC": ["Q515"], "O": ["Q9174"]}
     got = dict(class_closure([str(f)], roots, depth=3).select("cls", "ner_type").iter_rows())
     assert got["Q10"] == "O"  # O at depth 1 beats ORG at depth 2
-    assert got["Q12"] == "O"  # same depth: O first
+    assert got["Q12"] == "ORG"  # same depth: the core label (a country is also a `nation`)
     assert got["Q11"] == "ORG"

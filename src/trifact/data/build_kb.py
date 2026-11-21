@@ -6,9 +6,9 @@ python -m trifact.data.build_kb [--workers N]
    of every core label in `configs/labels.yaml: wikidata_classes` for `wikidata_max_depth` levels, gives
    the class sets of PER / ORG / LOC and of the classes that are not names (`wikidata_exclude`: religion,
    ideology, style, period, ethnic group, event, language -> O); a class reachable from several labels keeps
-   the nearest one, ties broken by O > PER > ORG > LOC.
+   the nearest one, ties broken by PER > ORG > LOC > O.
 2. NER type of an entity: the label of its nearest P31 (instance of) class found in those sets (smallest
-   depth, ties by O > PER > ORG > LOC). A country is an instance of both `country` (LOC, depth 0) and
+   depth, ties by PER > ORG > LOC > O). A country is an instance of both `country` (LOC, depth 0) and
    `sovereign state` (ORG through `political organization`, depth 5): the nearest class makes it LOC, as
    in every gold NER set, where the old label priority made Germany or Paris an ORG.
 3. Tables, written one raw shard at a time (memory bounded by a shard, ADR-0011):
@@ -42,7 +42,7 @@ from trifact.lake.stats import ResourceMonitor, log_mlflow
 
 log = logging.getLogger("trifact.build_kb")
 LABELS = ROOT / "configs" / "labels.yaml"
-PRIORITY = ["O", "PER", "ORG", "LOC"]  # tie order; O = `wikidata_exclude` (not a name)
+PRIORITY = ["PER", "ORG", "LOC", "O"]  # tie order; O = `wikidata_exclude` (not a name) loses ties
 WIKIS = {"kkwiki": "kk", "ruwiki": "ru", "enwiki": "en"}
 
 
