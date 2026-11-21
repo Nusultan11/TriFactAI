@@ -1,4 +1,4 @@
-"""QLoRA fine-tuning of Qwen3-1.7B (cloud GPU, ADR-0005)."""
+"""bf16 LoRA fine-tuning of Qwen3.5 on a cloud GPU (ADR-0012; QLoRA is not used for Qwen3.5)."""
 
 from __future__ import annotations
 
