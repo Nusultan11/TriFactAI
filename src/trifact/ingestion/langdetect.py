@@ -89,7 +89,8 @@ def model_path(name: str, spec: dict[str, Any], cache_dir: Path) -> Path:
 
 
 class LangId:
-    """One fastText language-id model with labels mapped by `map_label`."""
+    """One fastText language-id model with labels mapped by `map_label`. A text without lower-case letters is
+    classified in lower case (stage 2 review: lid.176 put ALL-CAPS Kazakh lines into ru with p 0.3-0.5)."""
 
     def __init__(self, path: Path, name: str = ""):
         import fasttext
@@ -106,6 +107,8 @@ class LangId:
         cache = self._labels
         pred = self._predict
         for t in texts:
+            if t.isupper():  # fastText is case-sensitive: ALL-CAPS Kazakh headlines came out as ru
+                t = t.lower()
             res = pred(t.replace("\n", " ") + "\n", 1, 0.0, "replace")
             if not res:
                 langs.append("und")

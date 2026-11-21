@@ -242,8 +242,14 @@ curation:
         min_lang_score: 0.5
         max_dup_line_ratio: 0.5
         min_stopword_ratio: 0.0
-      cc100: {min_chars: 40, min_words: 5, min_stopword_ratio: 0.0}  # one sentence per record
-      leipzig: {min_chars: 40, min_words: 5, min_stopword_ratio: 0.0}
+      # one record = one line: lang_score (agreement of paragraphs) is 1 by construction, so the model probability
+      # lang_conf is the language signal. Stage 2 review (GlotLID, kk letters): ru/en records of multidomain_kk with
+      # lang_conf < 0.65 were mostly Kazakh (ru cc100: 42k of 49k); kk keeps them (GlotLID agreed kk for 80 %)
+      cc100: {min_chars: 40, min_words: 5, min_stopword_ratio: 0.0, languages: &one_line {ru: {min_lang_conf: 0.65}, en: {min_lang_conf: 0.65}}}
+      leipzig: {min_chars: 40, min_words: 5, min_stopword_ratio: 0.0, languages: *one_line}
+      news: {languages: *one_line}
+      oscar: {languages: *one_line}
+      books: {languages: *one_line}
   minhash:                  # ROADMAP 2.4; trifact.data.dedup
     num_perm: 126
     bands: 14               # 14 bands x 9 rows: S-curve midpoint J ~ 0.75, P(link | J=0.8) ~ 0.87, P(link | J=0.6) ~ 0.13

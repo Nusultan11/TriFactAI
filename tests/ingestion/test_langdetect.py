@@ -3,7 +3,8 @@ from __future__ import annotations
 import polars as pl
 import pytest
 
-from trifact.ingestion.langdetect import LangConfig, detect, map_label
+from trifact.core.params import ROOT, load_params
+from trifact.ingestion.langdetect import LangConfig, LangId, detect, map_label, model_path
 
 
 @pytest.mark.parametrize(
@@ -63,3 +64,18 @@ def test_detect_doc_and_paragraph() -> None:
     assert out["lang_conf"][0] == pytest.approx(0.9, rel=1e-5)
     assert out["lang_score"][2] == 0.0
     assert all(len(t) <= 30 for t in lid.seen)  # max_para_chars truncation
+
+
+def test_all_caps_text_is_classified_in_lower_case() -> None:
+    spec = load_params()["curation"]["langid"]
+    if not (ROOT / spec["cache"]).is_dir():
+        pytest.skip("lid.176 is not cached")
+    lid = LangId(model_path("lid176", spec["models"]["lid176"], ROOT / spec["cache"]), "lid176")
+    caps = [
+        "ҚАЗАҚСТАН АРМЕНИЯНЫ СОҢҒЫ РЕТ 10 ЖЫЛ БҰРЫН ЖЕҢГЕН",
+        "МЕКЕН-ЖАЙ: ОҚО, ҚАЗЫҒҰРТ АУДАНЫ, РАБАТ АУЫЛЫ",
+    ]
+    langs, scores = lid.predict(caps)
+    assert langs == ["kk", "kk"]
+    assert lid.predict([c.lower() for c in caps]) == (langs, scores)
+    assert lid.predict(["Москва — столица России, крупнейший город страны."])[0] == ["ru"]
