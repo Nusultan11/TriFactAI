@@ -66,8 +66,30 @@
 - Бенчмарк `docproc` синтетический по вёрстке (реальный текст, известная разметка). Перенос на реальные файлы проверяется набором `real_docs` (≥ 50, `evaluation.real_docs_min`, этап 10). В первую очередь там смотреть пороги маршрутизатора (`docproc.router`, `docproc.pymupdf`) и таблицы без линеек.
 - Варианты чанкинга (`chunking.variants`) выбираются на этапе 6 по retrieval. `chunk_corpus` пока режет корпус без секций (`flat`), а `DocumentChunker` режет загрузки по секциям.
 - `dvc.yaml`: выходы `build_eval` перечислены по наборам (`data/eval/{ner,qa,retrieval,nli,review}`), потому что `data/eval/docproc` — выход стадии `build_docproc`.
-- В `params.yaml: promotion` нет порогов гейта Verification (точность `contradicted`, ECE; архитектура §10). Завести их до первого прогона этапа 8.
-- Kaggle T4 не поддерживает bf16 (ADR-0020), а дообучение Qwen3.5 — только bf16 LoRA (ADR-0012). Поэтому GEN-1…GEN-3 этапа 7 требуют облачной GPU Ampere+ и утверждённого `cloud.budget_usd`.
+
+---
+
+## Пересмотр архитектуры и этапов по скиллам (2026-11-21)
+
+Документы сверены с методиками `.agents/skills`. Код и данные этапов 1–4 не менялись, `dvc status` по уже выполненным стадиям прежний.
+
+**Найденные пробелы и решения**
+
+| Пробел | Решение |
+|---|---|
+| faithfulness стоит в гейте LLM, но не определён | [ADR-0022](architecture/adr/0022-evaluation-protocol.md): доля утверждений, поддержанных цитатами, по верификатору с ручной проверкой вердиктов (`verification.faithfulness_audit_claims`) |
+| бутстреп по примерам при зависимых примерах (вопросы одного контекста, переводы запроса) | ADR-0022: парный бутстреп по кластерам, сиды внутри ресэмплов |
+| нет правил для LLM-судей и проверки загрязнения предобучения | ADR-0022: судья только после калибровки человеком; метрики на подмножестве не из Wikipedia и `real_docs` |
+| prompt injection через документы не описана и не меряется | [ADR-0023](architecture/adr/0023-untrusted-evidence-in-prompts.md): изоляция пассажей, проверка выхода, набор атак в e2e, гейт `promotion.e2e_injection_no_worse` |
+| в `promotion` нет порогов Verification | `verification_contradicted_precision_min`, `verification_ece_max` (стартовые, пересмотр на этапе 8) |
+| в архитектуре §10 числа гейта дублировали `params.yaml` | таблица гейта ссылается на ключи `promotion` |
+| этапы 5–10 без постадийной диагностики | ROADMAP: recall кандидатов EL, candidate recall и ANN против точного поиска (RET-S), RET-C, регрессии адаптера, тест верификатора на ответах системы, трассы e2e и стадии-виновники, дрейф, `real_docs` |
+| bf16 LoRA (ADR-0012) невозможна на T4 Kaggle при нулевом бюджете | ROADMAP 7.0 — предусловие, риск в архитектуре §17 |
+| факты о VLM-OCR и проверщиках утверждений лежали в скиллах | перенесены в models.md §5, §6.4 и datasets.md §8, скиллы ссылаются на них |
+
+**Изменено:** архитектура §7.2–§7.5, §10, §12, §14, §16, §17; ROADMAP этапы 5–10; ADR-0009 (Amended by 22); `params.yaml: promotion`, `verification`; models.md; datasets.md; скиллы evaluation, verification, rag-pipeline, retrieval, llm-finetuning, mlops, document-processing.
+
+**C4-модель** (`workspace.dsl`) не менялась: новых контейнеров и связей нет.
 
 ---
 
