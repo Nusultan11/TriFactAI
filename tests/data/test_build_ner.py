@@ -37,6 +37,28 @@ def test_silver_tags_links_propagates_and_filters(tmp_path: Path) -> None:
     ]
 
 
+def test_silver_untags_spans_without_a_capital_letter(tmp_path: Path) -> None:
+    rows = [
+        {"page_id": 3, "title": "Ислам", "lang": "kk", "para": 0,
+         "tokens": ["Абай", "ислам", "туралы", "жазды", "."],
+         "links": [{"s": 0, "e": 1, "target": "Абай", "ner_type": "PER"},
+                   {"s": 1, "e": 2, "target": "Ислам", "ner_type": "ORG"}], "title_type": None},
+        {"page_id": 4, "title": "X", "lang": "en", "para": 0,
+         "tokens": ["the", "band", "played", "in", "Leeds", "."],
+         "links": [{"s": 0, "e": 1, "target": "The Who", "ner_type": "ORG"},
+                   {"s": 4, "e": 5, "target": "Leeds", "ner_type": "LOC"}], "title_type": None},
+    ]  # fmt: skip
+    src = tmp_path / "res.parquet"
+    pl.DataFrame(rows).write_parquet(src)
+    out = tmp_path / "tag.parquet"
+    r = tag_unit((str(src), str(out), CFG))
+    assert r["reasons"]["span_without_capital"] == 2
+    assert pl.read_parquet(out)["tags"].to_list() == [
+        ["B-PER", "O", "O", "O", "O"],
+        ["O", "O", "O", "O", "B-LOC", "O"],
+    ]
+
+
 def test_gazetteer_tag_longest_match_and_prf() -> None:
     gaz = {"нұр-сұлтан": "LOC", "қазақстан республикасы": "LOC", "қазақстан": "LOC"}
     tags = gazetteer_tag(["Қазақстан", "Республикасы", "және", "Нұр-Сұлтан"], gaz, 3)

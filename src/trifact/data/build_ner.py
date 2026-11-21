@@ -267,6 +267,12 @@ def tag_unit(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
                         tags[i] = f"B-{t}"
                         for j in range(i + 1, i + n):
                             tags[j] = f"I-{t}"
+            # a name has an upper-case letter or a digit somewhere: link texts like "the", ".", "»" or the
+            # lower-case "ислам" / "мұсылман" (linked common words) are not entities
+            for s, e, _ in entities(tags):
+                if not any(c.isupper() or c.isdigit() for tok in toks[s:e] for c in tok):
+                    tags[s:e] = ["O"] * (e - s)
+                    reasons["span_without_capital"] += 1
             if not any(t != "O" for t in tags):
                 reasons["no_entity"] += 1
                 continue

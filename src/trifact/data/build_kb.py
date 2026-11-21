@@ -4,10 +4,11 @@ python -m trifact.data.build_kb [--workers N]
 
 1. Class closure: the P279 (subclass of) graph of all entities, walked downwards from the root classes
    of every core label in `configs/labels.yaml: wikidata_classes` for `wikidata_max_depth` levels, gives
-   the class sets of PER / ORG / LOC (a class reachable from several labels keeps the nearest one, ties
-   broken by PER > ORG > LOC).
+   the class sets of PER / ORG / LOC and of the classes that are not names (`wikidata_exclude`: religion,
+   ideology, style, period, ethnic group, event, language -> O); a class reachable from several labels keeps
+   the nearest one, ties broken by O > PER > ORG > LOC.
 2. NER type of an entity: the label of its nearest P31 (instance of) class found in those sets (smallest
-   depth, ties by PER > ORG > LOC). A country is an instance of both `country` (LOC, depth 0) and
+   depth, ties by O > PER > ORG > LOC). A country is an instance of both `country` (LOC, depth 0) and
    `sovereign state` (ORG through `political organization`, depth 5): the nearest class makes it LOC, as
    in every gold NER set, where the old label priority made Germany or Paris an ORG.
 3. Tables, written one raw shard at a time (memory bounded by a shard, ADR-0011):
@@ -41,7 +42,7 @@ from trifact.lake.stats import ResourceMonitor, log_mlflow
 
 log = logging.getLogger("trifact.build_kb")
 LABELS = ROOT / "configs" / "labels.yaml"
-PRIORITY = ["PER", "ORG", "LOC"]
+PRIORITY = ["O", "PER", "ORG", "LOC"]  # tie order; O = `wikidata_exclude` (not a name)
 WIKIS = {"kkwiki": "kk", "ruwiki": "ru", "enwiki": "en"}
 
 
@@ -92,7 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     root = (ROOT / params["lake"]["root"]).resolve()
     out = (args.out or root / "task" / "kb").resolve()
     labels = yaml.safe_load(LABELS.read_text(encoding="utf-8"))
-    roots, depth = labels["wikidata_classes"], int(labels["wikidata_max_depth"])
+    roots = {**labels["wikidata_classes"], "O": labels.get("wikidata_exclude", [])}
+    depth = int(labels["wikidata_max_depth"])
     min_labels = int(params["linking"]["kb_min_labels"])
     stage_params = {"roots": roots, "depth": depth, "kb_min_labels": min_labels}
     files = raw_files(root, "wikidata", "entities")
