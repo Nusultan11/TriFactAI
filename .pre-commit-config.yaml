@@ -25,3 +25,9 @@ repos:
         language: system
         pass_filenames: false
         types_or: [python, yaml]
+      - id: agent-skills
+        name: agent skills format, links, .claude mirror
+        entry: uv run --no-sync pytest -q tests/test_skills.py
+        language: system
+        pass_filenames: false
+        files: ^(\.agents/skills/|\.claude/skills/|scripts/sync_skills\.py)
