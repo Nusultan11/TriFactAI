@@ -409,9 +409,11 @@ teacher:                    # ADR-0015, ADR-0020: llama.cpp on Kaggle T4 x2 (vLL
   filters: {round_trip_top_k: 10, min_nli_entail: 0.7}
   serve: {repo: unsloth/Qwen3.5-35B-A3B-GGUF, revision: bc014a17be43adabd7066b7a86075ff935c6a4e2,
           file: Qwen3.5-35B-A3B-UD-IQ4_XS.gguf, llama_cpp_ref: b12032, parallel: 16, ctx_per_slot: 4096,
-          temperature: 0.7, top_p: 0.9, extra_args: [-kvu]}
+          temperature: 0.7, top_p: 0.9, batch: 4096, ubatch: 2048, extra_args: [-kvu]}
           # measured 2026-11-18 (llama-batched-bench, 2x T4, 400+64 tokens): 16 sequences 740 tok/s with a unified
-          # KV cache (-kvu) vs 305 tok/s without (hybrid DeltaNet layers); single sequence pp 935 / tg 57 tok/s
+          # KV cache (-kvu) vs 305 tok/s without (hybrid DeltaNet layers); single sequence pp 935 / tg 57 tok/s.
+          # 2026-11-21, 16 sequences x 1500 prompt tokens: prefill 1134 tok/s at -ub 512, 1254 at 1024, 1496 at 2048;
+          # decode ~190 tok/s; 32 sequences x 550: decode 220 vs 201 tok/s at 16 (parallel stays 16)
   time_budget_h: 11.0       # per Kaggle session (12 h limit); weekly GPU quota 30 h, cost 0 USD
 
 llm:                        # ADR-0012

@@ -1,24 +1,32 @@
 """Teacher synthetic data (ADR-0015): prompts from corpus chunks, parsing and filters of the teacher answers.
 
-python -m trifact.data.synthetic prepare  --kind queries|qa --n N --out DIR      # Kaggle input: prompts + meta
-python -m trifact.data.synthetic import   --kind queries|qa --kaggle-out DIR     # filters -> task/synthetic/<kind>
+python -m trifact.data.synthetic prepare  --kind queries|qa --n N --out DIR [--exclude-meta M ...] [--exclude-docs F]
+python -m trifact.data.synthetic import   --kind queries|qa --kaggle-out DIR [DIR ...]  # filters -> task/synthetic/<kind>
 python -m trifact.data.synthetic finalize --kind qa --scores DIR                  # NLI filter of answers
+
+`prepare` skips the chunks of earlier runs (`--exclude-meta`, their meta.parquet) and of the documents listed in
+`--exclude-docs` (Parquet column `doc_id`); `import` filters the answers of all given runs together (one duplicate
+check over every run), each run directory next to its `meta.parquet`.
 
 `import --kind qa` writes the claim-level NLI pairs to `<work>/nli_in` (Kaggle job `nli_score` input) and the
 candidates to `<work>/qa_candidates.parquet`; `--work` defaults to `data/.cache/work/synthetic_<kind>`.
 
-Queries (`configs/prompts/query_gen.md`): one chunk -> a query in kk, ru and en (3 language directions per chunk, so
-9 directions over the three chunk languages). Filters, in order (drop reason in parentheses): JSON object with the
-three keys (`parse`); 3..20 words (`length`); lid.176 language equals the requested one (`language`); the query is not a
+Queries (`configs/prompts/query_gen.md`): one chunk -> a natural question and a keyword query, each in kk, ru and en
+(3 language directions per chunk and type, so 9 directions over the three chunk languages); runs before 2026-11-21 asked
+for the question only (`{"kk", "ru", "en"}`). The keyword query of a chunk has row id `<id>/kw`. Filters, in order
+(drop reason in parentheses): JSON object with the three keys (`parse`); question 3..20, keywords 2..10 words (`length`); lid.176 language equals the requested one (`language`); the query is not a
 copied passage sentence (`copy`, >= 0.8 of the query words in one sentence in order); round-trip (`round_trip`): the
 query in the passage language must retrieve its chunk in the BM25 top `teacher.filters.round_trip_top_k` of the pool of
 all prepared chunks of that language; the queries in the other languages are the teacher's translations of it and share
 its verdict (the cross-lingual dense round-trip needs the stage 6 embedder); exact duplicates (`duplicate`).
 
 Grounded QA (`configs/prompts/grounded_qa_gen.md`): a target chunk + 2 chunks of the same document or language as
-evidence, question language and mode (answerable / unanswerable) drawn to `sft.mix` and `scale.min_kk_share`. Filters:
-JSON (`parse`); question and answer language (`language`); answerable: at least one citation and only evidence ids
-(`citation`); unanswerable: the exact refusal phrase (`refusal`); NLI support (`nli`, `finalize`): every cited claim
+evidence, question language and mode (answerable / unanswerable) drawn to `sft.mix` and `scale.min_kk_share`; three
+pairs per prompt (`{"pairs": [...]}`, row id `<id>/<k>`; runs before 2026-11-21 wrote one `{"question", "answer"}`):
+on 2x T4 the prefill of the ~1 500-token evidence costs about as much as decoding one answer, three answers amortize
+it. Filters: JSON (`parse`); question and answer language (`language`); answerable: at least one citation and only
+evidence ids (`citation`); unanswerable: the exact refusal phrase (`refusal`); repeated normalized question
+(`duplicate`); NLI support (`nli`, `finalize`): every cited claim
 is scored against 3-sentence windows of its passages, an answer passes when its weakest claim's best window has
 entailment >= `teacher.filters.min_nli_entail`. Passages are numbered in the prompt and the numbers mapped back
 to chunk ids. Prompts the time budget left unanswered are counted as `not_generated`.
@@ -114,8 +122,16 @@ def copied(query: str, passage: str) -> bool:
 # ----------------------------------------------------------------------------- prepare
 
 
-def sample_chunks(root: Path, n: int, seed: int, min_kk: float) -> pl.DataFrame:
-    """`n` chunks: kk >= `min_kk`, the rest split between ru and en; within a language spread over sources/domains."""
+def sample_chunks(
+    root: Path,
+    n: int,
+    seed: int,
+    min_kk: float,
+    skip_chunks: set[str] | None = None,
+    skip_docs: set[str] | None = None,
+) -> pl.DataFrame:
+    """`n` chunks: kk >= `min_kk`, the rest split between ru and en; within a language spread over sources/domains.
+    Chunks in `skip_chunks` (earlier runs) and chunks of documents in `skip_docs` are never drawn."""
     quota = {
         "kk": int(n * max(min_kk, 0.34)),
         "ru": int(n * 0.33),
@@ -123,7 +139,13 @@ def sample_chunks(root: Path, n: int, seed: int, min_kk: float) -> pl.DataFrame:
     }
     sizes = DatasetManifest.read(root / "task/chunks").metrics["chunks_by_lang"]
     # hash threshold per language (~4x the quota passes), applied file by file: no global sort, bounded memory
-    thr = {lg: int(min(1.0, 4 * q / max(sizes.get(lg, 1), 1)) * (2**64 - 1)) for lg, q in quota.items()}
+    skip_chunks, skip_docs = skip_chunks or set(), skip_docs or set()
+    # skipped chunks are drawn as well: widen the threshold by their number (documents to skip are ~1-2 % of a
+    # language's chunks, a 10 % margin covers them)
+    thr = {
+        lg: int(min(1.0, 4 * (1.1 * q + len(skip_chunks)) / max(sizes.get(lg, 1), 1)) * (2**64 - 1))
+        for lg, q in quota.items()
+    }
     cols = ["chunk_id", "doc_id", "source", "lang", "domain", "title", "text", "n_tokens"]
     picked = []
     for f in sorted((root / "task/chunks").glob("*/*/part-*.parquet")):
@@ -135,6 +157,10 @@ def sample_chunks(root: Path, n: int, seed: int, min_kk: float) -> pl.DataFrame:
             .with_columns(r=pl.col("chunk_id").hash(seed=seed))
             .filter(pl.col("r") < pl.lit(thr[lang], dtype=pl.UInt64)).collect()
         )  # fmt: skip
+        if skip_chunks or skip_docs:
+            d = d.filter(
+                ~pl.col("chunk_id").is_in(list(skip_chunks)) & ~pl.col("doc_id").is_in(list(skip_docs))
+            )
         # filtered string views still reference the whole file's buffers: copy the few picked rows out
         picked.append(pl.from_arrow(d.to_arrow()))
     allp = pl.concat(picked)
@@ -147,11 +173,17 @@ def sample_chunks(root: Path, n: int, seed: int, min_kk: float) -> pl.DataFrame:
     return pl.concat(out)
 
 
-def prepare(kind: str, n: int, out: Path) -> int:
+def prepare(kind: str, n: int, out: Path, exclude_meta: list[Path], exclude_docs: Path | None) -> int:
     params = load_params()
     root = (ROOT / params["lake"]["root"]).resolve()
     seed = params["seed"]
-    chunks = sample_chunks(root, n, seed, params["scale"]["min_kk_share"])
+    skip_chunks = {
+        c for m in exclude_meta for c in pl.read_parquet(m, columns=["chunk_id"])["chunk_id"].to_list()
+    }
+    skip_docs = (
+        set(pl.read_parquet(exclude_docs, columns=["doc_id"])["doc_id"].to_list()) if exclude_docs else set()
+    )
+    chunks = sample_chunks(root, n, seed, params["scale"]["min_kk_share"], skip_chunks, skip_docs)
     out.mkdir(parents=True, exist_ok=True)
     rows, meta = [], []
     if kind == "queries":
@@ -165,7 +197,7 @@ def prepare(kind: str, n: int, out: Path) -> int:
                     "user": tpl.replace("{passage_lang_name}", NAMES[r["lang"]]).replace(
                         "{passage}", r["text"]
                     ),
-                    "max_tokens": 200,
+                    "max_tokens": 320,
                 }
             )
             meta.append(
@@ -209,7 +241,7 @@ def prepare(kind: str, n: int, out: Path) -> int:
                 .replace("{question_lang_name}", NAMES[ql])
                 .replace("{refusal}", REFUSAL[ql])
             )
-            rows.append({"id": pid, "system": "", "user": user, "max_tokens": 400})
+            rows.append({"id": pid, "system": "", "user": user, "max_tokens": 1000})
             meta.append({"id": pid, "chunk_id": r["chunk_id"], "lang": ql, "chunk_lang": r["lang"], "mode": mode, "source": r["source"],
                          "evidence_ids": [c for c, _ in ev], "evidence_texts": [t for _, t in ev]})  # fmt: skip
     (out / "in").mkdir(parents=True, exist_ok=True)
@@ -226,21 +258,46 @@ def prepare(kind: str, n: int, out: Path) -> int:
 # ----------------------------------------------------------------------------- import
 
 
-def import_queries(kaggle_out: Path, meta: pl.DataFrame, top_k: int) -> tuple[pl.DataFrame, pl.DataFrame]:
-    gen = pl.read_parquet(sorted(str(p) for p in (kaggle_out / "out").glob("*.parquet")))
+def generations(runs: list[Path]) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Prompt meta and teacher answers of every run (`<run>/out/*.parquet`, meta in `<run>/../meta.parquet`);
+    judge prompts of `trifact.evaluation.prelabel` that share a run are skipped."""
+    meta = pl.concat([pl.read_parquet(r.parent / "meta.parquet") for r in runs], how="diagonal_relaxed")
+    gen = pl.concat(
+        [pl.read_parquet(sorted(str(p) for p in (r / "out").glob("*.parquet"))) for r in runs],
+        how="diagonal_relaxed",
+    )
+    gen = gen.filter(~pl.col("id").str.starts_with("judge/")).unique("id", keep="first", maintain_order=True)
+    return meta.unique("id", keep="first", maintain_order=True), gen
+
+
+QUERY_WORDS = {"question": (3, 20), "keywords": (2, 10)}
+
+
+def query_variants(d: dict[str, Any] | None) -> dict[str, dict[str, Any] | None]:
+    """{"question": {...}, "keywords": {...}} (runs from 2026-11-21) or one flat {"kk", "ru", "en"} question."""
+    if d and (isinstance(d.get("question"), dict) or isinstance(d.get("keywords"), dict)):
+        return {t: d[t] if isinstance(d.get(t), dict) else None for t in QUERY_WORDS}
+    return {"question": d}
+
+
+def import_queries(runs: list[Path], top_k: int) -> tuple[pl.DataFrame, pl.DataFrame]:
+    meta, gen = generations(runs)
     df = meta.rename({"text": "passage"}).join(gen.select("id", raw="text"), on="id", how="left")
     rows = []
     for r in df.iter_rows(named=True):
-        d = parse_json(r["raw"] or "")
-        for ql in ("kk", "ru", "en"):
-            q = lang_key(d, ql) if d else None
-            rows.append({"id": r["id"], "chunk_id": r["chunk_id"], "d_lang": r["lang"], "q_lang": ql, "source": r["source"],
-                         "query": (q or "").strip(), "passage": r["passage"],
-                         "reason": None if q else "not_generated" if r["raw"] is None else "parse"})  # fmt: skip
+        for typ, v in query_variants(parse_json(r["raw"] or "")).items():
+            rid = r["id"] if typ == "question" else f"{r['id']}/kw"
+            for ql in ("kk", "ru", "en"):
+                q = lang_key(v, ql) if v else None
+                rows.append({"id": rid, "chunk_id": r["chunk_id"], "type": typ, "d_lang": r["lang"], "q_lang": ql,
+                             "source": r["source"], "query": (q or "").strip(), "passage": r["passage"],
+                             "reason": None if q else "not_generated" if r["raw"] is None else "parse"})  # fmt: skip
     q = pl.DataFrame(rows, infer_schema_length=None)
     n_words = q["query"].str.count_matches(r"\w+")
+    lo = pl.col("type").replace_strict({t: a for t, (a, _) in QUERY_WORDS.items()}, return_dtype=pl.Int64)
+    hi = pl.col("type").replace_strict({t: b for t, (_, b) in QUERY_WORDS.items()}, return_dtype=pl.Int64)
     q = q.with_columns(
-        reason=pl.when(pl.col("reason").is_null() & ~n_words.is_between(3, 20))
+        reason=pl.when(pl.col("reason").is_null() & ~n_words.is_between(lo, hi))
         .then(pl.lit("length"))
         .otherwise(pl.col("reason"))
     )
@@ -256,7 +313,8 @@ def import_queries(kaggle_out: Path, meta: pl.DataFrame, top_k: int) -> tuple[pl
         .then(pl.lit("copy"))
         .otherwise(pl.col("reason"))
     )
-    # round-trip with the same-language query over the pool of all prepared chunks of that language
+    # round-trip with the same-language query of each type over the pool of all prepared chunks of that language
+    # (all runs): the translations of that query share its verdict
     verdict: dict[str, bool] = {}
     for (lang,), g in meta.group_by("lang"):
         pool = g.select("chunk_id", "text")
@@ -264,10 +322,10 @@ def import_queries(kaggle_out: Path, meta: pl.DataFrame, top_k: int) -> tuple[pl
         ids = pool["chunk_id"].to_list()
         mono = q.filter((pl.col("q_lang") == lang) & (pl.col("d_lang") == lang) & pl.col("reason").is_null())
         idx, _ = bm.search(mono["query"].to_list(), top_k)
-        for cid, row in zip(mono["chunk_id"].to_list(), idx, strict=True):
-            verdict[cid] = cid in {ids[j] for j in row if j >= 0}
+        for rid, cid, row in zip(mono["id"].to_list(), mono["chunk_id"].to_list(), idx, strict=True):
+            verdict[rid] = cid in {ids[j] for j in row if j >= 0}
     q = q.with_columns(
-        rt=pl.col("chunk_id").replace_strict(verdict, default=False, return_dtype=pl.Boolean)
+        rt=pl.col("id").replace_strict(verdict, default=False, return_dtype=pl.Boolean)
     ).with_columns(
         reason=pl.when(pl.col("reason").is_null() & ~pl.col("rt"))
         .then(pl.lit("round_trip"))
@@ -282,10 +340,10 @@ def import_queries(kaggle_out: Path, meta: pl.DataFrame, top_k: int) -> tuple[pl
         .otherwise(pl.col("reason"))
     )
     kept = q.filter(pl.col("reason").is_null()).select(
-        "id", "chunk_id", "q_lang", "d_lang", "source", "query", "passage", lang="q_lang"
+        "id", "chunk_id", "type", "q_lang", "d_lang", "source", "query", "passage", lang="q_lang"
     )
     return kept, q.filter(pl.col("reason").is_not_null()).select(
-        "id", "q_lang", "query", "reason", lang="q_lang"
+        "id", "type", "q_lang", "query", "reason", lang="q_lang"
     )
 
 
@@ -330,18 +388,29 @@ def claim_pairs(
     return pairs
 
 
-def import_qa(kaggle_out: Path, meta: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
-    gen = pl.read_parquet(sorted(str(p) for p in (kaggle_out / "out").glob("*.parquet")))
+def qa_pairs(d: dict[str, Any]) -> list[tuple[Any, Any]]:
+    """[(question, answer)] of `{"pairs": [...]}` (runs from 2026-11-21) or of one `{"question", "answer"}`."""
+    if isinstance(d.get("pairs"), list):
+        return [(x.get("question"), x.get("answer")) for x in d["pairs"] if isinstance(x, dict)] or [
+            (None, None)
+        ]
+    return [(d.get("question"), d.get("answer"))]
+
+
+def import_qa(runs: list[Path]) -> tuple[pl.DataFrame, pl.DataFrame]:
+    meta, gen = generations(runs)
     df = meta.join(gen.select("id", raw="text"), on="id", how="left")
+    cols = ("chunk_id", "lang", "chunk_lang", "mode", "source", "evidence_ids", "evidence_texts")
     rows = []
     for r in df.iter_rows(named=True):
         d = parse_json(r["raw"] or "") or {}
-        qq, aa = d.get("question"), d.get("answer")
-        rows.append({**{k: r[k] for k in ("id", "chunk_id", "lang", "chunk_lang", "mode", "source", "evidence_ids", "evidence_texts")},
-                     "question": qq if isinstance(qq, str) else "",
-                     "answer": cite_ids(aa, r["evidence_ids"]) if isinstance(aa, str) else "",
-                     "reason": None if isinstance(qq, str) and isinstance(aa, str) and qq.strip() and aa.strip()
-                     else "not_generated" if r["raw"] is None else "parse"})  # fmt: skip
+        many = isinstance(d.get("pairs"), list)
+        for k, (qq, aa) in enumerate(qa_pairs(d)):
+            ok = isinstance(qq, str) and isinstance(aa, str) and bool(qq.strip()) and bool(aa.strip())
+            rows.append({**{c: r[c] for c in cols}, "id": f"{r['id']}/{k}" if many else r["id"],
+                         "question": qq if isinstance(qq, str) else "",
+                         "answer": cite_ids(aa, r["evidence_ids"]) if isinstance(aa, str) else "",
+                         "reason": None if ok else "not_generated" if r["raw"] is None else "parse"})  # fmt: skip
     q = pl.DataFrame(rows, infer_schema_length=None)
     plain = q["answer"].str.replace_all(r"\[[^\[\]]*\]", "").str.strip_chars()
     lq, _ = lid().predict([x.replace("\n", " ") for x in q["question"].to_list()])
@@ -361,6 +430,15 @@ def import_qa(kaggle_out: Path, meta: pl.DataFrame) -> tuple[pl.DataFrame, pl.Da
     q = q.with_columns(reason=pl.when(pl.col("reason").is_null() & (pl.col("mode") == "answerable") & ~pl.col("ok_cite")).then(pl.lit("citation"))
                        .when(pl.col("reason").is_null() & (pl.col("mode") == "unanswerable") & (pl.col("answer").str.strip_chars() != pl.col("lang").replace_strict(REFUSAL))).then(pl.lit("refusal"))
                        .otherwise(pl.col("reason")))  # fmt: skip
+    q = q.with_columns(k=key_expr("question"))
+    first = set(
+        q.filter(pl.col("reason").is_null()).unique("k", keep="first", maintain_order=True)["id"].to_list()
+    )
+    q = q.with_columns(
+        reason=pl.when(pl.col("reason").is_null() & ~pl.col("id").is_in(list(first)))
+        .then(pl.lit("duplicate"))
+        .otherwise(pl.col("reason"))
+    ).drop("k")
     kept = q.filter(pl.col("reason").is_null())
     return kept, q.filter(pl.col("reason").is_not_null()).select(
         "id", "lang", "mode", "question", "answer", "reason"
@@ -441,7 +519,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--kind", choices=["queries", "qa"], required=True)
     ap.add_argument("--n", type=int, default=1000)
     ap.add_argument("--out", type=Path, help="prepare: work directory (prompts in <out>/in, meta.parquet)")
-    ap.add_argument("--kaggle-out", type=Path)
+    ap.add_argument("--kaggle-out", type=Path, nargs="+", help="import: one or more teacher run outputs")
+    ap.add_argument(
+        "--exclude-meta", type=Path, nargs="*", default=[], help="prepare: meta.parquet of earlier runs"
+    )
+    ap.add_argument(
+        "--exclude-docs", type=Path, help="prepare: Parquet with column doc_id of documents to skip"
+    )
     ap.add_argument("--scores", type=Path, help="finalize: Kaggle nli_score output over <work>/nli_in")
     ap.add_argument(
         "--work", type=Path, help="NLI pairs and QA candidates (default data/.cache/work/synthetic_<kind>)"
@@ -451,21 +535,20 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
     if args.command == "prepare":
-        return prepare(args.kind, args.n, args.out)
+        return prepare(args.kind, args.n, args.out, args.exclude_meta, args.exclude_docs)
     work = args.work or ROOT / "data" / ".cache" / "work" / f"synthetic_{args.kind}"
     work.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     with ResourceMonitor():
         if args.command == "import":
-            meta = pl.read_parquet(args.kaggle_out.parent / "meta.parquet")
-            run = json.loads((args.kaggle_out / "run.json").read_text())
-            summary = json.loads((args.kaggle_out / "summary.json").read_text())
+            run = [json.loads((r / "run.json").read_text()) for r in args.kaggle_out]
+            summary = [json.loads((r / "summary.json").read_text()) for r in args.kaggle_out]
             if args.kind == "queries":
                 kept, dropped = import_queries(
-                    args.kaggle_out, meta, int(params["teacher"]["filters"]["round_trip_top_k"])
+                    args.kaggle_out, int(params["teacher"]["filters"]["round_trip_top_k"])
                 )
             else:
-                kept, dropped = import_qa(args.kaggle_out, meta)
+                kept, dropped = import_qa(args.kaggle_out)
                 # NLI pairs for the Kaggle job: every cited claim against the passages it cites
                 ev = kept.filter(pl.col("mode") == "answerable").select(
                     "id", "answer", "evidence_ids", "evidence_texts"

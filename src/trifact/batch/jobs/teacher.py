@@ -1,6 +1,7 @@
 """Kaggle job: teacher LLM generation with llama.cpp (Qwen3.5-35B-A3B GGUF on 2x T4), ADR-0015 / ADR-0020.
 
-Input dataset: `prompts*.parquet` (columns `id`, `system`, `user`, `max_tokens`) and `config.json`:
+Input dataset: `prompts*.parquet` (columns `id`, `system`, `user`, `max_tokens`, optional per-row `temperature`, e.g. 0
+for judge prompts) and `config.json`:
   {"repo": "unsloth/Qwen3.5-35B-A3B-GGUF", "revision": "<sha>", "file": "Qwen3.5-35B-A3B-UD-IQ4_XS.gguf",
    "llama_cpp_ref": "<git tag>", "parallel": 16, "ctx_per_slot": 4096, "temperature": 0.7, "top_p": 0.9,
    "time_budget_h": 11.0, "limit": null}
@@ -111,9 +112,9 @@ def serve(exe: Path, gguf: str, cfg: dict) -> subprocess.Popen:
             "on",
             "--cont-batching",
             "-b",
-            "2048",
+            str(cfg.get("batch", 2048)),
             "-ub",
-            "512",
+            str(cfg.get("ubatch", 512)),
             "--no-webui",
             *cfg.get("extra_args", []),
         ],
@@ -137,7 +138,8 @@ def ask(row: dict, cfg: dict) -> dict:
     body = {
         "messages": [m for m in ({"role": "system", "content": row["system"]} if row["system"] else None,
                                  {"role": "user", "content": row["user"]}) if m],
-        "max_tokens": int(row["max_tokens"]), "temperature": cfg.get("temperature", 0.7),
+        "max_tokens": int(row["max_tokens"]),
+        "temperature": cfg.get("temperature", 0.7) if row.get("temperature") is None else float(row["temperature"]),
         "top_p": cfg.get("top_p", 0.9), "chat_template_kwargs": {"enable_thinking": False},
     }  # fmt: skip
     t0 = time.time()
@@ -164,7 +166,7 @@ def ask(row: dict, cfg: dict) -> dict:
 def main() -> None:
     cfg = json.loads(Path(glob.glob("/kaggle/input/**/config.json", recursive=True)[0]).read_text())
     files = sorted(glob.glob("/kaggle/input/**/prompts*.parquet", recursive=True))
-    rows = pa.concat_tables([pq.read_table(f) for f in files]).to_pylist()
+    rows = pa.concat_tables([pq.read_table(f) for f in files], promote_options="default").to_pylist()
     if cfg.get("limit"):
         rows = rows[: cfg["limit"]]
     t_start = time.time()
@@ -179,11 +181,11 @@ def main() -> None:
         if bench.exists():
             sh(f"{bench} -m {gguf} -ngl 999 -p 512 -n 64 -fa 1 2>&1 | tail -6 || true")
         bb = exe.parent / "llama-batched-bench"
-        if bb.exists():  # does throughput scale with parallel sequences (hybrid DeltaNet layers)?
-            for extra in ("", "-kvu"):
-                sh(
-                    f"{bb} -m {gguf} -ngl 999 -fa on -c 40960 -b 2048 -ub 512 -npp 400 -ntg 64 -npl 1,4,16 {extra} 2>&1 | tail -6 || true"
-                )
+        if (
+            bb.exists()
+        ):  # prefill and decode throughput per batch / ubatch / parallel setting (config "bench")
+            for extra in cfg.get("bench", ["-b 2048 -ub 512 -npp 400 -ntg 64 -npl 1,4,16 -kvu"]):
+                sh(f"{bb} -m {gguf} -ngl 999 -fa on -c 65536 {extra} 2>&1 | tail -8 || true")
         if cfg.get("diagnose_only"):
             return
     server = serve(exe, gguf, cfg)
