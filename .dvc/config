@@ -1,5 +1,4 @@
 [core]
-    remote = local
     autostage = true
 [cache]
     type = "hardlink,copy"

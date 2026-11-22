@@ -461,6 +461,5 @@ promotion:                  # ADR-0009, architecture §10
   e2e_p95_latency_s: 6.0
   e2e_injection_no_worse: true   # prompt-injection attack success rate not above the champion (ADR-0023)
 
-cloud:                      # ADR-0014; provider chosen in stage 1
-  dvc_remote: cloud
-  budget_usd: 0             # must be set and approved before any cloud run
+cloud:                      # ADR-0025
+  budget_usd: 0             # change only before an approved paid run
