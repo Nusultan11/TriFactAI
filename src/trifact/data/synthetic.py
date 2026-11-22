@@ -6,7 +6,7 @@ python -m trifact.data.synthetic finalize --kind qa --scores DIR                
 
 `prepare` skips the chunks of earlier runs (`--exclude-meta`, their meta.parquet) and of the documents listed in
 `--exclude-docs` (Parquet column `doc_id`); `import` filters the answers of all given runs together (one duplicate
-check over every run), each run directory next to its `meta.parquet`.
+check over every run), with `meta.parquet` in each run directory or its parent.
 
 `import --kind qa` writes the claim-level NLI pairs to `<work>/nli_in` (Kaggle job `nli_score` input) and the
 candidates to `<work>/qa_candidates.parquet`; `--work` defaults to `data/.cache/work/synthetic_<kind>`.
@@ -259,14 +259,20 @@ def prepare(kind: str, n: int, out: Path, exclude_meta: list[Path], exclude_docs
 
 
 def generations(runs: list[Path]) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Prompt meta and teacher answers of every run (`<run>/out/*.parquet`, meta in `<run>/../meta.parquet`);
+    """Prompt meta and teacher answers of every run (`<run>/out/*.parquet`, meta beside or inside the run);
     judge prompts of `trifact.evaluation.prelabel` that share a run are skipped."""
-    meta = pl.concat([pl.read_parquet(r.parent / "meta.parquet") for r in runs], how="diagonal_relaxed")
+    metadata = [
+        r / "meta.parquet" if (r / "meta.parquet").is_file() else r.parent / "meta.parquet" for r in runs
+    ]
+    meta = pl.concat([pl.read_parquet(path) for path in metadata], how="diagonal_relaxed")
     gen = pl.concat(
         [pl.read_parquet(sorted(str(p) for p in (r / "out").glob("*.parquet"))) for r in runs],
         how="diagonal_relaxed",
     )
     gen = gen.filter(~pl.col("id").str.starts_with("judge/")).unique("id", keep="first", maintain_order=True)
+    missing = gen.join(meta.select("id"), on="id", how="anti").height
+    if missing:
+        raise ValueError(f"{missing} teacher generations have no matching prompt metadata")
     return meta.unique("id", keep="first", maintain_order=True), gen
 
 

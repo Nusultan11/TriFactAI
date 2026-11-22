@@ -28,6 +28,11 @@ def test_checkpoint_requires_unchanged_outputs(tmp_path):
     assert not valid_checkpoint(tmp_path, identity)
 
 
+def test_interrupted_receipt_is_not_reused(tmp_path):
+    (tmp_path / "run.json").write_text('{"status": ', encoding="utf-8")
+    assert not valid_checkpoint(tmp_path, {})
+
+
 def test_shard_with_duplicate_output_ids_is_incomplete(tmp_path):
     inputs, out = tmp_path / "inputs", tmp_path / "out"
     inputs.mkdir()

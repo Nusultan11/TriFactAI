@@ -113,9 +113,14 @@ def verify_rows(job: str, inputs: Path, outputs: Path, config: dict) -> int:
 
 
 def valid_checkpoint(path: Path, identity: dict) -> bool:
-    if not (path / "run.json").is_file():
+    try:
+        receipt = json.loads((path / "run.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
         return False
-    receipt = json.loads((path / "run.json").read_text(encoding="utf-8"))
+    if not isinstance(receipt, dict):
+        return False
+    meta_sha256 = identity.get("meta_sha256")
+    meta = path / "meta.parquet"
     return (
         receipt.get("identity") == identity
         and receipt.get("status") == "complete"
@@ -123,6 +128,7 @@ def valid_checkpoint(path: Path, identity: dict) -> bool:
         and (path / "summary.json").is_file()
         and receipt.get("summary_sha256") == sha256(path / "summary.json")
         and receipt.get("outputs") == file_hashes(path / "out")
+        and (not meta_sha256 or (meta.is_file() and sha256(meta) == meta_sha256))
     )
 
 
@@ -138,6 +144,7 @@ def execute(job: str, inputs: Path, root: Path, timeout_minutes: float) -> Path:
     files = [inputs / "config.json", *sorted(inputs.glob("*.parquet"))]
     if len(files) == 1:
         raise ValueError("No input Parquet files found")
+    meta = inputs.parent / "meta.parquet"
     identity = {
         "job": job,
         "git_sha": revision,
@@ -146,6 +153,8 @@ def execute(job: str, inputs: Path, root: Path, timeout_minutes: float) -> Path:
         "lock_sha256": sha256(project / "uv.lock"),
         "inputs": {p.name: sha256(p) for p in files},
     }
+    if job == "teacher" and meta.is_file():
+        identity["meta_sha256"] = sha256(meta)
     key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     checkpoints = root / "workspace-data" / "colab" / job / key
     checkpoints.mkdir(parents=True, exist_ok=True)
@@ -211,6 +220,10 @@ def execute(job: str, inputs: Path, root: Path, timeout_minutes: float) -> Path:
                 shutil.copyfile(scratch / "summary.json", attempt / "summary.json")
                 if hashes != file_hashes(attempt / "out"):
                     raise ValueError("Output hash mismatch after copying to Drive")
+                if "meta_sha256" in identity:
+                    shutil.copyfile(meta, attempt / "meta.parquet")
+                    if sha256(attempt / "meta.parquet") != identity["meta_sha256"]:
+                        raise ValueError("Prompt metadata changed while copying to Drive")
                 receipt.update(
                     status="complete", outputs=hashes, summary_sha256=sha256(attempt / "summary.json")
                 )

@@ -65,7 +65,7 @@ Silver NER: ссылки внутри статей Wikipedia → QID Wikidata �
 | Retrieval pairs | 10–20 M (MS MARCO, mMARCO, синтетика, KazParC); ● 14.98 M, 9 направлений, kk-kk 63.5k; синтетических запросов 33.5k | ~10 GB |
 | SFT grounded QA | 1–2 M; ● 0.31 M (синтетика учителя 1.8k — квота Kaggle, PROGRESS блокер 3) | ~5 GB |
 | NLI | ~1.2 M; ● train 1.0 M (en 393k, ru 393k, kk 210k MT) | ~0.5 GB |
-| Eval (заморожен) | 30–50k, из них ≥ 3k проверены вручную, все 9 языковых направлений; ● qa 32.4k и ner заморожены; retrieval 38.6k запросов и nli 12.7k ждут ручной проверки 3.5k элементов | — |
+| Eval (заморожен) | 30–50k, включая 3.5k проверенных вручную, все 9 языковых направлений; ● qa 32.4k и ner заморожены; retrieval 38.6k запросов и nli 12.7k ждут ручной проверки | — |
 | Eval `docproc` (заморожен, этап 4) | ● 150 документов: по 18 на вид (pdf_text, pdf_columns, pdf_tables, pdf_scan, pdf_word, docx, html, txt; по 6 на kk/ru/en) + 6 смешанных kk/ru/en; 239 стр. PDF; 3 длинных PDF по 300 стр.; 17 враждебных файлов. Текст — абзацы `clean/wikipedia` (CC-BY-SA-3.0) | 161 MB |
 
 Ступени построения индекса — эксперимент RET-S, оценки пропускной способности — [архитектура §7.3, §9](../architecture/docs/01-architecture.md).
