@@ -299,7 +299,7 @@ def import_queries(runs: list[Path], top_k: int) -> tuple[pl.DataFrame, pl.DataF
                              "source": r["source"], "query": (q or "").strip(), "passage": r["passage"],
                              "reason": None if q else "not_generated" if r["raw"] is None else "parse"})  # fmt: skip
     q = pl.DataFrame(rows, infer_schema_length=None)
-    n_words = q["query"].str.count_matches(r"\w+")
+    n_words = pl.col("query").str.count_matches(r"\w+")
     lo = pl.col("type").replace_strict({t: a for t, (a, _) in QUERY_WORDS.items()}, return_dtype=pl.Int64)
     hi = pl.col("type").replace_strict({t: b for t, (_, b) in QUERY_WORDS.items()}, return_dtype=pl.Int64)
     q = q.with_columns(
