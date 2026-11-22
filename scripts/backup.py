@@ -65,7 +65,8 @@ def main() -> int:
     pending = bundle.with_suffix(".bundle.tmp")
     if bundle.exists() or pending.exists():
         sys.exit(f"snapshot already exists: {bundle}")
-    git("bundle", "create", str(pending), "--all")
+    refs = ("--branches", "--tags") if args.git_only else ("--all",)
+    git("bundle", "create", str(pending), *refs)
     git("bundle", "verify", str(pending))
     pending.replace(bundle)
     if args.git_only:
