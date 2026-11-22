@@ -8,6 +8,8 @@ Accepted
 
 Amended by [20. Kaggle как batch GPU, NLLB для перевода, учитель на llama.cpp](0020-kaggle-batch-gpu-mt-and-teacher.md)
 
+Amended by [24. Google Drive для данных и резервных копий](0024-google-drive-storage.md)
+
 Amends [10. DVC с S3-remote](0010-dvc-with-s3-remote.md)
 
 ## Context

@@ -8,6 +8,8 @@ Accepted
 
 Amended by [14. Шардированные идемпотентные batch-задания](0014-sharded-batch-jobs.md)
 
+Amended by [24. Google Drive для данных и резервных копий](0024-google-drive-storage.md)
+
 ## Context
 
 Датасеты и веса не помещаются в git, а эксперименты должны воспроизводиться.

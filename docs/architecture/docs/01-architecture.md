@@ -195,7 +195,7 @@ gold ─► validate ─► split ─┬─► build_eval (заморожен)
 
 ### 5.4 Версионирование
 
-DVC отслеживает каталоги шардов. Remote `local` — SeaweedFS, remote `cloud` — S3-бакет облачного провайдера для GPU-заданий ([ADR-0014](../adr/0014-sharded-batch-jobs.md)). Ревизии HF-источников фиксируются в `params.yaml: sources.*.revision` после первой загрузки.
+DVC отслеживает каталоги шардов. Хранилище проекта и доступ с ноутбука описаны в [ADR-0024](../adr/0024-google-drive-storage.md). Remotes SeaweedFS и облачного S3 описаны в [ADR-0014](../adr/0014-sharded-batch-jobs.md). Ревизии HF-источников фиксируются в `params.yaml: sources.*.revision` после первой загрузки.
 
 ---
 
