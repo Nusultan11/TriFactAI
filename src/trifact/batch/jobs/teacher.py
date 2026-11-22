@@ -14,9 +14,9 @@ sm80, so llama.cpp (CUDA, sm75) serves the 4-bit GGUF split over both GPUs. Thin
 from __future__ import annotations
 
 import concurrent.futures as cf
-import glob
 import json
 import os
+import re
 import subprocess
 import time
 import urllib.request
@@ -25,7 +25,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-WORK = Path("/kaggle/working")
+INPUT = Path(os.environ.get("TRIFACT_BATCH_INPUT", "/kaggle/input"))
+WORK = Path(os.environ.get("TRIFACT_BATCH_WORK", "/kaggle/working"))
 OUT = WORK / "out"
 BUILD = Path("/tmp/llama.cpp")
 PART = 2000
@@ -45,16 +46,24 @@ def has_cuda(exe: Path) -> bool:
 
 def build(ref: str) -> Path:
     """Prebuilt CUDA 12.8 llama.cpp release if it sees the GPUs, else a source build against the local CUDA."""
+    if not re.fullmatch(r"b\d+", ref):
+        raise ValueError("Expected a pinned llama.cpp release tag")
+    dest = BUILD / ref
     sh(
         "nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv; nvcc --version | tail -2 || true"
     )
     base = f"https://github.com/ggml-org/llama.cpp/releases/download/{ref}"
-    pre = BUILD / "pre"
+    pre = dest / "pre"
     pre.mkdir(parents=True, exist_ok=True)
     try:
+        existing = next(pre.rglob("llama-server"), None)
         for name in (
-            f"llama-{ref}-bin-ubuntu-cuda-12.8-x64.tar.gz",
-            f"cudart-llama-{ref}-bin-ubuntu-cuda-12.8-x64.tar.gz",
+            (
+                f"llama-{ref}-bin-ubuntu-cuda-12.8-x64.tar.gz",
+                f"cudart-llama-{ref}-bin-ubuntu-cuda-12.8-x64.tar.gz",
+            )
+            if existing is None
+            else ()
         ):
             sh(f"curl -sSL --retry 5 -o /tmp/{name} {base}/{name} && tar -xzf /tmp/{name} -C {pre}")
         exe = next(pre.rglob("llama-server"))
@@ -66,13 +75,24 @@ def build(ref: str) -> Path:
         print("prebuilt binary sees no CUDA device: building from source", flush=True)
     except Exception as e:  # noqa: BLE001 - fall back to building from source
         print("prebuilt failed:", e, flush=True)
-    src = BUILD / "src"
-    sh(f"git clone --depth 1 --branch {ref} https://github.com/ggml-org/llama.cpp {src}")
+    src = dest / "src"
+    if not (src / ".git").is_dir():
+        sh(f"git clone --depth 1 --branch {ref} https://github.com/ggml-org/llama.cpp {src}")
     drv = next(iter(sorted(Path("/usr/lib/x86_64-linux-gnu").glob("libcuda.so*"))), None) or next(
         iter(sorted(Path("/usr/local/cuda/lib64/stubs").glob("libcuda.so*"))), None
     )
+    import torch
+
+    architectures = ";".join(
+        sorted(
+            {
+                f"{major}{minor}"
+                for major, minor in map(torch.cuda.get_device_capability, range(torch.cuda.device_count()))
+            }
+        )
+    )
     sh(
-        f"cmake -S {src} -B {src}/build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75 -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF "
+        f"cmake -S {src} -B {src}/build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES='{architectures}' -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF "
         f"-DCMAKE_BUILD_TYPE=Release -DCUDAToolkit_ROOT=/usr/local/cuda -DCUDA_cuda_driver_LIBRARY={drv}"
     )
     sh(f"cmake --build {src}/build --target llama-server -j {os.cpu_count()}")
@@ -100,13 +120,15 @@ def serve(exe: Path, gguf: str, cfg: dict) -> subprocess.Popen:
             "-ngl",
             "999",
             "--split-mode",
-            "layer",
+            cfg.get("split_mode", "layer"),
             "-c",
             str(ctx),
             "--parallel",
             str(n),
             "--port",
             str(PORT),
+            "--host",
+            "127.0.0.1",
             "--jinja",
             "-fa",
             "on",
@@ -164,8 +186,8 @@ def ask(row: dict, cfg: dict) -> dict:
 
 
 def main() -> None:
-    cfg = json.loads(Path(glob.glob("/kaggle/input/**/config.json", recursive=True)[0]).read_text())
-    files = sorted(glob.glob("/kaggle/input/**/prompts*.parquet", recursive=True))
+    cfg = json.loads(next(INPUT.rglob("config.json")).read_text(encoding="utf-8"))
+    files = sorted(INPUT.rglob("prompts*.parquet"))
     rows = pa.concat_tables([pq.read_table(f) for f in files], promote_options="default").to_pylist()
     if cfg.get("limit"):
         rows = rows[: cfg["limit"]]

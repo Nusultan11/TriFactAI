@@ -14,7 +14,6 @@ the remaining ids). Self-contained: no project imports.
 
 from __future__ import annotations
 
-import glob
 import json
 import os
 import time
@@ -23,16 +22,18 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-OUT = Path("/kaggle/working/out")
+INPUT = Path(os.environ.get("TRIFACT_BATCH_INPUT", "/kaggle/input"))
+WORK = Path(os.environ.get("TRIFACT_BATCH_WORK", "/kaggle/working"))
+OUT = WORK / "out"
 PART_ROWS = 8000
 
 
 def find_inputs() -> tuple[dict[str, str], dict]:
-    files = {Path(f).name: f for f in glob.glob("/kaggle/input/**/*.parquet", recursive=True)}
-    cfgs = glob.glob("/kaggle/input/**/config.json", recursive=True)
+    files = {f.name: str(f) for f in INPUT.rglob("*.parquet")}
+    cfgs = sorted(INPUT.rglob("config.json"))
     if not files or not cfgs:
         raise SystemExit(f"inputs not found: {files} {cfgs}")
-    return files, json.loads(Path(cfgs[0]).read_text())
+    return files, json.loads(cfgs[0].read_text(encoding="utf-8"))
 
 
 def batches(lengths: list[int], max_tokens: int) -> list[list[int]]:
@@ -51,14 +52,18 @@ def batches(lengths: list[int], max_tokens: int) -> list[list[int]]:
 
 
 class Translator:
-    def __init__(self, model_name: str, dev: str):
+    def __init__(self, model_name: str, dev: str, revision: str | None = None):
         import torch
         from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
         self.torch = torch
         self.name = model_name
-        self.tok = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name, dtype=torch.float16).to(dev).eval()
+        self.tok = AutoTokenizer.from_pretrained(model_name, revision=revision)
+        self.model = (
+            AutoModelForSeq2SeqLM.from_pretrained(model_name, revision=revision, dtype=torch.float16)
+            .to(dev)
+            .eval()
+        )
         self.dev = dev
 
     def _gen(self, texts: list[str], tgt_id: int, beams: int, max_new: int) -> list[str]:
@@ -104,7 +109,7 @@ def worker(gpu: int, n_gpu: int) -> None:
     dev = "cuda:0"  # CUDA_VISIBLE_DEVICES selects the GPU of this process
     t_start = time.time()
     deadline = t_start + cfg.get("time_budget_h", 11.0) * 3600
-    logf = open(f"/kaggle/working/log-g{gpu}.txt", "a", buffering=1)  # noqa: SIM115 - lives for the job
+    logf = (WORK / f"log-g{gpu}.txt").open("a", buffering=1, encoding="utf-8")
 
     def log(msg: str) -> None:
         print(f"[gpu{gpu}] {msg}", flush=True)
@@ -112,7 +117,7 @@ def worker(gpu: int, n_gpu: int) -> None:
 
     OUT.mkdir(parents=True, exist_ok=True)
     beams, mt, mn = cfg.get("beams", 2), cfg.get("max_tokens", 4000), cfg.get("max_new_tokens", 256)
-    fwd = Translator(cfg["model"], dev)
+    fwd = Translator(cfg["model"], dev, cfg.get("revision"))
     jobs = []
     for task in cfg["tasks"]:
         table = pq.read_table(files[task["file"]], columns=["id", "text"])
@@ -126,7 +131,7 @@ def worker(gpu: int, n_gpu: int) -> None:
         jobs.append((task, ids, texts, trans, sec))
     del fwd.model
     fwd.torch.cuda.empty_cache()
-    back_m = Translator(cfg["back_model"], dev) if cfg.get("back_model") else None
+    back_m = Translator(cfg["back_model"], dev, cfg.get("back_revision")) if cfg.get("back_model") else None
     summary = []
     for task, ids, texts, trans, sec in jobs:
         keep = [i for i, t in enumerate(trans) if t is not None]
@@ -166,9 +171,7 @@ def worker(gpu: int, n_gpu: int) -> None:
                 "forward_sent_per_s": round(len(keep) / max(sec, 1e-9), 2),
             }
         )
-    Path(f"/kaggle/working/summary-g{gpu}.json").write_text(
-        json.dumps({"gpu": gpu, "tasks": summary}, indent=1)
-    )
+    (WORK / f"summary-g{gpu}.json").write_text(json.dumps({"gpu": gpu, "tasks": summary}, indent=1))
     log(json.dumps(summary))
 
 
@@ -190,8 +193,8 @@ def main() -> None:
         for g in range(n)
     ]
     codes = [p.wait() for p in procs]
-    parts = [json.loads(Path(f).read_text()) for f in sorted(glob.glob("/kaggle/working/summary-g*.json"))]
-    Path("/kaggle/working/summary.json").write_text(
+    parts = [json.loads(f.read_text()) for f in sorted(WORK.glob("summary-g*.json"))]
+    (WORK / "summary.json").write_text(
         json.dumps(
             {"gpus": n, "device": torch.cuda.get_device_name(0), "exit_codes": codes, "parts": parts},
             indent=1,

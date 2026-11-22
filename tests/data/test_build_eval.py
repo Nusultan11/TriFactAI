@@ -2,7 +2,26 @@ from __future__ import annotations
 
 import polars as pl
 
-from trifact.data.build_eval import human_done, nli_cluster, query_cluster
+from trifact.data.build_eval import freeze, human_done, nli_cluster, query_cluster
+
+
+def test_freeze_requires_every_item_in_the_review_packet(tmp_path) -> None:
+    review = tmp_path / "eval" / "review"
+    review.mkdir(parents=True)
+    (review / "sheet-01.csv").write_text(
+        "item_id,verdict,reviewer\nretrieval/a,ok,Reviewer A\nnli/b,,\n", encoding="utf-8"
+    )
+    assert freeze({"evaluation": {"human_verified_min": 1}}, tmp_path) == 1
+
+
+def test_freeze_rejects_duplicate_human_verdicts(tmp_path) -> None:
+    review = tmp_path / "eval" / "review"
+    review.mkdir(parents=True)
+    (review / "sheet-01.csv").write_text(
+        "item_id,verdict,reviewer\nretrieval/a,ok,Reviewer A\nretrieval/a,drop,Reviewer B\n",
+        encoding="utf-8",
+    )
+    assert freeze({"evaluation": {"human_verified_min": 1}}, tmp_path) == 1
 
 
 def test_query_cluster_joins_a_query_with_its_translations() -> None:

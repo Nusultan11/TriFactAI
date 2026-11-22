@@ -67,12 +67,16 @@ stages:
     metrics: [{reports/corpus_stats.json: {cache: false}}]
 
   eda:       # full-volume EDA of every layer (ROADMAP 2.6); entities = Wikidata
-    foreach: [raw, clean, curated, entities]
+    foreach:
+      raw: data/raw
+      clean: data/clean
+      curated: data/curated
+      entities: data/raw/wikidata
     do:
-      cmd: python -m trifact.data.eda ${item}
-      deps: [src/trifact/data/eda.py, data/raw, data/clean, data/curated]
+      cmd: python -m trifact.data.eda ${key}
+      deps: [src/trifact/data/eda.py, "${item}"]
       params: [curation.workers, seed]
-      outs: ["reports/eda/${item}.json"]
+      outs: ["reports/eda/${key}.json"]
 
   eda_report:
     cmd: python -m trifact.data.eda_report
@@ -81,8 +85,7 @@ stages:
     outs: [reports/eda/report.md, reports/eda/figures, reports/eda/findings.json]
 
   # ------------------------------------------------ stage 3: task datasets
-  # GPU work (NLLB translation, NLI scoring, teacher) runs on Kaggle (ADR-0020): `python -m trifact.batch.kaggle run`
-  # writes its outputs to data/external/kaggle/<run>, versioned with `dvc add`; the stages below only import them.
+  # GPU work runs in Colab or Kaggle (ADR-0025); these stages import the historical pinned Kaggle outputs.
   validate:
     cmd: python -m trifact.data.validate
     deps: [src/trifact/data/validate.py, src/trifact/data/task_common.py, configs/labels.yaml, data/raw/kaznerd,

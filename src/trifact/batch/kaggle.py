@@ -1,7 +1,7 @@
 """Run a batch job on a Kaggle GPU kernel (ADR-0014, ADR-0020): inputs as a private dataset, outputs downloaded.
 
 python -m trifact.batch.kaggle run JOB --inputs DIR --out DIR [--config JSON] [--cpu] [--timeout-h H]
-python -m trifact.batch.kaggle fetch JOB --out DIR      # download the output of the last run
+python -m trifact.batch.kaggle fetch JOB --out DIR [--version N]
 
 A job is a self-contained script `src/trifact/batch/jobs/<JOB>.py` (no project imports: the kernel
 image has torch/transformers but not this package). The driver
@@ -23,6 +23,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -93,7 +94,7 @@ def push_dataset(user: str, name: str, inputs: Path) -> str:
     raise RuntimeError(f"dataset {ref} not ready")
 
 
-def push_kernel(user: str, job: str, name: str, dataset: str, gpu: bool) -> str:
+def push_kernel(user: str, job: str, name: str, dataset: str, gpu: bool) -> tuple[str, int]:
     ref = f"{user}/trifact-{name}"
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp)
@@ -108,10 +109,11 @@ def push_kernel(user: str, job: str, name: str, dataset: str, gpu: bool) -> str:
             meta["machine_shape"] = "NvidiaTeslaT4"
         (d / "kernel-metadata.json").write_text(json.dumps(meta), encoding="utf-8")
         out = kaggle("kernels", "push", "-p", str(d))
-    if "error" in out.lower():
+    version = re.search(r"Kernel version (\d+) successfully pushed", out, re.IGNORECASE)
+    if not version:
         raise RuntimeError(f"kernel push of {ref} failed: {out.strip()}")
     log.info("pushed %s: %s", ref, out.strip().splitlines()[-1])
-    return ref
+    return ref, int(version.group(1))
 
 
 def status(ref: str) -> str:
@@ -144,21 +146,30 @@ def fetch(ref: str, out: Path) -> None:
 def run(
     job: str, inputs: Path, out: Path, gpu: bool, timeout_h: float, name: str | None = None
 ) -> dict[str, Any]:
+    out.mkdir(parents=True, exist_ok=True)
+    if any(out.iterdir()):
+        raise ValueError(f"Select an empty output directory for a new kernel run: {out}")
     name = (name or job).replace("_", "-")  # Kaggle slugs: lower-case letters, digits and hyphens
     user = username()
     quota0 = kaggle("quota", check=False)
     dataset = push_dataset(user, name, inputs)
-    ref = push_kernel(user, job, name, dataset, gpu)
+    ref, version = push_kernel(user, job, name, dataset, gpu)
     t0 = time.time()
     time.sleep(30)
     st = wait(ref, timeout_h)
-    fetch(ref, out)
     rec = {
-        "job": job, "kernel": ref, "dataset": dataset, "status": st, "gpu": "T4x2" if gpu else None,
+        "job": job, "kernel": ref, "version": version, "dataset": dataset, "status": st, "gpu": "T4x2" if gpu else None,
         "wall_hours": round((time.time() - t0) / 3600, 3), "quota_before": quota0.strip(),
         "quota_after": kaggle("quota", check=False).strip(), "cost_usd": 0.0,
         "finished": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }  # fmt: skip
+    if st == "complete":
+        try:
+            fetch(f"{ref}/{version}", out)
+        except RuntimeError:
+            rec["status"] = "fetch_failed"
+            (out / "run.json").write_text(json.dumps(rec, indent=1), encoding="utf-8")
+            raise
     (out / "run.json").write_text(json.dumps(rec, indent=1), encoding="utf-8")
     log.info("%s %s in %.2f h -> %s", ref, st, rec["wall_hours"], out)
     return rec
@@ -181,12 +192,14 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("job")
     f.add_argument("--out", type=Path, required=True)
     f.add_argument("--name")
+    f.add_argument("--version", type=int)
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if args.cmd == "run":
         rec = run(args.job, args.inputs, args.out, not args.cpu, args.timeout_h, args.name)
         return 0 if rec["status"] == "complete" else 1
-    fetch(f"{username()}/trifact-{(args.name or args.job).replace('_', '-')}", args.out)
+    ref = f"{username()}/trifact-{(args.name or args.job).replace('_', '-')}"
+    fetch(f"{ref}/{args.version}" if args.version is not None else ref, args.out)
     return 0
 
 

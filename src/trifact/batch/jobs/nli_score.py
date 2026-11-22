@@ -10,7 +10,6 @@ Self-contained: no project imports.
 
 from __future__ import annotations
 
-import glob
 import json
 import os
 import subprocess
@@ -21,15 +20,17 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-OUT = Path("/kaggle/working/out")
+INPUT = Path(os.environ.get("TRIFACT_BATCH_INPUT", "/kaggle/input"))
+WORK = Path(os.environ.get("TRIFACT_BATCH_WORK", "/kaggle/working"))
+OUT = WORK / "out"
 
 
 def worker(gpu: int, n: int) -> None:
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-    cfg = json.loads(Path(glob.glob("/kaggle/input/**/config.json", recursive=True)[0]).read_text())
-    files = sorted(glob.glob("/kaggle/input/**/pairs*.parquet", recursive=True))
+    cfg = json.loads(next(INPUT.rglob("config.json")).read_text(encoding="utf-8"))
+    files = sorted(INPUT.rglob("pairs*.parquet"))
     t = pa.concat_tables([pq.read_table(f) for f in files])
     ids = t.column("id").to_pylist()[gpu::n]
     prem = t.column("premise").to_pylist()[gpu::n]
@@ -57,7 +58,7 @@ def worker(gpu: int, n: int) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     cols = {"id": ids, **{f"p_{nm}": [r[j] for r in probs] for j, nm in enumerate(names)}}
     pq.write_table(pa.table(cols), OUT / f"scores-g{gpu}.parquet", compression="zstd")
-    Path(f"/kaggle/working/summary-g{gpu}.json").write_text(json.dumps(
+    (WORK / f"summary-g{gpu}.json").write_text(json.dumps(
         {"gpu": gpu, "pairs": len(ids), "seconds": round(time.time() - t0, 1), "labels": names}))  # fmt: skip
 
 
@@ -75,10 +76,8 @@ def main() -> None:
         for g in range(n)
     ]
     codes = [p.wait() for p in procs]
-    parts = [json.loads(Path(f).read_text()) for f in sorted(glob.glob("/kaggle/working/summary-g*.json"))]
-    Path("/kaggle/working/summary.json").write_text(
-        json.dumps({"exit_codes": codes, "parts": parts}, indent=1)
-    )
+    parts = [json.loads(f.read_text()) for f in sorted(WORK.glob("summary-g*.json"))]
+    (WORK / "summary.json").write_text(json.dumps({"exit_codes": codes, "parts": parts}, indent=1))
     if any(codes):
         raise SystemExit(f"worker failed: {codes}")
 

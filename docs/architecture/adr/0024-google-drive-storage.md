@@ -10,6 +10,8 @@ Amends [10. DVC с S3-remote](0010-dvc-with-s3-remote.md)
 
 Amends [14. Шардированные идемпотентные batch-задания](0014-sharded-batch-jobs.md)
 
+Amended by [25. Облачные вычисления](0025-cloud-only-computing.md)
+
 ## Context
 
 Разработка идёт на ноутбуке. Код и история Git публикуются в GitHub, а данные и резервные копии должны восстанавливаться из приватного Google Drive. Коннектор Drive ограничил размер файла, а Google заблокировал встроенный OAuth-клиент DVC.

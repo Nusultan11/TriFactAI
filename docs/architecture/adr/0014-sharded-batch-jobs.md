@@ -4,6 +4,8 @@ Date: 2026-11-18
 
 ## Status
 
+Amended by [25. Облачные вычисления](0025-cloud-only-computing.md).
+
 Accepted
 
 Amended by [20. Kaggle как batch GPU, NLLB для перевода, учитель на llama.cpp](0020-kaggle-batch-gpu-mt-and-teacher.md)

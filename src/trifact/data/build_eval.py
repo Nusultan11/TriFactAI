@@ -16,8 +16,8 @@ Sets in `data/eval/<set>/` (each a dataset with manifest, data card and `frozen.
 * `nli` — XNLI test en/ru (human) and kk (NLLB, `needs_review = true`).
 
 Freezing: a set whose rows need no review is frozen at build time; a set with `needs_review` rows stays a
-candidate until the review sheets in `data/eval/review/` are filled by human reviewers (verdict ok / fix / drop,
-fixed text) and at least `evaluation.human_verified_min` items are verified in total (ROADMAP 3.5). `freeze`
+candidate until the full review packet in `data/eval/review/` is filled by human reviewers (verdict ok / fix / drop,
+fixed text), with at least `evaluation.human_verified_min` items verified (ROADMAP 3.5). `freeze`
 applies the verdicts (drop rows, replace fixed text) and freezes. A frozen set is never rebuilt: its
 fingerprint and shard hashes are recorded in `frozen.json` and checked by `status`. AI review never counts.
 Leakage: normalized questions, queries, contexts and NER sentences of every set are checked against all
@@ -482,7 +482,7 @@ def leakage_check(params: dict[str, Any], root: Path) -> int:
         {k.replace(":", "_"): v["overlap"] for k, v in res["sets"].items()},
     )
     print(json.dumps({k: v["overlap"] for k, v in res["sets"].items()}))
-    return 0
+    return int(any(v["overlap"] for k, v in res["sets"].items() if k != "retrieval:passage"))
 
 
 def status(params: dict[str, Any], root: Path) -> int:
@@ -527,9 +527,12 @@ def freeze(params: dict[str, Any], root: Path) -> int:
     (ADR-0022), drop qrels of removed queries, record shard hashes in `frozen.json`."""
     sheets = read_sheets(root / "eval" / "review")
     done = human_done(sheets)
-    need = int(params["evaluation"]["human_verified_min"])
+    if done["item_id"].is_duplicated().any():
+        print("Duplicate human verdicts for eval items; nothing frozen")
+        return 1
+    need = max(int(params["evaluation"]["human_verified_min"]), sheets["item_id"].n_unique())
     if done.height < need:
-        print(f"human-verified items: {done.height} < evaluation.human_verified_min = {need}; nothing frozen")
+        print(f"human-verified items: {done.height} / {need} required; nothing frozen")
         return 1
     if "fixed_source" not in done.columns:
         done = done.with_columns(fixed_source=pl.lit(""))

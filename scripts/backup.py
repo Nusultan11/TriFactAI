@@ -5,7 +5,7 @@ Creates in the backup directory:
   <timestamp>_<tag>.zip       uncommitted diff, untracked files, local state (.env, .shrimp/, .agents/settings.local.json)
 Data and model weights are backed up with `dvc push`, not here.
 
-Usage: python scripts/backup.py --tag stage-01 [--dest DIR] [--keep 30]
+Usage: python scripts/backup.py --tag stage-01 [--dest DIR] [--keep 30] [--git-only]
 """
 
 from __future__ import annotations
@@ -53,6 +53,7 @@ def main() -> int:
     ap.add_argument("--tag", required=True, help="label, e.g. stage-01 or before-refactor")
     ap.add_argument("--dest", type=Path, default=DEFAULT_DEST)
     ap.add_argument("--keep", type=int, default=30, help="number of snapshots to keep")
+    ap.add_argument("--git-only", action="store_true", help="exclude working state and local credentials")
     args = ap.parse_args()
 
     if not re.fullmatch(r"[A-Za-z0-9._-]+", args.tag):
@@ -60,11 +61,19 @@ def main() -> int:
     args.dest.mkdir(parents=True, exist_ok=True)
     base = args.dest / f"{datetime.now():%Y%m%d_%H%M%S}_{args.tag}"
 
-    bundle = base.with_suffix(".bundle")
-    git("bundle", "create", str(bundle), "--all")
-    git("bundle", "verify", str(bundle))
+    bundle = base.parent / f"{base.name}.bundle"
+    pending = bundle.with_suffix(".bundle.tmp")
+    if bundle.exists() or pending.exists():
+        sys.exit(f"snapshot already exists: {bundle}")
+    git("bundle", "create", str(pending), "--all")
+    git("bundle", "verify", str(pending))
+    pending.replace(bundle)
+    if args.git_only:
+        print(f"bundle: {bundle}")
+        return 0
 
-    with zipfile.ZipFile(base.with_suffix(".zip"), "w", zipfile.ZIP_DEFLATED) as zf:
+    state = base.parent / f"{base.name}.zip"
+    with zipfile.ZipFile(state, "w", zipfile.ZIP_DEFLATED) as zf:
         diff = git("diff", "HEAD", "--binary")
         if diff:
             zf.writestr("uncommitted.patch", diff)
@@ -79,7 +88,7 @@ def main() -> int:
         )
 
     removed = prune(args.dest, args.keep)
-    print(f"bundle: {bundle}\nstate:  {base.with_suffix('.zip')}")
+    print(f"bundle: {bundle}\nstate:  {state}")
     if diff:
         print("warning: uncommitted changes were saved as uncommitted.patch")
     if removed:

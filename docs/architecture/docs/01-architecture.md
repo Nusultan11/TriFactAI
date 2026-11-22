@@ -448,9 +448,9 @@ Payload: `chunk_id, document_id, lang, page, section, text, entity_ids[], entity
 
 - **CPU-стадии** (Data Pipeline) — DVC-стадии в [`dvc.yaml`](../../../dvc.yaml). Стадии потоковые, пиковая RAM ≤ 10 GB.
 - **Batch-задания** (Batch Compute) — `python -m trifact.batch.<job> --shard i/N`: `embed_corpus`, `annotate_corpus`, `teacher_generate`, `index_corpus`. Задания идемпотентны, работают по шардам и пишут маркеры `_SUCCESS` ([ADR-0014](../adr/0014-sharded-batch-jobs.md)).
-- **GPU-задания этапа 3** идут на Kaggle (2× T4) через `python -m trifact.batch.kaggle run <job>`: перевод NLLB (`jobs/translate`), проверка меток NLI (`jobs/nli_score`), учитель Qwen3.5-35B-A3B на llama.cpp (`jobs/teacher`). Выходы версионируются в DVC как `data/external/kaggle/<run>`, стадии `mt`, `synthetic` и `build_nli` только импортируют их ([ADR-0020](../adr/0020-kaggle-batch-gpu-mt-and-teacher.md)).
+- **GPU-задания этапа 3** используют общие скрипты `jobs/translate` (NLLB), `jobs/nli_score` (проверка NLI) и `jobs/teacher` (Qwen3.5 на llama.cpp). Результаты передаются импортерам `mt`, `synthetic` и `build_nli` вместе с происхождением и конфигом. Существующие импорты Kaggle закреплены в DVC как `data/external/kaggle/<run>` ([ADR-0020](../adr/0020-kaggle-batch-gpu-mt-and-teacher.md)).
 - **Обучение** — `python -m trifact.training.<model>`. HPO через Optuna (параметры — в `params.yaml`), ≥ 3 сидов для дешёвых моделей.
-- **Облако**: тот же образ, `dvc pull` → задание → `dvc push` через remote `cloud`. Бюджет запуска фиксируется в `params.yaml: cloud.budget_usd` заранее.
+- **Профили Stage 1–3** — Colab L4 для основных GPU-заданий, Kaggle 2× T4 для дополнительных и облачная VM для CPU-стадий. DVC и контрольные точки используют Google Drive. Порядок запуска и восстановления — [ADR-0025](../adr/0025-cloud-only-computing.md).
 - **Оценки пропускной способности** (проверить замерами): эмбеддинги класса XLM-R-large на RTX 3050 дают сотни чанков/с, то есть 35M займут несколько суток. На A100/H100 — часы, поэтому корпус кодируется в облаке. NER XLM-R base в ONNX int8 на CPU — порядка сотен–тысяч предложений/с, поэтому массовая разметка тоже идёт в облаке или ночными шардами.
 
 ## 10. Оценка и продвижение

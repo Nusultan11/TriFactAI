@@ -9,6 +9,8 @@ Accepted
 Amends [14. Шардированные batch-задания](0014-sharded-batch-jobs.md) (где выполняются GPU-задания) и
 [15. Silver- и синтетические данные](0015-silver-and-synthetic-data.md) (чем делается kk-перевод XNLI)
 
+Amended by [25. Облачные вычисления](0025-cloud-only-computing.md) в части выбора среды выполнения.
+
 ## Context
 
 Бюджет облака равен 0 (`params.yaml: cloud.budget_usd`), а у рабочей машины RTX 3050 4 GB: на ней не помещаются ни учитель Qwen3.5-35B-A3B, ни массовый перевод. Пользователь разрешил считать на Kaggle (2026-11-18). Факты Kaggle на эту дату:

@@ -445,7 +445,7 @@ verification:
 evaluation:
   bootstrap_samples: 1000
   ci: 0.95
-  human_verified_min: 3000
+  human_verified_min: 3500
   review_per_kind: 500      # MT-derived eval rows per direction / kind on the human review sheet
   real_docs_min: 50
 
