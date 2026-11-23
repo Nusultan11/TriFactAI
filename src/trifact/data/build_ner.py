@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import multiprocessing
 import re
 import shutil
 import sys
@@ -483,7 +484,8 @@ def build_silver(
                 stale.unlink()
             jobs.append((str(base / s.path), s.lang, str(out), cfg["min_tokens"], cfg["max_tokens"]))
     stats: dict[str, Any] = {"pass1": Counter()}
-    with ProcessPoolExecutor(workers) as pool:
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(workers, mp_context=context) as pool:
         for r in pool.map(sentences_unit, jobs):
             stats["pass1"].update(r)
     log.info("silver pass 1: %d shards", len(parts))
@@ -548,7 +550,7 @@ def build_silver(
     ]
     stats["reasons"] = Counter()
     stats["types"] = Counter()
-    with ProcessPoolExecutor(workers) as pool:
+    with ProcessPoolExecutor(workers, mp_context=context) as pool:
         for (_, out, _), r in zip(jobs3, pool.map(tag_unit, jobs3), strict=True):
             Path(out).with_suffix(".done").write_text(json.dumps(r))
     for p in sorted((work / "tag").glob("*.done")):
