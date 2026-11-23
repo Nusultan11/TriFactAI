@@ -45,3 +45,33 @@ def test_validate_nli_scores_and_rss_ceiling(tmp_path) -> None:
     runner.validate_rss_ceiling({"peak_rss_mb": 4096}, "eda@curated", 10.0)
     with pytest.raises(RuntimeError, match="exceeds 10.0 GiB ceiling"):
         runner.validate_rss_ceiling({"peak_rss_mb": 11000}, "eda@curated", 10.0)
+
+
+def test_release_layer_inputs_drops_only_that_layer(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    cache = tmp_path / ".dvc/cache/files/md5"
+
+    def obj(md5: str, data: bytes) -> Path:
+        p = cache / md5[:2] / md5[2:]
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+        return p
+
+    listing = obj("aa11.dir", json.dumps([{"md5": "bb22", "relpath": "x.parquet"}]).encode())
+    member = obj("bb22", b"12345")
+    kept = obj("cc33", b"keep")
+    (tmp_path / "data/clean/corpus").mkdir(parents=True)
+    (tmp_path / "data/clean/corpus/x.parquet").write_bytes(b"12345")
+    (tmp_path / "data/curated").mkdir(parents=True)
+    lock = {
+        "stages": {
+            "clean": {"outs": [{"path": "data/clean/corpus", "md5": "aa11.dir"}]},
+            "dedup": {"outs": [{"path": "data/curated/corpus", "md5": "cc33"}]},
+        }
+    }
+    (tmp_path / "dvc.lock").write_text(json.dumps(lock), encoding="utf-8")
+
+    size = listing.stat().st_size
+    assert runner.release_layer_inputs("clean") == 5 + size
+    assert not listing.exists() and not member.exists() and kept.exists()
+    assert not (tmp_path / "data/clean/corpus").exists() and (tmp_path / "data/curated").exists()

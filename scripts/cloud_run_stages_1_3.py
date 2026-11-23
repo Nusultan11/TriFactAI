@@ -147,6 +147,8 @@ def start_mlflow(tracking_dir: Path, session: str) -> tuple[subprocess.Popen[str
         stdout=log_f,
         stderr=subprocess.STDOUT,
         text=True,
+        # the job runner spawns ~9 Huey consumers (~2 GiB RSS) that compete with data stages for VM RAM
+        env={**os.environ, "MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false"},
     )
     os.environ["MLFLOW_TRACKING_URI"] = "http://127.0.0.1:5000"
     for _ in range(60):
@@ -443,8 +445,48 @@ def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
     }
 
 
+def release_layer_inputs(layer: str) -> int:
+    """Delete an EDA layer's checked-out inputs and their local cache objects (all already on the remote)."""
+    import yaml
+
+    prefix = {
+        "entities": "data/raw/wikidata",
+        "raw": "data/raw",
+        "clean": "data/clean",
+        "curated": "data/curated",
+    }[layer]
+    stages = yaml.safe_load((ROOT / "dvc.lock").read_text(encoding="utf-8"))["stages"]
+    cache = ROOT / ".dvc" / "cache" / "files" / "md5"
+    freed = 0
+
+    def drop(md5: str) -> None:
+        nonlocal freed
+        obj = cache / md5[:2] / md5[2:]
+        if obj.is_file():
+            freed += obj.stat().st_size
+            obj.unlink()
+
+    for stage in stages.values():
+        for out in stage.get("outs", []):
+            if out["path"] != prefix and not out["path"].startswith(prefix + "/"):
+                continue
+            md5 = out["md5"]
+            listing = cache / md5[:2] / md5[2:]
+            if md5.endswith(".dir") and listing.is_file():
+                for entry in json.loads(listing.read_text(encoding="utf-8")):
+                    drop(entry["md5"])
+            drop(md5)
+            path = ROOT / out["path"]
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
+    print(f"released {layer} inputs: {freed / 2**30:.1f} GiB of local cache", flush=True)
+    return freed
+
+
 def step_eda_rss_check(
-    uv: list[str], layers: tuple[str, ...] = EDA_LAYERS, report_only: bool = False
+    uv: list[str], layers: tuple[str, ...] = EDA_LAYERS, report_only: bool = False, free_disk: bool = False
 ) -> dict[str, Any]:
     from trifact.core.params import load_params
 
@@ -463,6 +505,9 @@ def step_eda_rss_check(
     results = {}
     if report_only:
         run(*uv, "dvc", "pull", *(f"eda@{layer}" for layer in layers))
+    elif free_disk:
+        # one physical copy per input: the layers together (~115 GiB) exceed a Colab CPU disk
+        run(*uv, "dvc", "config", "--local", "cache.type", "hardlink,symlink")
     for layer in layers:
         stage = f"eda@{layer}"
         if not report_only:
@@ -475,6 +520,10 @@ def step_eda_rss_check(
         validate_rss_ceiling(meta, stage, max_ram_gb)
         if not report_only:
             push_verified(uv, stage)
+            if layer == "curated" and not (ROOT / "reports/corpus_stats.json").is_file():
+                run(*uv, "dvc", "repro", "--single-item", "--force", "corpus_stats")
+            if free_disk and not (layer == "entities" and "raw" in layers):
+                release_layer_inputs(layer)
         results[layer] = meta
     if set(layers) != set(EDA_LAYERS):
         return results
@@ -525,11 +574,16 @@ def main(argv: list[str] | None = None) -> int:
     eda_options = ap.add_mutually_exclusive_group()
     eda_options.add_argument("--eda-layer", choices=EDA_LAYERS, action="append")
     eda_options.add_argument("--eda-report-only", action="store_true")
+    ap.add_argument(
+        "--eda-free-disk",
+        action="store_true",
+        help="hardlink EDA inputs and delete each layer's local copy once its report is pushed",
+    )
     args = ap.parse_args(argv)
     steps = [s.strip() for s in args.steps.split(",") if s.strip()]
     if not steps or len(steps) != len(set(steps)) or (set(steps) - set(ALL_STEPS)):
         raise SystemExit("Specify one or more distinct known steps")
-    if (args.eda_layer or args.eda_report_only) and "eda_rss_check" not in steps:
+    if (args.eda_layer or args.eda_report_only or args.eda_free_disk) and "eda_rss_check" not in steps:
         ap.error("EDA options require eda_rss_check")
     eda_layers = tuple(dict.fromkeys(args.eda_layer)) if args.eda_layer else EDA_LAYERS
 
@@ -555,7 +609,7 @@ def main(argv: list[str] | None = None) -> int:
             elif step == "train_and_eval":
                 res = step_train_and_eval(uv)
             else:
-                res = step_eda_rss_check(uv, eda_layers, args.eda_report_only)
+                res = step_eda_rss_check(uv, eda_layers, args.eda_report_only, args.eda_free_disk)
             snap = snapshot_mlflow(db, tracking, session)
             summary["steps"][step] = {
                 "status": "passed",
