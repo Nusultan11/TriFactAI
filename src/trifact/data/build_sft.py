@@ -217,9 +217,11 @@ def main(argv: list[str] | None = None) -> int:
     metrics = {"per_source_pool": per_source, **mix_stats, "final": dist, "kk_share": round(kk_share, 4),
                "eval_questions_dropped": n_eval_q,
                "type_share": {t: round(final.filter(pl.col("type") == t).height / max(final.height, 1), 4) for t in cfg["mix"]}}  # fmt: skip
-    lic = inherited(root, list(QA_SOURCES)) + ([MT_LICENSE] if mt is not None else [])
+    extra_datasets = [args.synthetic] if args.synthetic else []
+    lic = inherited(root, list(QA_SOURCES), extra_datasets) + ([MT_LICENSE] if mt is not None else [])
     inputs = [raw_input(root, s) for s in QA_SOURCES] + [dataset_input_of(root, root / "task/splits")]
     inputs += [dataset_input_of(root, mt_dir)] if mt is not None else []
+    inputs += [dataset_input_of(root, args.synthetic)] if args.synthetic else []
     finish(
         out, name="task/sft", layer="task", stage="build_sft", source="+".join(QA_SOURCES),
         description="Grounded QA SFT examples: numbered evidence with [chunk_id] citations, answerable / cross-lingual / "

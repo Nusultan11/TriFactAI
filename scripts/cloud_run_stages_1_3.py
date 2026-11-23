@@ -1,19 +1,20 @@
 """Turnkey cloud CPU runner for remaining Stage 1-3 DVC stages (ADR-0025).
 
-Run inside a Colab CPU runtime with Google Drive mounted at `/content/drive`:
+Run inside a Colab CPU runtime with Google Drive mounted at `/content/drive` (or an authorized
+local/SSH DVC remote):
 
     uv run --no-sync python scripts/cloud_run_stages_1_3.py --drive /content/drive/MyDrive/TrifactAI
 
 Steps (selectable via --steps):
   1. wikitext_merge  - merge verified ruwiki part 4 into raw/wikipedia_wikitext and push to DVC
   2. build_ner       - rebuild gold + silver NER (>5M target) with ruwiki part 4 and push to DVC
-  3. synthetic       - import combined teacher_queries + queries2 (~102k) and finalize qa + qa2 with NLI scores
-  4. train_and_eval  - rebuild build_pairs, build_sft, verify eval_leakage == 0, run task_eda + eda_report
-  5. eda_rss_check   - run eda entities + curated and verify peak RSS <= lake.peak_ram_gb (10 GiB)
+  3. synthetic       - import combined teacher_queries + queries2 and finalize qa + qa2 with NLI scores
+  4. train_and_eval  - rebuild build_pairs, build_sft, verify eval_leakage == 0, run task_eda
+  5. eda_rss_check   - run eda entities + curated (peak RSS <= lake.peak_ram_gb) and eda_report
 
-All DVC outputs are pushed immediately to the mounted Drive remote (`verify=true`), MLflow SQLite is
-atomically snapshotted to Drive after each step, and updated `dvc.lock` + `reports/` are persisted to
-`<drive>/workspace-data/stage-01-03-reconcile/`.
+All DVC outputs are pushed immediately to the configured remote (`verify=true`), MLflow SQLite is
+atomically snapshotted after each step, and updated `dvc.lock` + `reports/` are persisted to
+`<out_dir>` (default `<drive>/workspace-data/stage-01-03-reconcile/<session>`).
 """
 
 from __future__ import annotations
@@ -34,6 +35,14 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 ALL_STEPS = ("wikitext_merge", "build_ner", "synthetic", "train_and_eval", "eda_rss_check")
+REQUIRED_LEAKAGE_SETS = (
+    "ner:sentence",
+    "qa:query",
+    "qa:passage",
+    "retrieval:query",
+    "retrieval:passage",
+    "nli:nli",
+)
 
 
 def run(*cmd: Any, check: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -50,11 +59,48 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def start_mlflow(drive: Path, session: str) -> tuple[subprocess.Popen[str], Path, Path]:
-    tracking = drive / "workspace-data" / "mlflow"
-    tracking.mkdir(parents=True, exist_ok=True)
-    db = Path("/content") / f"trifact-{session}.db"
-    log_path = Path("/content") / f"mlflow-{session}.log"
+def validate_eval_leakage(leak_path: Path) -> dict[str, Any]:
+    """Fail explicitly if eval_leakage.json is missing, incomplete, or has unintended overlap."""
+    if not leak_path.is_file():
+        raise RuntimeError(f"Missing leakage report: {leak_path}")
+    leak = json.loads(leak_path.read_text(encoding="utf-8"))
+    sets = leak.get("sets")
+    if not isinstance(sets, dict) or not sets:
+        raise RuntimeError(f"Invalid leakage report (missing 'sets'): {leak_path}")
+    missing = [k for k in REQUIRED_LEAKAGE_SETS if k not in sets]
+    if missing:
+        raise RuntimeError(f"Incomplete leakage report; missing sets: {missing}")
+    bad = {
+        k: int(v.get("overlap", -1))
+        for k, v in sets.items()
+        if k != "retrieval:passage" and int(v.get("overlap", -1)) != 0
+    }
+    if bad:
+        raise RuntimeError(f"Nonzero unintended evaluation leakage detected: {bad}")
+    return leak
+
+
+def validate_nli_scores_dir(nli_dir: Path) -> list[Path]:
+    """Fail explicitly if required Kaggle NLI QA score parquets are missing."""
+    out_dir = nli_dir / "out"
+    files = sorted(out_dir.glob("*.parquet")) if out_dir.is_dir() else []
+    if not files:
+        raise RuntimeError(f"Missing required Kaggle NLI QA score parquets in {out_dir}")
+    return files
+
+
+def validate_rss_ceiling(meta: dict[str, Any], stage_name: str, max_ram_gb: float = 10.0) -> None:
+    peak = meta.get("peak_rss_mb")
+    if not isinstance(peak, (int, float)) or peak <= 0:
+        raise RuntimeError(f"{stage_name}: invalid or missing peak_rss_mb ({peak!r})")
+    if peak > max_ram_gb * 1024:
+        raise RuntimeError(f"{stage_name}: peak RSS {peak} MiB exceeds {max_ram_gb} GiB ceiling")
+
+
+def start_mlflow(tracking_dir: Path, session: str) -> tuple[subprocess.Popen[str], Path, Path]:
+    tracking_dir.mkdir(parents=True, exist_ok=True)
+    db = Path("/content" if Path("/content").is_dir() else "/tmp") / f"trifact-{session}.db"
+    log_path = db.with_suffix(".log")
     uv = shutil.which("uv") or "uv"
     log_f = log_path.open("w", encoding="utf-8")
     proc = subprocess.Popen(
@@ -72,7 +118,7 @@ def start_mlflow(drive: Path, session: str) -> tuple[subprocess.Popen[str], Path
             f"sqlite:///{db}",
             "--no-serve-artifacts",
             "--default-artifact-root",
-            (tracking / "artifacts").as_uri(),
+            (tracking_dir / "artifacts").as_uri(),
         ],
         cwd=ROOT,
         stdout=log_f,
@@ -85,7 +131,7 @@ def start_mlflow(drive: Path, session: str) -> tuple[subprocess.Popen[str], Path
             raise RuntimeError(f"MLflow failed to start; see {log_path}")
         try:
             with urllib.request.urlopen("http://127.0.0.1:5000/health", timeout=1):
-                return proc, db, tracking
+                return proc, db, tracking_dir
         except OSError:
             time.sleep(1)
     raise TimeoutError("MLflow did not become healthy within 60s")
@@ -104,11 +150,14 @@ def snapshot_mlflow(db: Path, tracking: Path, session: str) -> Path:
     return snap
 
 
-def setup_dvc_and_models(drive: Path) -> list[str]:
-    dvc_dir = drive / "dvc"
-    assert (dvc_dir / "files" / "md5").is_dir(), f"DVC cache missing at {dvc_dir}"
+def setup_dvc_and_models(drive: Path, dvc_remote_url: str | None = None) -> list[str]:
     uv = [shutil.which("uv") or "uv", "run", "--no-sync"]
-    run(*uv, "dvc", "remote", "add", "--local", "--force", "--default", "drive", dvc_dir)
+    if dvc_remote_url:
+        run(*uv, "dvc", "remote", "add", "--local", "--force", "--default", "drive", dvc_remote_url)
+    else:
+        dvc_dir = drive / "dvc"
+        assert (dvc_dir / "files" / "md5").is_dir(), f"DVC cache missing at {dvc_dir}"
+        run(*uv, "dvc", "remote", "add", "--local", "--force", "--default", "drive", dvc_dir)
     run(*uv, "dvc", "remote", "modify", "--local", "drive", "verify", "true")
     run(*uv, "dvc", "config", "--local", "core.autostage", "false")
     lid_parts = drive / "models" / "lid176" / "lid.176.bin.parts.json"
@@ -122,28 +171,43 @@ def setup_dvc_and_models(drive: Path) -> list[str]:
 def step_wikitext_merge(uv: list[str], drive: Path) -> dict[str, Any]:
     part4_dir = drive / "workspace-data" / "wikitext-part4"
     res_file = part4_dir / "result.json"
+    if not res_file.is_file():
+        raise RuntimeError(f"Missing verified ruwiki part 4 metadata: {res_file}")
     run(*uv, "dvc", "pull", "wikitext")
-    if res_file.is_file():
-        from trifact.lake.manifest import InputFile, RowCheck, ShardEntry, SourceManifest, verify_source
-        from trifact.lake.stats import git_sha
 
-        info = json.loads(res_file.read_text(encoding="utf-8"))
-        src = ROOT / "data/raw/wikipedia_wikitext"
-        m = SourceManifest.read(src)
-        existing_paths = {s.path for s in m.shards}
-        added = 0
-        for s_dict in info["shards"]:
-            se = ShardEntry.model_validate(s_dict)
-            if se.path in existing_paths:
-                continue
-            src_f = part4_dir / se.path
-            dst_f = src / se.path
-            dst_f.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_f, dst_f)
-            assert sha256_file(dst_f) == se.sha256, f"SHA-256 mismatch on {se.path}"
-            m.shards.append(se)
-            added += 1
-        if added:
+    from trifact.lake.manifest import InputFile, RowCheck, ShardEntry, SourceManifest, verify_source
+    from trifact.lake.stats import git_sha, log_mlflow
+
+    info = json.loads(res_file.read_text(encoding="utf-8"))
+    if not info.get("shards"):
+        raise RuntimeError(f"Invalid ruwiki part 4 result.json (no shards): {res_file}")
+    src = ROOT / "data/raw/wikipedia_wikitext"
+    m = SourceManifest.read(src)
+    existing_paths = {s.path for s in m.shards}
+
+    # Verify all incoming part 4 artifacts before mutating the canonical dataset
+    parsed_shards = [ShardEntry.model_validate(s_dict) for s_dict in info["shards"]]
+    for se in parsed_shards:
+        src_f = part4_dir / se.path
+        if not src_f.is_file():
+            raise RuntimeError(f"Missing ruwiki part 4 shard: {src_f}")
+        if sha256_file(src_f) != se.sha256:
+            raise RuntimeError(f"SHA-256 mismatch on staged {src_f}")
+
+    added = 0
+    for se in parsed_shards:
+        if se.path in existing_paths:
+            continue
+        src_f = part4_dir / se.path
+        dst_f = src / se.path
+        dst_f.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_f, dst_f)
+        if sha256_file(dst_f) != se.sha256:
+            raise RuntimeError(f"SHA-256 mismatch after copy on {dst_f}")
+        m.shards.append(se)
+        added += 1
+    if added:
+        if all(inp.path != info["url"] for inp in m.inputs):
             m.inputs.append(
                 InputFile(
                     path=info["url"],
@@ -153,27 +217,43 @@ def step_wikitext_merge(uv: list[str], drive: Path) -> dict[str, Any]:
                     rows=int(info["kept"]),
                 )
             )
+        if all(rc.scope != info["file"]["name"] for rc in m.row_checks):
             m.row_checks.append(
                 RowCheck(
                     scope=info["file"]["name"],
                     method="xml_page_count",
                     expected=int(info["kept"]),
-                    actual=sum(s["rows"] for s in info["shards"] if s["table"] == "part"),
+                    actual=sum(s.rows for s in parsed_shards if s.table == "part"),
                 )
             )
-            m.code_version = git_sha(ROOT)
-            m.write(src)
-        problems = verify_source(src, deep=True)
-        if problems:
-            raise RuntimeError(f"wikipedia_wikitext verify failed: {problems}")
-        run(*uv, "dvc", "commit", "-f", "wikitext")
-    else:
-        run(*uv, "dvc", "repro", "--single-item", "wikitext")
+        m.code_version = git_sha(ROOT)
+        m.write(src)
+
+    problems = verify_source(src, deep=True)
+    if problems:
+        raise RuntimeError(f"wikipedia_wikitext verify failed: {problems}")
+    run(*uv, "dvc", "commit", "-f", "wikitext")
     run(*uv, "dvc", "push", "wikitext")
-    return {"status": "passed"}
+    status = run(*uv, "dvc", "status", "--cloud", "wikitext")
+    if status.returncode != 0:
+        raise RuntimeError("dvc status --cloud wikitext failed")
+    log_mlflow(
+        "data",
+        "wikipedia_wikitext",
+        {"revision": m.revision, "code_version": m.code_version, "part4_added": added},
+        {"rows": sum(s.rows for s in m.shards if s.table == "part"), "shards": len(m.shards)},
+    )
+    return {
+        "status": "passed",
+        "shards_added": added,
+        "total_shards": len(m.shards),
+        "rows_by_lang": m.rows,
+    }
 
 
 def step_build_ner(uv: list[str]) -> dict[str, Any]:
+    from trifact.lake.manifest import verify_dataset
+
     run(
         *uv,
         "dvc",
@@ -187,37 +267,71 @@ def step_build_ner(uv: list[str]) -> dict[str, Any]:
         "acquire@nerel",
     )
     run(*uv, "dvc", "repro", "--single-item", "build_ner")
+    problems = verify_dataset(ROOT / "data/task/ner", deep=True)
+    if problems:
+        raise RuntimeError(f"task/ner verify failed: {problems}")
     run(*uv, "dvc", "push", "build_ner")
     rep = ROOT / "reports/ner_data.json"
-    return json.loads(rep.read_text(encoding="utf-8")) if rep.is_file() else {"status": "passed"}
+    if not rep.is_file():
+        raise RuntimeError(f"Missing NER report after build_ner: {rep}")
+    return json.loads(rep.read_text(encoding="utf-8"))
 
 
 def step_synthetic(uv: list[str], drive: Path) -> dict[str, Any]:
+    import polars as pl
+
+    from trifact.lake.manifest import DatasetManifest, verify_dataset
+
     run(*uv, "dvc", "pull", "data/external.dvc", "chunk_corpus")
     q2 = drive / "workspace-data/kaggle/trifact-teacher-queries2/v1"
     qa2 = drive / "workspace-data/kaggle/trifact-teacher-qa2/v1"
     nli2 = drive / "workspace-data/kaggle/trifact-nli-score-qa2"
+
+    # Validate NLI scores exist BEFORE claiming synthetic completion
+    validate_nli_scores_dir(nli2)
+
     q_runs = [ROOT / "data/external/kaggle/teacher_queries/out"] + ([q2] if q2.is_dir() else [])
     run(*uv, "python", "-m", "trifact.data.synthetic", "import", "--kind", "queries", "--kaggle-out", *q_runs)
+    q_problems = verify_dataset(ROOT / "data/task/synthetic/queries", deep=True)
+    if q_problems:
+        raise RuntimeError(f"task/synthetic/queries verify failed: {q_problems}")
+    q_kept = pl.read_parquet(
+        sorted(str(p) for p in (ROOT / "data/task/synthetic/queries").glob("*/kept-*.parquet"))
+    )
+    if q_kept.is_empty():
+        raise RuntimeError("task/synthetic/queries kept table is empty")
+    if q_kept.select(pl.concat_str("id", "q_lang", separator="|")).is_duplicated().any():
+        raise RuntimeError("Duplicate (id, q_lang) found in task/synthetic/queries")
     run(*uv, "dvc", "commit", "-f", "synthetic_queries")
     run(*uv, "dvc", "push", "synthetic_queries")
 
-    out: dict[str, Any] = {
-        "queries": json.loads((ROOT / "reports/synthetic_queries.json").read_text(encoding="utf-8"))
+    qa_runs = [ROOT / "data/external/kaggle/teacher_qa/out"] + ([qa2] if qa2.is_dir() else [])
+    run(*uv, "python", "-m", "trifact.data.synthetic", "import", "--kind", "qa", "--kaggle-out", *qa_runs)
+    run(*uv, "python", "-m", "trifact.data.synthetic", "finalize", "--kind", "qa", "--scores", nli2)
+    qa_dir = ROOT / "data/task/synthetic/qa"
+    qa_problems = verify_dataset(qa_dir, deep=True)
+    if qa_problems:
+        raise RuntimeError(f"task/synthetic/qa verify failed: {qa_problems}")
+    qa_manifest = DatasetManifest.read(qa_dir)
+    if "NLI filter pending." in qa_manifest.description:
+        raise RuntimeError("task/synthetic/qa manifest still indicates NLI filter pending")
+    qa_kept = pl.read_parquet(sorted(str(p) for p in qa_dir.glob("*/kept-*.parquet")))
+    if qa_kept.is_empty():
+        raise RuntimeError("task/synthetic/qa kept table is empty")
+    if qa_kept["id"].is_duplicated().any():
+        raise RuntimeError("Duplicate id found in task/synthetic/qa")
+    run(*uv, "dvc", "commit", "-f", "synthetic_qa")
+    run(*uv, "dvc", "push", "synthetic_qa")
+
+    return {
+        "queries": json.loads((ROOT / "reports/synthetic_queries.json").read_text(encoding="utf-8")),
+        "qa": json.loads((ROOT / "reports/synthetic_qa.json").read_text(encoding="utf-8")),
     }
-    if nli2.is_dir() and list((nli2 / "out").glob("*.parquet")):
-        qa_runs = [ROOT / "data/external/kaggle/teacher_qa/out"] + ([qa2] if qa2.is_dir() else [])
-        run(*uv, "python", "-m", "trifact.data.synthetic", "import", "--kind", "qa", "--kaggle-out", *qa_runs)
-        run(*uv, "python", "-m", "trifact.data.synthetic", "finalize", "--kind", "qa", "--scores", nli2)
-        run(*uv, "dvc", "commit", "-f", "synthetic_qa")
-        run(*uv, "dvc", "push", "synthetic_qa")
-        out["qa"] = json.loads((ROOT / "reports/synthetic_qa.json").read_text(encoding="utf-8"))
-    else:
-        out["qa"] = {"status": "skipped_waiting_for_kaggle_nli_scores", "expected_dir": str(nli2)}
-    return out
 
 
 def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
+    from trifact.lake.manifest import verify_dataset
+
     run(
         *uv,
         "dvc",
@@ -238,33 +352,76 @@ def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
         "acquire@kazqad",
     )
     run(*uv, "dvc", "repro", "--single-item", "build_pairs")
+    p_probs = verify_dataset(ROOT / "data/task/retrieval", deep=True)
+    if p_probs:
+        raise RuntimeError(f"task/retrieval verify failed: {p_probs}")
     run(*uv, "dvc", "push", "build_pairs")
+
     run(*uv, "dvc", "repro", "--single-item", "build_sft")
+    s_probs = verify_dataset(ROOT / "data/task/sft", deep=True)
+    if s_probs:
+        raise RuntimeError(f"task/sft verify failed: {s_probs}")
     run(*uv, "dvc", "push", "build_sft")
+
     run(*uv, "dvc", "pull", "build_ner", "build_nli")
     run(*uv, "dvc", "repro", "--single-item", "eval_leakage")
+    leak = validate_eval_leakage(ROOT / "reports/eval_leakage.json")
+
     run(*uv, "dvc", "repro", "--single-item", "task_eda")
     run(*uv, "dvc", "push", "task_eda")
-    leak = json.loads((ROOT / "reports/eval_leakage.json").read_text(encoding="utf-8"))
-    return {"eval_leakage": leak}
+    return {
+        "eval_leakage": leak,
+        "retrieval": json.loads((ROOT / "reports/retrieval_data.json").read_text(encoding="utf-8")),
+        "sft": json.loads((ROOT / "reports/sft_data.json").read_text(encoding="utf-8")),
+    }
 
 
 def step_eda_rss_check(uv: list[str]) -> dict[str, Any]:
-    run(*uv, "dvc", "pull", "wikidata", "decontaminate")
+    from trifact.core.params import load_params
+
+    max_ram_gb = float(load_params()["lake"]["peak_ram_gb"])
+    run(*uv, "dvc", "pull", "wikidata", "decontaminate", "eda@raw", "eda@clean", "task_eda")
     run(*uv, "dvc", "repro", "--single-item", "eda@entities")
     run(*uv, "dvc", "push", "eda@entities")
     run(*uv, "dvc", "repro", "--single-item", "eda@curated")
     run(*uv, "dvc", "push", "eda@curated")
     ent = json.loads((ROOT / "reports/eda/entities.json").read_text(encoding="utf-8"))["meta"]
     cur = json.loads((ROOT / "reports/eda/curated.json").read_text(encoding="utf-8"))["meta"]
-    if cur["peak_rss_mb"] > 10 * 1024:
-        raise RuntimeError(f"eda@curated peak RSS {cur['peak_rss_mb']} MiB > 10 GiB")
+    validate_rss_ceiling(ent, "eda@entities", max_ram_gb)
+    validate_rss_ceiling(cur, "eda@curated", max_ram_gb)
+
+    run(*uv, "dvc", "repro", "--single-item", "eda_report")
+    run(*uv, "dvc", "push", "eda_report")
     return {"entities": ent, "curated": cur}
+
+
+def sync_reports_to(out_dir: Path) -> None:
+    rep_dst = out_dir / "reports"
+    rep_dst.mkdir(parents=True, exist_ok=True)
+    for rel in (
+        "reports/ner_data.json",
+        "reports/synthetic_queries.json",
+        "reports/synthetic_qa.json",
+        "reports/retrieval_data.json",
+        "reports/sft_data.json",
+        "reports/eval_leakage.json",
+        "reports/eda/report.md",
+        "reports/eda/findings.json",
+    ):
+        src = ROOT / rel
+        if src.is_file():
+            dst = out_dir / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--drive", type=Path, default=Path("/content/drive/MyDrive/TrifactAI"))
+    ap.add_argument("--dvc-remote", default=None, help="Override DVC remote URL (default: <drive>/dvc)")
+    ap.add_argument(
+        "--out-dir", type=Path, default=None, help="Output directory for summary, dvc.lock, reports"
+    )
     ap.add_argument("--steps", default=",".join(ALL_STEPS))
     args = ap.parse_args(argv)
     steps = [s.strip() for s in args.steps.split(",") if s.strip()]
@@ -272,11 +429,14 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         raise SystemExit(f"Unknown steps: {sorted(unknown)}")
 
-    uv = setup_dvc_and_models(args.drive)
+    uv = setup_dvc_and_models(args.drive, args.dvc_remote)
     session = uuid4().hex[:12]
-    proc, db, tracking = start_mlflow(args.drive, session)
-    out_dir = args.drive / "workspace-data" / "stage-01-03-reconcile" / session
+    out_dir = args.out_dir or (args.drive / "workspace-data" / "stage-01-03-reconcile" / session)
     out_dir.mkdir(parents=True, exist_ok=True)
+    tracking_dir = (
+        (args.drive / "workspace-data" / "mlflow") if args.out_dir is None else (out_dir / "mlflow")
+    )
+    proc, db, tracking = start_mlflow(tracking_dir, session)
     summary: dict[str, Any] = {"session": session, "steps": {}}
     try:
         for step in steps:
@@ -298,6 +458,7 @@ def main(argv: list[str] | None = None) -> int:
                 "result": res,
             }
             shutil.copy2(ROOT / "dvc.lock", out_dir / "dvc.lock")
+            sync_reports_to(out_dir)
             (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     finally:
         proc.terminate()

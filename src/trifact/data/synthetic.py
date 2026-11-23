@@ -519,6 +519,56 @@ def synthetic_sft(d: Path, template: str) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+def finalize_qa_scores(
+    kept: pl.DataFrame,
+    scores_dir: Path,
+    thr: float,
+    expected_pairs: Path | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Apply claim-level NLI scores to answerable QA candidates; fail loudly if scores are missing or incomplete."""
+    score_files = sorted(scores_dir.glob("out/*.parquet"))
+    if not score_files:
+        raise FileNotFoundError(f"No NLI score parquet files found under {scores_dir / 'out'}")
+    raw_scores = pl.concat([pl.read_parquet(f) for f in score_files], how="diagonal_relaxed")
+    if raw_scores.is_empty() or not {"id", "p_entailment"} <= set(raw_scores.columns):
+        raise ValueError(f"Invalid or empty NLI scores in {scores_dir / 'out'}")
+    # an answer is as supported as its weakest claim
+    s = (
+        raw_scores.group_by(c=pl.col("id").str.replace(r"@w\d+$", ""))
+        .agg(pl.col("p_entailment").max())
+        .group_by(id=pl.col("c").str.replace(r"@c\d+$", ""))
+        .agg(pl.col("p_entailment").min())
+    )
+    scored_ids = set(s["id"].to_list())
+    if expected_pairs is not None and expected_pairs.is_file():
+        exp = pl.read_parquet(expected_pairs, columns=["id"])
+        expected_ids = set(exp["id"].str.replace(r"@c\d+@w\d+$", "").unique().to_list())
+        missing_ids = expected_ids - scored_ids
+        if missing_ids:
+            raise ValueError(
+                f"Incomplete NLI scores in {scores_dir}: {len(missing_ids)} / {len(expected_ids)} "
+                f"expected QA candidates have no score (sample: {sorted(missing_ids)[:5]})"
+            )
+    joined = kept.join(s.select("id", "p_entailment"), on="id", how="left")
+    unscored_ans = joined.filter((pl.col("mode") == "answerable") & pl.col("p_entailment").is_null())
+    if unscored_ans.height:
+        missing_with_claims = [
+            r["id"]
+            for r in unscored_ans.select("id", "answer", "evidence_ids", "evidence_texts").iter_rows(
+                named=True
+            )
+            if claim_pairs(r["id"], r["answer"], r["evidence_ids"], r["evidence_texts"])
+        ]
+        if missing_with_claims:
+            raise ValueError(
+                f"Incomplete NLI scores in {scores_dir}: {len(missing_with_claims)} answerable QA candidates "
+                f"with claims have no NLI score (sample: {missing_with_claims[:5]})"
+            )
+    bad = (pl.col("mode") == "answerable") & (pl.col("p_entailment").fill_null(0) < thr)
+    dropped = joined.filter(bad).select("id", "lang", "mode", "question", "answer", reason=pl.lit("nli"))
+    return joined.filter(~bad), dropped
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["prepare", "import", "finalize"])
@@ -570,25 +620,16 @@ def main(argv: list[str] | None = None) -> int:
             m = write_kind(args.kind, kept.drop([c for c in ("answer_plain", "ok_cite", "lq", "la", "rt", "k", "pred") if c in kept.columns]),
                            dropped, params, extra, final=args.kind == "queries")  # fmt: skip
         else:
+            if args.scores is None:
+                raise SystemExit("--scores is required for finalize")
             kept = pl.read_parquet(work / "qa_candidates.parquet")
-            s = pl.concat([pl.read_parquet(f) for f in sorted(args.scores.glob("out/*.parquet"))])
-            # an answer is as supported as its weakest claim
-            s = (
-                s.group_by(c=pl.col("id").str.replace(r"@w\d+$", "")).agg(pl.col("p_entailment").max())
-                .group_by(id=pl.col("c").str.replace(r"@c\d+$", "")).agg(pl.col("p_entailment").min())
-            )  # fmt: skip
-            kept = kept.join(s.select("id", "p_entailment"), on="id", how="left")
             thr = float(params["teacher"]["filters"]["min_nli_entail"])
-            bad = (pl.col("mode") == "answerable") & (pl.col("p_entailment").fill_null(0) < thr)
+            kept, dropped = finalize_qa_scores(kept, args.scores, thr, work / "nli_in" / "pairs.parquet")
             old = DatasetManifest.read((ROOT / params["lake"]["root"]).resolve() / "task/synthetic/qa")
-            dropped = kept.filter(bad).select(
-                "id", "lang", "mode", "question", "answer", reason=pl.lit("nli")
-            )
             prev = pl.scan_parquet(
                 str((ROOT / params["lake"]["root"]).resolve() / "task/synthetic/qa/*/dropped-*.parquet")
             ).collect()
             dropped = pl.concat([prev, dropped], how="diagonal_relaxed")
-            kept = kept.filter(~bad)
             m = write_kind("qa", kept.drop([c for c in ("answer_plain", "ok_cite", "lq", "la") if c in kept.columns]), dropped, params,
                            {**old.metrics, "nli_threshold": thr}, final=True)  # fmt: skip
     write_report(

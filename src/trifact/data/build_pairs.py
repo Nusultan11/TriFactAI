@@ -417,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
             shutil.rmtree(out)
         w = DatasetWriter(out, LakeConfig.from_params(params["lake"], root))
         stats: list[dict[str, Any]] = []
+        by_dir: dict[str, int] = {}
         eval_h = eval_query_hashes(root).implode()
         eval_dropped: dict[str, int] = {}
         # one fresh process per builder: memory freed by Polars is not returned to the OS, so seven builders in one
@@ -434,23 +435,25 @@ def main(argv: list[str] | None = None) -> int:
                             hit = df.select(key_expr("query").hash(seed=0).is_in(eval_h)).to_series()  # type: ignore[union-attr]
                             if hit.any():
                                 eval_dropped[name] = eval_dropped.get(name, 0) + int(hit.sum())
-                                t = df.filter(~hit).to_arrow()  # type: ignore[union-attr]
+                                df = df.filter(~hit)  # type: ignore[union-attr]
+                                t = df.to_arrow()  # type: ignore[union-attr]
+                            for d_name, n_dir in df.group_by("direction").len().iter_rows():  # type: ignore[union-attr]
+                                by_dir[str(d_name)] = by_dir.get(str(d_name), 0) + int(n_dir)
                         w.write(table, t, lang_col=lang_col)
                 Path(res[table]).unlink()
             stats += res["stats"]
             log.info("%s: %d pairs, %d passages", name, res["n_pairs"], res["n_passages"])
         shards = w.close()
     total = sum(s.rows for s in shards if s.table == "pairs")
-    by_dir: dict[str, int] = {}
-    for s in stats:
-        if "direction" in s:
-            by_dir[s["direction"]] = by_dir.get(s["direction"], 0) + s["n"]
     metrics = {"pairs_total": total, "by_direction": dict(sorted(by_dir.items())), "detail": stats,
                "eval_query_dropped": eval_dropped}  # fmt: skip
-    lic = inherited(root, SOURCES) + ([MT_LICENSE] if mt_dir.is_dir() else [])
+    extra_datasets = [args.synthetic] if args.synthetic else []
+    lic = inherited(root, SOURCES, extra_datasets) + ([MT_LICENSE] if mt_dir.is_dir() else [])
     inputs = [raw_input(root, s) for s in SOURCES] + [dataset_input_of(root, root / "task/splits")]
     if mt_dir.is_dir():
         inputs.append(dataset_input_of(root, mt_dir))
+    if args.synthetic:
+        inputs.append(dataset_input_of(root, args.synthetic))
     finish(
         out, name="task/retrieval", layer="task", stage="build_pairs", source="+".join(SOURCES),
         description="Retrieval training pairs (query, positive passage, hard negatives) over kk/ru/en and their "
