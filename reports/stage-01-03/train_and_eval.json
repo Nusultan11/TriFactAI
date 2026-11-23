@@ -1,0 +1,694 @@
+{
+  "status": "passed",
+  "session": "c8c0015acc17",
+  "seconds": 3458.0,
+  "mlflow_snapshot": "/content/drive/MyDrive/TrifactAI/workspace-data/stage-01-03-reconcile/2026-11-23-cloud/post-ner/mlflow/c8c0015acc17-1795455003465944571.db",
+  "eval_leakage": {
+    "sets": {
+      "ner:sentence": {
+        "items": 56985,
+        "overlap": 0,
+        "examples": []
+      },
+      "qa:query": {
+        "items": 32427,
+        "overlap": 0,
+        "examples": []
+      },
+      "qa:passage": {
+        "items": 16777,
+        "overlap": 0,
+        "examples": []
+      },
+      "retrieval:query": {
+        "items": 38640,
+        "overlap": 0,
+        "examples": []
+      },
+      "retrieval:miracl_passage": {
+        "items": 20528,
+        "overlap": 0,
+        "examples": [],
+        "allowed_shared_miracl": 2431
+      },
+      "retrieval:passage": {
+        "items": 14709,
+        "overlap": 0,
+        "examples": []
+      },
+      "nli:nli": {
+        "items": 12670,
+        "overlap": 0,
+        "examples": []
+      }
+    },
+    "seconds": 431.8,
+    "peak_rss_mb": 2327
+  },
+  "retrieval": {
+    "pairs_total": 15052287,
+    "by_direction": {
+      "en-en": 705105,
+      "en-kk": 2232370,
+      "en-ru": 2190526,
+      "kk-en": 2271958,
+      "kk-kk": 86566,
+      "kk-ru": 2192479,
+      "ru-en": 2227924,
+      "ru-kk": 2185676,
+      "ru-ru": 959683
+    },
+    "detail": [
+      {
+        "builder": "ms_marco",
+        "pairs": 558452,
+        "passages": 2596764,
+        "eval_passages_dropped": 43
+      },
+      {
+        "source": "ms_marco",
+        "origin": "gold",
+        "direction": "en-en",
+        "split": "train",
+        "n": 502418,
+        "with_negatives": 502417
+      },
+      {
+        "source": "ms_marco",
+        "origin": "gold",
+        "direction": "en-en",
+        "split": "validation",
+        "n": 56034,
+        "with_negatives": 56034
+      },
+      {
+        "builder": "mmarco_ru",
+        "pairs": 399197,
+        "passages": 859419,
+        "eval_passages_dropped": 0
+      },
+      {
+        "source": "mmarco_ru",
+        "origin": "mt_published",
+        "direction": "ru-ru",
+        "split": "train",
+        "n": 359538,
+        "with_negatives": 359394
+      },
+      {
+        "source": "mmarco_ru",
+        "origin": "mt_published",
+        "direction": "ru-ru",
+        "split": "validation",
+        "n": 39659,
+        "with_negatives": 39639
+      },
+      {
+        "builder": "miracl",
+        "pairs": 17877,
+        "passages": 37577,
+        "eval_passages_dropped": 26
+      },
+      {
+        "source": "miracl",
+        "origin": "gold",
+        "direction": "en-en",
+        "split": "train",
+        "n": 6930,
+        "with_negatives": 6742
+      },
+      {
+        "source": "miracl",
+        "origin": "gold",
+        "direction": "en-en",
+        "split": "validation",
+        "n": 955,
+        "with_negatives": 924
+      },
+      {
+        "source": "miracl",
+        "origin": "gold",
+        "direction": "ru-ru",
+        "split": "train",
+        "n": 8914,
+        "with_negatives": 7321
+      },
+      {
+        "source": "miracl",
+        "origin": "gold",
+        "direction": "ru-ru",
+        "split": "validation",
+        "n": 1078,
+        "with_negatives": 878
+      },
+      {
+        "builder": "ru_hnp",
+        "pairs": 502950,
+        "passages": 1002926,
+        "eval_passages_dropped": 0
+      },
+      {
+        "source": "ru_hnp",
+        "origin": "synthetic",
+        "direction": "ru-ru",
+        "split": "train",
+        "n": 500000,
+        "with_negatives": 500000
+      },
+      {
+        "source": "ru_hnp",
+        "origin": "synthetic",
+        "direction": "ru-ru",
+        "split": "validation",
+        "n": 2950,
+        "with_negatives": 2950
+      },
+      {
+        "builder": "qa",
+        "pairs": 581407,
+        "passages": 121038,
+        "eval_passages_dropped": 90
+      },
+      {
+        "source": "kazqad",
+        "origin": "gold",
+        "direction": "en-en",
+        "split": "train",
+        "n": 45981,
+        "with_negatives": 45964
+      },
+      {
+        "source": "kazqad",
+        "origin": "gold",
+        "direction": "en-en",
+        "split": "validation",
+        "n": 6185,
+        "with_negatives": 6181
+      },
+      {
+        "source": "kazqad",
+        "origin": "gold",
+        "direction": "kk-kk",
+        "split": "train",
+        "n": 3004,
+        "with_negatives": 3004
+      },
+      {
+        "source": "kazqad",
+        "origin": "gold",
+        "direction": "kk-kk",
+        "split": "validation",
+        "n": 490,
+        "with_negatives": 490
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_published",
+        "direction": "en-kk",
+        "split": "train",
+        "n": 41538,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_published",
+        "direction": "en-kk",
+        "split": "validation",
+        "n": 5571,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_published",
+        "direction": "kk-en",
+        "split": "train",
+        "n": 41486,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_published",
+        "direction": "kk-en",
+        "split": "validation",
+        "n": 5562,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_published",
+        "direction": "kk-kk",
+        "split": "train",
+        "n": 45195,
+        "with_negatives": 45131
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_published",
+        "direction": "kk-kk",
+        "split": "validation",
+        "n": 5862,
+        "with_negatives": 5851
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_query",
+        "direction": "en-kk",
+        "split": "train",
+        "n": 2726,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_query",
+        "direction": "en-kk",
+        "split": "validation",
+        "n": 403,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_query",
+        "direction": "ru-kk",
+        "split": "train",
+        "n": 2788,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazqad",
+        "origin": "mt_query",
+        "direction": "ru-kk",
+        "split": "validation",
+        "n": 416,
+        "with_negatives": 0
+      },
+      {
+        "source": "sberquad",
+        "origin": "gold",
+        "direction": "ru-ru",
+        "split": "train",
+        "n": 40511,
+        "with_negatives": 0
+      },
+      {
+        "source": "sberquad",
+        "origin": "gold",
+        "direction": "ru-ru",
+        "split": "validation",
+        "n": 4984,
+        "with_negatives": 0
+      },
+      {
+        "source": "sberquad",
+        "origin": "mt_query",
+        "direction": "en-ru",
+        "split": "train",
+        "n": 36063,
+        "with_negatives": 0
+      },
+      {
+        "source": "sberquad",
+        "origin": "mt_query",
+        "direction": "en-ru",
+        "split": "validation",
+        "n": 4478,
+        "with_negatives": 0
+      },
+      {
+        "source": "sberquad",
+        "origin": "mt_query",
+        "direction": "kk-ru",
+        "split": "train",
+        "n": 35219,
+        "with_negatives": 0
+      },
+      {
+        "source": "sberquad",
+        "origin": "mt_query",
+        "direction": "kk-ru",
+        "split": "validation",
+        "n": 4329,
+        "with_negatives": 0
+      },
+      {
+        "source": "squad_v2",
+        "origin": "gold",
+        "direction": "en-en",
+        "split": "train",
+        "n": 77200,
+        "with_negatives": 72276
+      },
+      {
+        "source": "squad_v2",
+        "origin": "gold",
+        "direction": "en-en",
+        "split": "validation",
+        "n": 9499,
+        "with_negatives": 8921
+      },
+      {
+        "source": "squad_v2",
+        "origin": "mt_query",
+        "direction": "kk-en",
+        "split": "train",
+        "n": 69553,
+        "with_negatives": 0
+      },
+      {
+        "source": "squad_v2",
+        "origin": "mt_query",
+        "direction": "kk-en",
+        "split": "validation",
+        "n": 8562,
+        "with_negatives": 0
+      },
+      {
+        "source": "squad_v2",
+        "origin": "mt_query",
+        "direction": "ru-en",
+        "split": "train",
+        "n": 74635,
+        "with_negatives": 0
+      },
+      {
+        "source": "squad_v2",
+        "origin": "mt_query",
+        "direction": "ru-en",
+        "split": "validation",
+        "n": 9167,
+        "with_negatives": 0
+      },
+      {
+        "builder": "kazparc",
+        "pairs": 12890671,
+        "passages": 6408255,
+        "eval_passages_dropped": 1
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "en-kk",
+        "split": "train",
+        "n": 290874,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "en-kk",
+        "split": "validation",
+        "n": 72719,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "en-ru",
+        "split": "train",
+        "n": 290764,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "en-ru",
+        "split": "validation",
+        "n": 72692,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "kk-en",
+        "split": "train",
+        "n": 290875,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "kk-en",
+        "split": "validation",
+        "n": 72719,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "kk-ru",
+        "split": "train",
+        "n": 290785,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "kk-ru",
+        "split": "validation",
+        "n": 72697,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "ru-en",
+        "split": "train",
+        "n": 290764,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "ru-en",
+        "split": "validation",
+        "n": 72692,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "ru-kk",
+        "split": "train",
+        "n": 290784,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "parallel",
+        "direction": "ru-kk",
+        "split": "validation",
+        "n": 72697,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "en-kk",
+        "split": "train",
+        "n": 1608106,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "en-kk",
+        "split": "validation",
+        "n": 178674,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "en-ru",
+        "split": "train",
+        "n": 1605970,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "en-ru",
+        "split": "validation",
+        "n": 178442,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "kk-en",
+        "split": "train",
+        "n": 1604888,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "kk-en",
+        "split": "validation",
+        "n": 178326,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "kk-ru",
+        "split": "train",
+        "n": 1608614,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "kk-ru",
+        "split": "validation",
+        "n": 178733,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "ru-en",
+        "split": "train",
+        "n": 1602638,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "ru-en",
+        "split": "validation",
+        "n": 178042,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "ru-kk",
+        "split": "train",
+        "n": 1608462,
+        "with_negatives": 0
+      },
+      {
+        "source": "kazparc",
+        "origin": "synthetic_mt",
+        "direction": "ru-kk",
+        "split": "validation",
+        "n": 178714,
+        "with_negatives": 0
+      },
+      {
+        "builder": "synthetic",
+        "pairs": 101970,
+        "passages": 24869,
+        "eval_passages_dropped": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "en-kk",
+        "split": "train",
+        "n": 30204,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "en-kk",
+        "split": "validation",
+        "n": 1566,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "en-ru",
+        "split": "train",
+        "n": 2020,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "en-ru",
+        "split": "validation",
+        "n": 103,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "kk-kk",
+        "split": "train",
+        "n": 30438,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "kk-kk",
+        "split": "validation",
+        "n": 1578,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "kk-ru",
+        "split": "train",
+        "n": 2004,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "kk-ru",
+        "split": "validation",
+        "n": 103,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "ru-kk",
+        "split": "train",
+        "n": 30256,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "ru-kk",
+        "split": "validation",
+        "n": 1568,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "ru-ru",
+        "split": "train",
+        "n": 2027,
+        "with_negatives": 0
+      },
+      {
+        "source": "teacher",
+        "origin": "synthetic",
+        "direction": "ru-ru",
+        "split": "validation",
+        "n": 103,
+        "with_negatives": 0
+      }
+    ],
+    "eval_query_dropped": {
+      "ms_marco": 85,
+      "mmarco_ru": 56,
+      "miracl": 22,
+      "qa": 64,
+      "kazparc": 8,
+      "synthetic": 2
+    }
+  },
+  "task_eda_meta": {
+    "seconds": 323.1,
+    "peak_rss_mb": 3158.0
+  }
+}

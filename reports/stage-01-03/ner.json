@@ -1,0 +1,744 @@
+{
+  "status": "passed",
+  "session": "1244cea05077",
+  "seconds": 17047.2,
+  "mlflow_snapshot": "/content/drive/MyDrive/TrifactAI/workspace-data/stage-01-03-reconcile/2026-11-23-cloud/ner-direct/mlflow/1244cea05077-1795451388935511250.db",
+  "eval_audit": {
+    "status": "passed",
+    "rows_checked": {
+      "gold_train": [
+        {
+          "lang": "en",
+          "rows": 112030,
+          "exact_eval_overlap": 0
+        },
+        {
+          "lang": "kk",
+          "rows": 90135,
+          "exact_eval_overlap": 0
+        },
+        {
+          "lang": "ru",
+          "rows": 121226,
+          "exact_eval_overlap": 0
+        }
+      ],
+      "gold_validation": [
+        {
+          "lang": "en",
+          "rows": 21376,
+          "exact_eval_overlap": 0
+        },
+        {
+          "lang": "kk",
+          "rows": 11948,
+          "exact_eval_overlap": 0
+        },
+        {
+          "lang": "ru",
+          "rows": 22210,
+          "exact_eval_overlap": 0
+        }
+      ],
+      "silver_train": [
+        {
+          "lang": "en",
+          "rows": 2127444,
+          "exact_eval_overlap": 0
+        },
+        {
+          "lang": "kk",
+          "rows": 229625,
+          "exact_eval_overlap": 0
+        },
+        {
+          "lang": "ru",
+          "rows": 2808079,
+          "exact_eval_overlap": 0
+        }
+      ]
+    },
+    "eval_rows": 56985,
+    "release": false,
+    "stats": {
+      "seconds": 16538.3,
+      "rows_per_s": 338.7,
+      "mb_per_s": 0.0,
+      "peak_rss_mb": 5250.6,
+      "workers": 4
+    }
+  },
+  "report": {
+    "gold_test_overlap_dropped": [
+      {
+        "source": "nerel",
+        "lang": "ru",
+        "split": "train",
+        "len": 34
+      },
+      {
+        "source": "nerel",
+        "lang": "ru",
+        "split": "validation",
+        "len": 6
+      },
+      {
+        "source": "wikineural",
+        "lang": "ru",
+        "split": "train",
+        "len": 2
+      }
+    ],
+    "gold": [
+      {
+        "source": "kaznerd",
+        "lang": "kk",
+        "split": "test",
+        "sentences": 11307,
+        "tokens": 129824,
+        "bio_repaired": 0
+      },
+      {
+        "source": "kaznerd",
+        "lang": "kk",
+        "split": "train",
+        "sentences": 89325,
+        "tokens": 1033680,
+        "bio_repaired": 16
+      },
+      {
+        "source": "kaznerd",
+        "lang": "kk",
+        "split": "validation",
+        "sentences": 11097,
+        "tokens": 128534,
+        "bio_repaired": 0
+      },
+      {
+        "source": "nerel",
+        "lang": "ru",
+        "split": "test",
+        "sentences": 1501,
+        "tokens": 25899,
+        "bio_repaired": 0
+      },
+      {
+        "source": "nerel",
+        "lang": "ru",
+        "split": "train",
+        "sentences": 10962,
+        "tokens": 196646,
+        "bio_repaired": 0
+      },
+      {
+        "source": "nerel",
+        "lang": "ru",
+        "split": "validation",
+        "sentences": 1404,
+        "tokens": 23798,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "en",
+        "split": "test",
+        "sentences": 10000,
+        "tokens": 80326,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "en",
+        "split": "train",
+        "sentences": 19327,
+        "tokens": 156425,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "en",
+        "split": "validation",
+        "sentences": 9786,
+        "tokens": 79266,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "kk",
+        "split": "test",
+        "sentences": 1000,
+        "tokens": 7936,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "kk",
+        "split": "train",
+        "sentences": 810,
+        "tokens": 6807,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "kk",
+        "split": "validation",
+        "sentences": 851,
+        "tokens": 7038,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "ru",
+        "split": "test",
+        "sentences": 10000,
+        "tokens": 71288,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "ru",
+        "split": "train",
+        "sentences": 18032,
+        "tokens": 129763,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikiann",
+        "lang": "ru",
+        "split": "validation",
+        "sentences": 9281,
+        "tokens": 65984,
+        "bio_repaired": 0
+      },
+      {
+        "source": "wikineural",
+        "lang": "en",
+        "split": "test",
+        "sentences": 11597,
+        "tokens": 267155,
+        "bio_repaired": 559
+      },
+      {
+        "source": "wikineural",
+        "lang": "en",
+        "split": "train",
+        "sentences": 92703,
+        "tokens": 2193387,
+        "bio_repaired": 3840
+      },
+      {
+        "source": "wikineural",
+        "lang": "en",
+        "split": "validation",
+        "sentences": 11590,
+        "tokens": 267839,
+        "bio_repaired": 439
+      },
+      {
+        "source": "wikineural",
+        "lang": "ru",
+        "split": "test",
+        "sentences": 11580,
+        "tokens": 217392,
+        "bio_repaired": 604
+      },
+      {
+        "source": "wikineural",
+        "lang": "ru",
+        "split": "train",
+        "sentences": 92232,
+        "tokens": 1809582,
+        "bio_repaired": 4325
+      },
+      {
+        "source": "wikineural",
+        "lang": "ru",
+        "split": "validation",
+        "sentences": 11525,
+        "tokens": 216674,
+        "bio_repaired": 505
+      }
+    ],
+    "silver": {
+      "pass1": {
+        "articles": 1256303,
+        "sentences": 33439136,
+        "parts": 174
+      },
+      "reasons": {
+        "capitalized_untagged": 4601026,
+        "no_entity": 22392890,
+        "span_without_capital": 770871,
+        "untyped_capitalized_link": 1022045,
+        "kept": 5423207
+      },
+      "types": {
+        "LOC": 5011177,
+        "ORG": 2226009,
+        "PER": 1859211
+      },
+      "leaked_eval_sentences_dropped": 29018,
+      "duplicates_dropped": 229041,
+      "over_cap_dropped": 0,
+      "kept_by_lang": {
+        "en": 2127444,
+        "kk": 229625,
+        "ru": 2808079
+      },
+      "entities_by_lang_type": [
+        {
+          "lang": "en",
+          "e": "B-LOC",
+          "len": 1765195
+        },
+        {
+          "lang": "en",
+          "e": "B-ORG",
+          "len": 984385
+        },
+        {
+          "lang": "en",
+          "e": "B-PER",
+          "len": 837556
+        },
+        {
+          "lang": "kk",
+          "e": "B-LOC",
+          "len": 314418
+        },
+        {
+          "lang": "kk",
+          "e": "B-ORG",
+          "len": 46294
+        },
+        {
+          "lang": "kk",
+          "e": "B-PER",
+          "len": 43251
+        },
+        {
+          "lang": "ru",
+          "e": "B-LOC",
+          "len": 2664998
+        },
+        {
+          "lang": "ru",
+          "e": "B-ORG",
+          "len": 1119885
+        },
+        {
+          "lang": "ru",
+          "e": "B-PER",
+          "len": 952144
+        }
+      ],
+      "target_met": true
+    },
+    "silver_noise": {
+      "gazetteer_surfaces": {
+        "en": 159733,
+        "kk": 16350,
+        "ru": 214495
+      },
+      "type_agreement_shared_surfaces": [
+        {
+          "lang": "en",
+          "ner_type": "LOC",
+          "surfaces": 11179,
+          "agree": 0.9225
+        },
+        {
+          "lang": "en",
+          "ner_type": "ORG",
+          "surfaces": 7882,
+          "agree": 0.8309
+        },
+        {
+          "lang": "en",
+          "ner_type": "PER",
+          "surfaces": 14694,
+          "agree": 0.9895
+        },
+        {
+          "lang": "kk",
+          "ner_type": "LOC",
+          "surfaces": 1516,
+          "agree": 0.9591
+        },
+        {
+          "lang": "kk",
+          "ner_type": "ORG",
+          "surfaces": 258,
+          "agree": 0.938
+        },
+        {
+          "lang": "kk",
+          "ner_type": "PER",
+          "surfaces": 194,
+          "agree": 0.9227
+        },
+        {
+          "lang": "ru",
+          "ner_type": "LOC",
+          "surfaces": 16943,
+          "agree": 0.947
+        },
+        {
+          "lang": "ru",
+          "ner_type": "ORG",
+          "surfaces": 8423,
+          "agree": 0.7876
+        },
+        {
+          "lang": "ru",
+          "ner_type": "PER",
+          "surfaces": 10073,
+          "agree": 0.9802
+        }
+      ],
+      "type_confusion": [
+        {
+          "lang": "en",
+          "ner_type": "LOC",
+          "gold_type": "LOC",
+          "len": 10313
+        },
+        {
+          "lang": "en",
+          "ner_type": "LOC",
+          "gold_type": "ORG",
+          "len": 702
+        },
+        {
+          "lang": "en",
+          "ner_type": "LOC",
+          "gold_type": "PER",
+          "len": 164
+        },
+        {
+          "lang": "en",
+          "ner_type": "ORG",
+          "gold_type": "LOC",
+          "len": 1121
+        },
+        {
+          "lang": "en",
+          "ner_type": "ORG",
+          "gold_type": "ORG",
+          "len": 6549
+        },
+        {
+          "lang": "en",
+          "ner_type": "ORG",
+          "gold_type": "PER",
+          "len": 212
+        },
+        {
+          "lang": "en",
+          "ner_type": "PER",
+          "gold_type": "LOC",
+          "len": 43
+        },
+        {
+          "lang": "en",
+          "ner_type": "PER",
+          "gold_type": "ORG",
+          "len": 111
+        },
+        {
+          "lang": "en",
+          "ner_type": "PER",
+          "gold_type": "PER",
+          "len": 14540
+        },
+        {
+          "lang": "kk",
+          "ner_type": "LOC",
+          "gold_type": "LOC",
+          "len": 1454
+        },
+        {
+          "lang": "kk",
+          "ner_type": "LOC",
+          "gold_type": "ORG",
+          "len": 61
+        },
+        {
+          "lang": "kk",
+          "ner_type": "LOC",
+          "gold_type": "PER",
+          "len": 1
+        },
+        {
+          "lang": "kk",
+          "ner_type": "ORG",
+          "gold_type": "LOC",
+          "len": 16
+        },
+        {
+          "lang": "kk",
+          "ner_type": "ORG",
+          "gold_type": "ORG",
+          "len": 242
+        },
+        {
+          "lang": "kk",
+          "ner_type": "PER",
+          "gold_type": "LOC",
+          "len": 9
+        },
+        {
+          "lang": "kk",
+          "ner_type": "PER",
+          "gold_type": "ORG",
+          "len": 6
+        },
+        {
+          "lang": "kk",
+          "ner_type": "PER",
+          "gold_type": "PER",
+          "len": 179
+        },
+        {
+          "lang": "ru",
+          "ner_type": "LOC",
+          "gold_type": "LOC",
+          "len": 16045
+        },
+        {
+          "lang": "ru",
+          "ner_type": "LOC",
+          "gold_type": "ORG",
+          "len": 557
+        },
+        {
+          "lang": "ru",
+          "ner_type": "LOC",
+          "gold_type": "PER",
+          "len": 341
+        },
+        {
+          "lang": "ru",
+          "ner_type": "ORG",
+          "gold_type": "LOC",
+          "len": 1476
+        },
+        {
+          "lang": "ru",
+          "ner_type": "ORG",
+          "gold_type": "ORG",
+          "len": 6634
+        },
+        {
+          "lang": "ru",
+          "ner_type": "ORG",
+          "gold_type": "PER",
+          "len": 313
+        },
+        {
+          "lang": "ru",
+          "ner_type": "PER",
+          "gold_type": "LOC",
+          "len": 142
+        },
+        {
+          "lang": "ru",
+          "ner_type": "PER",
+          "gold_type": "ORG",
+          "len": 57
+        },
+        {
+          "lang": "ru",
+          "ner_type": "PER",
+          "gold_type": "PER",
+          "len": 9874
+        }
+      ],
+      "gazetteer_vs_gold_test": {
+        "kaznerd/kk": {
+          "LOC": {
+            "precision": 0.3414,
+            "recall": 0.7124,
+            "f1": 0.4616,
+            "support": 2152
+          },
+          "ORG": {
+            "precision": 0.3425,
+            "recall": 0.2884,
+            "f1": 0.3131,
+            "support": 735
+          },
+          "PER": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 456
+          },
+          "all": {
+            "precision": 0.3193,
+            "recall": 0.522,
+            "f1": 0.3962,
+            "support": 3343
+          }
+        },
+        "wikiann/kk": {
+          "LOC": {
+            "precision": 0.4671,
+            "recall": 0.7232,
+            "f1": 0.5676,
+            "support": 383
+          },
+          "ORG": {
+            "precision": 0.7333,
+            "recall": 0.1549,
+            "f1": 0.2558,
+            "support": 355
+          },
+          "PER": {
+            "precision": 0.7143,
+            "recall": 0.305,
+            "f1": 0.4275,
+            "support": 377
+          },
+          "all": {
+            "precision": 0.5392,
+            "recall": 0.4009,
+            "f1": 0.4599,
+            "support": 1115
+          }
+        },
+        "wikiann/ru": {
+          "LOC": {
+            "precision": 0.4805,
+            "recall": 0.6068,
+            "f1": 0.5363,
+            "support": 4560
+          },
+          "ORG": {
+            "precision": 0.294,
+            "recall": 0.3385,
+            "f1": 0.3147,
+            "support": 4074
+          },
+          "PER": {
+            "precision": 0.159,
+            "recall": 0.1115,
+            "f1": 0.1311,
+            "support": 3543
+          },
+          "all": {
+            "precision": 0.3511,
+            "recall": 0.3729,
+            "f1": 0.3617,
+            "support": 12177
+          }
+        },
+        "wikiann/en": {
+          "LOC": {
+            "precision": 0.2313,
+            "recall": 0.3919,
+            "f1": 0.2909,
+            "support": 4657
+          },
+          "ORG": {
+            "precision": 0.169,
+            "recall": 0.1709,
+            "f1": 0.17,
+            "support": 4745
+          },
+          "PER": {
+            "precision": 0.2897,
+            "recall": 0.2805,
+            "f1": 0.285,
+            "support": 4556
+          },
+          "all": {
+            "precision": 0.2289,
+            "recall": 0.2804,
+            "f1": 0.252,
+            "support": 13958
+          }
+        },
+        "wikineural/ru": {
+          "LOC": {
+            "precision": 0.4149,
+            "recall": 0.6617,
+            "f1": 0.51,
+            "support": 8596
+          },
+          "ORG": {
+            "precision": 0.0864,
+            "recall": 0.5146,
+            "f1": 0.1479,
+            "support": 3051
+          },
+          "PER": {
+            "precision": 0.2943,
+            "recall": 0.3723,
+            "f1": 0.3287,
+            "support": 3489
+          },
+          "all": {
+            "precision": 0.2357,
+            "recall": 0.5653,
+            "f1": 0.3327,
+            "support": 15136
+          }
+        },
+        "wikineural/en": {
+          "LOC": {
+            "precision": 0.1895,
+            "recall": 0.6269,
+            "f1": 0.291,
+            "support": 5955
+          },
+          "ORG": {
+            "precision": 0.1048,
+            "recall": 0.5755,
+            "f1": 0.1773,
+            "support": 3449
+          },
+          "PER": {
+            "precision": 0.3043,
+            "recall": 0.4875,
+            "f1": 0.3747,
+            "support": 5210
+          },
+          "all": {
+            "precision": 0.1757,
+            "recall": 0.5651,
+            "f1": 0.2681,
+            "support": 14614
+          }
+        },
+        "nerel/ru": {
+          "LOC": {
+            "precision": 0.3535,
+            "recall": 0.6335,
+            "f1": 0.4538,
+            "support": 783
+          },
+          "ORG": {
+            "precision": 0.1277,
+            "recall": 0.4382,
+            "f1": 0.1978,
+            "support": 550
+          },
+          "PER": {
+            "precision": 0.3685,
+            "recall": 0.3601,
+            "f1": 0.3642,
+            "support": 922
+          },
+          "all": {
+            "precision": 0.2551,
+            "recall": 0.4741,
+            "f1": 0.3317,
+            "support": 2255
+          }
+        }
+      }
+    },
+    "review_sheet": 0
+  }
+}

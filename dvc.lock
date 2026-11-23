@@ -1994,18 +1994,21 @@ stages:
     deps:
     - path: configs/labels.yaml
       hash: md5
-      md5: 6414cd2a379c4a8a02864dfee04270b4
-      size: 2780
+      md5: dd3e7293f54661d32bca362738ce5465
+      size: 3562
+    - path: data/raw/wikidata/source.yaml
+      hash: md5
+      md5: 044a8de4d36b6d2e7c8dde5f841e1350
+      size: 38685
     - path: data/raw/wikipedia_wikitext
       hash: md5
-      md5: f2a4fafad0404e738098205e54d52894.dir
-      size: 4460593453
-      nfiles: 22
-    - path: data/task/kb
+      md5: 5646142b89932f4dc0d5b878aefb062a.dir
+      size: 5376577170
+      nfiles: 25
+    - path: data/task/kb/dataset.yaml
       hash: md5
-      md5: b2ed6f4516c077d07b508453faddbb38.dir
-      size: 4037272592
-      nfiles: 425
+      md5: 49f4c300e76c5e1fd1ada6339cec1ea9
+      size: 75915
     - path: data/task/splits
       hash: md5
       md5: 43322d29ad096dbe5372761546e4e13e.dir
@@ -2013,12 +2016,16 @@ stages:
       nfiles: 5
     - path: src/trifact/data/build_ner.py
       hash: md5
-      md5: 1fff32dd99a45ecd2f77abdcd5bfc580
-      size: 32186
+      md5: 3ce102f8e2985d3d7035a4d1c31c3732
+      size: 33426
     - path: src/trifact/data/ner_common.py
       hash: md5
       md5: 89a6ade45662e990857367f7517b8470
       size: 2355
+    - path: src/trifact/data/task_common.py
+      hash: md5
+      md5: 5be8ced822a79eeff0e22cba0a34ce4e
+      size: 10986
     - path: src/trifact/data/wikimarkup.py
       hash: md5
       md5: 3c66348eccbc387b59ef98d6251e4978
@@ -2056,8 +2063,8 @@ stages:
     outs:
     - path: data/task/ner
       hash: md5
-      md5: 26a82965d014550a7e37e07f0dd84d5a.dir
-      size: 394222717
+      md5: 66fe40d01c3a1b02e766c327fd8f83e6.dir
+      size: 453442050
       nfiles: 18
   mt@xnli_kk:
     cmd: python -m trifact.data.translations import xnli_kk --kaggle-out 
@@ -2295,8 +2302,8 @@ stages:
       size: 24448651281
       nfiles: 262
   synthetic_queries:
-    cmd: python -m trifact.data.synthetic import --kind queries --kaggle-out
-      data/external/kaggle/teacher_queries/out
+    cmd: python -m trifact.data.synthetic import --kind queries --kaggle-out 
+      data/external/kaggle/teacher_queries/out 
       data/stage3_teacher/teacher_queries2
     deps:
     - path: data/external/kaggle/teacher_queries
@@ -2350,10 +2357,10 @@ stages:
       size: 49932345
       nfiles: 8
   synthetic_qa:
-    cmd: python -m trifact.data.synthetic import --kind qa --kaggle-out
-      data/external/kaggle/teacher_qa/out data/stage3_teacher/teacher_qa2 &&
-      python -m trifact.data.synthetic finalize --kind qa --scores
-      data/stage3_teacher/nli_score_qa_v4 --scored-input
+    cmd: python -m trifact.data.synthetic import --kind qa --kaggle-out 
+      data/external/kaggle/teacher_qa/out data/stage3_teacher/teacher_qa2 && 
+      python -m trifact.data.synthetic finalize --kind qa --scores 
+      data/stage3_teacher/nli_score_qa_v4 --scored-input 
       data/stage3_teacher/nli_input_v4
     deps:
     - path: data/external/kaggle/teacher_qa
@@ -2425,6 +2432,16 @@ stages:
     cmd: python -m trifact.data.build_pairs --synthetic 
       data/task/synthetic/queries
     deps:
+    - path: data/eval/qa
+      hash: md5
+      md5: e88496479bbf01353ae055df90d4fa01.dir
+      size: 7614122
+      nfiles: 6
+    - path: data/eval/retrieval
+      hash: md5
+      md5: 6a0aa883c6e9928c2e7f68a3eb5fb11a.dir
+      size: 19093284
+      nfiles: 8
     - path: data/raw/kazparc
       hash: md5
       md5: 47fc2ec408813e0a3a27f95ff846523d.dir
@@ -2482,8 +2499,8 @@ stages:
       nfiles: 5
     - path: data/task/synthetic/queries
       hash: md5
-      md5: bdbeae96844a804cc1e3ba7e10bb6706.dir
-      size: 21528132
+      md5: f4156e18c1cc0867435b04cd67e446f1.dir
+      size: 49932345
       nfiles: 8
     - path: src/trifact/data/bm25.py
       hash: md5
@@ -2491,12 +2508,16 @@ stages:
       size: 3204
     - path: src/trifact/data/build_pairs.py
       hash: md5
-      md5: 0ea8f3b9e20aa89e09a7c9ae9187c9c5
-      size: 21915
+      md5: 6cb1d8299cbc80a2ee5b80cb9cb721e3
+      size: 23410
     - path: src/trifact/data/qa_common.py
       hash: md5
       md5: 555e664c5bd4014268f06453a5138db1
       size: 3173
+    - path: src/trifact/data/task_common.py
+      hash: md5
+      md5: 5be8ced822a79eeff0e22cba0a34ce4e
+      size: 10986
     params:
       params.yaml:
         retrieval.hard_negatives_per_query: 4
@@ -2529,8 +2550,8 @@ stages:
     outs:
     - path: data/task/retrieval
       hash: md5
-      md5: b193e36e4e4d6f2dbff43df02d97d4b9.dir
-      size: 2744637025
+      md5: 7061aaa0ead8956c1a009cddd0887675.dir
+      size: 2756454438
       nfiles: 31
   build_sft:
     cmd: python -m trifact.data.build_sft --synthetic data/task/synthetic/qa
@@ -2632,8 +2653,8 @@ stages:
     outs:
     - path: data/task/sft
       hash: md5
-      md5: 9179c88d01b9d538b4049af6d164f655.dir
-      size: 641320458
+      md5: 2586b51a441d2bd1980a1d4a160ec33c.dir
+      size: 641306328
       nfiles: 8
   build_eval:
     cmd: python -m trifact.data.build_eval build
@@ -2734,17 +2755,93 @@ stages:
       md5: 6a0aa883c6e9928c2e7f68a3eb5fb11a.dir
       size: 19093284
       nfiles: 8
-    - path: data/task
+    - path: data/task/ner
       hash: md5
-      md5: 08eb7330ab29fbd3e731696ff0fb3558.dir
-      size: 32627413250
-      nfiles: 784
+      md5: 66fe40d01c3a1b02e766c327fd8f83e6.dir
+      size: 453442050
+      nfiles: 18
+    - path: data/task/nli
+      hash: md5
+      md5: 3b38c4f7b6cf55c73cce7ba703738d3c.dir
+      size: 99599887
+      nfiles: 11
+    - path: data/task/retrieval
+      hash: md5
+      md5: 7061aaa0ead8956c1a009cddd0887675.dir
+      size: 2756454438
+      nfiles: 31
+    - path: data/task/sft
+      hash: md5
+      md5: 2586b51a441d2bd1980a1d4a160ec33c.dir
+      size: 641306328
+      nfiles: 8
+    - path: data/task/synthetic
+      hash: md5
+      md5: 6b51abb7e0b08337607f52cefa3c0659.dir
+      size: 67703863
+      nfiles: 16
     - path: src/trifact/data/task_eda.py
       hash: md5
-      md5: 3f7ec810a20ed922eed40212066d46f8
-      size: 26378
+      md5: 2bf9fc4cc6db6c5c697802523dcbcc28
+      size: 27381
     outs:
     - path: reports/eda/task.json
       hash: md5
-      md5: 038da1a050dc62e2fb478374a4bbb64a
-      size: 69284
+      md5: b73f6c239f4a1f73e75e64c05fcab9ea
+      size: 69528
+  eval_leakage:
+    cmd: python -m trifact.data.build_eval leakage
+    deps:
+    - path: data/eval/ner
+      hash: md5
+      md5: 3a67e4db21dbef4856bf9f6f274ce46b.dir
+      size: 5372317
+      nfiles: 6
+    - path: data/eval/nli
+      hash: md5
+      md5: 40d56f14698d0d818b83ff5291db0628.dir
+      size: 728376
+      nfiles: 6
+    - path: data/eval/qa
+      hash: md5
+      md5: e88496479bbf01353ae055df90d4fa01.dir
+      size: 7614122
+      nfiles: 6
+    - path: data/eval/retrieval
+      hash: md5
+      md5: 6a0aa883c6e9928c2e7f68a3eb5fb11a.dir
+      size: 19093284
+      nfiles: 8
+    - path: data/task/ner
+      hash: md5
+      md5: 66fe40d01c3a1b02e766c327fd8f83e6.dir
+      size: 453442050
+      nfiles: 18
+    - path: data/task/nli
+      hash: md5
+      md5: 3b38c4f7b6cf55c73cce7ba703738d3c.dir
+      size: 99599887
+      nfiles: 11
+    - path: data/task/retrieval
+      hash: md5
+      md5: 7061aaa0ead8956c1a009cddd0887675.dir
+      size: 2756454438
+      nfiles: 31
+    - path: data/task/sft
+      hash: md5
+      md5: 2586b51a441d2bd1980a1d4a160ec33c.dir
+      size: 641306328
+      nfiles: 8
+    - path: src/trifact/data/build_eval.py
+      hash: md5
+      md5: 43ca32ba97ac68092ef1cf463d0c49ba
+      size: 31348
+    - path: src/trifact/data/task_common.py
+      hash: md5
+      md5: 5be8ced822a79eeff0e22cba0a34ce4e
+      size: 10986
+    outs:
+    - path: reports/eval_leakage.json
+      hash: md5
+      md5: 290adc8231583bfb504b36e1282a564d
+      size: 752
