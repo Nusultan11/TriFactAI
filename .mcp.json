@@ -3,14 +3,16 @@
     "github": {
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/",
-      "headers": { "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}" }
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
     },
     "shrimp": {
       "type": "stdio",
       "command": "cmd",
       "args": ["/c", "npx", "-y", "mcp-shrimp-task-manager"],
       "env": {
-        "DATA_DIR": "C:/Users/nurs/TrifactAI/.shrimp",
+        "DATA_DIR": "${CLAUDE_PROJECT_DIR}/.shrimp",
         "TEMPLATES_USE": "en",
         "ENABLE_GUI": "false"
       }
@@ -35,7 +37,9 @@
       "type": "stdio",
       "command": "uvx",
       "args": ["--from", "mlflow[mcp]>=3.5", "mlflow", "mcp", "run"],
-      "env": { "MLFLOW_TRACKING_URI": "http://127.0.0.1:5000" }
+      "env": {
+        "MLFLOW_TRACKING_URI": "${MLFLOW_TRACKING_URI:-http://127.0.0.1:5000}"
+      }
     },
     "playwright": {
       "type": "stdio",
@@ -45,7 +49,16 @@
     "serena": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--context", "claude-code", "--project", "C:/Users/nurs/TrifactAI"]
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "claude-code",
+        "--project",
+        "${CLAUDE_PROJECT_DIR}"
+      ]
     }
   }
 }

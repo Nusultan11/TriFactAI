@@ -61,6 +61,12 @@ Execution model: **Local Terminal → Cloud CLI → Remote Compute → Persisten
 
 ### MCP Policy (`.mcp.json`)
 
+- **Single source of truth:** root `.mcp.json` is canonical and loaded directly by Claude Code. Project configs for Codex (`.codex/config.toml`) and Antigravity (`.agents/mcp_config.json`) are gitignored and generated via `scripts/sync_mcp.py`. Never edit generated client files by hand or commit secrets/user paths to `.mcp.json`.
+- **Sync / validate / audit / recover:**
+  - Sync after editing `.mcp.json` or `.env`: `uv run python scripts/sync_mcp.py sync`
+  - Verify schema and drift: `uv run python scripts/sync_mcp.py check`
+  - Audit runtimes, env vars, and remote reachability: `uv run python scripts/sync_mcp.py audit --probe`
+  - Recover previous generated config: `uv run python scripts/sync_mcp.py restore --target codex|antigravity` (backups in `.agents/.mcp-backups/`)
 - MCP servers are **optional**, never mandatory.
 - Never auto-invoke MCP servers at session startup or call tools just because they exist.
 - Prefer native CLI, direct file access, Git, and repository docs when sufficient.

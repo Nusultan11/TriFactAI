@@ -2,7 +2,7 @@
 
 Creates in the backup directory:
   <timestamp>_<tag>.bundle    git bundle with every ref (restore: git clone <bundle> TrifactAI)
-  <timestamp>_<tag>.zip       uncommitted diff, untracked files, local state (.env, .shrimp/, .agents/settings.local.json)
+  <timestamp>_<tag>.zip       uncommitted diff, untracked files, local state (.env, .shrimp/)
 Data and model weights are backed up with `dvc push`, not here.
 
 Usage: python scripts/backup.py --tag stage-01 [--dest DIR] [--keep 30] [--git-only]
@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DEST = ROOT.parent / f"{ROOT.name}_backups"
-LOCAL_STATE = [".env", ".shrimp", ".agents/settings.local.json"]
+LOCAL_STATE = [".env", ".shrimp"]
 
 
 def git(*args: str) -> str:

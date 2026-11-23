@@ -31,3 +31,9 @@ repos:
         language: system
         pass_filenames: false
         files: ^\.agents/skills/
+      - id: mcp-config
+        name: canonical MCP registry validation
+        entry: uv run --no-sync pytest -q tests/test_mcp_config.py
+        language: system
+        pass_filenames: false
+        files: ^(\.mcp\.json|scripts/sync_mcp\.py)$
