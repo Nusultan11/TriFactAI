@@ -77,6 +77,11 @@ def test_validation_detects_duplicates_hardcoded_paths_and_plaintext_secrets(tmp
                 "url": "https://auth.example.com/mcp",
                 "headers": {"Authorization": "Bearer ghp_plaintext123"},
             },
+            "f": {
+                "type": "stdio",
+                "command": "uvx",
+                "args": ["tool", "--project", "${CLAUDE_PROJECT_DIR}"],
+            },
         },
     )
     _, diags = sync_mcp.load_canonical_registry(mcp_path)
@@ -86,6 +91,7 @@ def test_validation_detects_duplicates_hardcoded_paths_and_plaintext_secrets(tmp
     assert any(s == "c" and "Hardcoded user directory" in m for s, m in errors)
     assert any(s == "c" and "plaintext credential" in m for s, m in errors)
     assert any(s == "e" and "plaintext credential" in m for s, m in errors)
+    assert any(s == "f" and "CLAUDE_PROJECT_DIR:-." in m for s, m in errors)
 
 
 def test_codex_translation_auth_serena_platform_and_preserve_unrelated(tmp_path: Path) -> None:
@@ -120,12 +126,24 @@ def test_codex_translation_auth_serena_platform_and_preserve_unrelated(tmp_path:
             "args": ["/c", "npx", "-y", "@playwright/mcp@latest"],
             "disabled": True,
         },
+        "shrimp": {
+            "type": "stdio",
+            "command": "cmd",
+            "args": [
+                "/c",
+                (
+                    'if defined CLAUDE_PROJECT_DIR (set "DATA_DIR=%CLAUDE_PROJECT_DIR%\\.shrimp") '
+                    'else (set "DATA_DIR=%CD%\\.shrimp") && npx -y mcp-shrimp-task-manager'
+                ),
+            ],
+            "env": {"DATA_DIR": "${CLAUDE_PROJECT_DIR:-.}/.shrimp"},
+        },
         "local": {
             "type": "stdio",
             "command": "npx",
             "args": ["-y", "example-mcp"],
             "env": {
-                "DATA_DIR": "${CLAUDE_PROJECT_DIR}/.data",
+                "DATA_DIR": "${CLAUDE_PROJECT_DIR:-.}/.data",
                 "MY_TOKEN": "${MY_TOKEN}",
                 "URI": "${MLFLOW_TRACKING_URI:-http://127.0.0.1:5000}",
             },
@@ -173,13 +191,32 @@ def test_codex_translation_auth_serena_platform_and_preserve_unrelated(tmp_path:
     assert local["env"]["DATA_DIR"] == f"{tmp_path.resolve().as_posix()}/.data"
     assert local["env"]["URI"] == "http://127.0.0.1:5000"
 
-    # POSIX unwraps cmd /c npx -> npx
+    # POSIX unwraps cmd /c npx -> npx (including shrimp wrapper)
     res_posix = sync_mcp.render_codex_config(
         servers, tmp_path, env={}, existing_text="", target_platform="posix"
     )
     parsed_posix = tomllib.loads(res_posix.content)
     assert parsed_posix["mcp_servers"]["playwright"]["command"] == "npx"
     assert parsed_posix["mcp_servers"]["playwright"]["args"] == ["-y", "@playwright/mcp@latest"]
+    assert parsed_posix["mcp_servers"]["shrimp"]["command"] == "npx"
+    assert parsed_posix["mcp_servers"]["shrimp"]["args"] == ["-y", "mcp-shrimp-task-manager"]
+    assert parsed["mcp_servers"]["shrimp"]["command"] == "cmd"
+    assert parsed["mcp_servers"]["shrimp"]["args"] == ["/c", "npx", "-y", "mcp-shrimp-task-manager"]
+
+
+def test_parse_mcp_http_jsonrpc_distinguishes_json_sse_and_non_mcp() -> None:
+    json_ok = sync_mcp._parse_mcp_http_jsonrpc(
+        '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"demo"}}}', "application/json"
+    )
+    assert json_ok is not None and json_ok["result"]["serverInfo"]["name"] == "demo"
+
+    sse_ok = sync_mcp._parse_mcp_http_jsonrpc(
+        'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"t1"}]}}\n',
+        "text/event-stream",
+    )
+    assert sse_ok is not None and len(sse_ok["result"]["tools"]) == 1
+
+    assert sync_mcp._parse_mcp_http_jsonrpc("<html>OK</html>", "text/html") is None
 
 
 def test_antigravity_translation_omits_unset_secret_and_resolves_when_set(tmp_path: Path) -> None:
@@ -240,7 +277,7 @@ def test_sync_idempotency_check_backup_and_restore(tmp_path: Path) -> None:
                 "type": "stdio",
                 "command": "cmd",
                 "args": ["/c", "npx", "-y", "mcp-shrimp-task-manager"],
-                "env": {"DATA_DIR": "${CLAUDE_PROJECT_DIR}/.shrimp"},
+                "env": {"DATA_DIR": "${CLAUDE_PROJECT_DIR:-.}/.shrimp"},
             },
         },
     )

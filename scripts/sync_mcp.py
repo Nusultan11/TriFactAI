@@ -18,8 +18,12 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
+import subprocess
 import sys
+import threading
+import time
 import tomllib
 import urllib.error
 import urllib.request
@@ -262,9 +266,10 @@ def _validate_stdio_server(
                 Diagnostic(
                     "error",
                     name,
-                    f"Hardcoded user directory in args[{idx}]; use '${{CLAUDE_PROJECT_DIR}}' instead",
+                    f"Hardcoded user directory in args[{idx}]; use '${{CLAUDE_PROJECT_DIR:-.}}' instead",
                 )
             )
+        _check_project_dir_fallback(name, f"args[{idx}]", arg, diags)
 
     cwd = cfg.get("cwd")
     if cwd is not None:
@@ -275,9 +280,11 @@ def _validate_stdio_server(
                 Diagnostic(
                     "error",
                     name,
-                    "Hardcoded user directory in 'cwd'; use '${CLAUDE_PROJECT_DIR}' instead",
+                    "Hardcoded user directory in 'cwd'; use '${CLAUDE_PROJECT_DIR:-.}' instead",
                 )
             )
+        else:
+            _check_project_dir_fallback(name, "cwd", cwd, diags)
 
     env = cfg.get("env")
     if env is not None:
@@ -292,10 +299,26 @@ def _validate_stdio_server(
                         Diagnostic(
                             "error",
                             name,
-                            f"Hardcoded user directory in env.{ek}; use '${{CLAUDE_PROJECT_DIR}}' instead",
+                            f"Hardcoded user directory in env.{ek}; use '${{CLAUDE_PROJECT_DIR:-.}}' instead",
                         )
                     )
+                _check_project_dir_fallback(name, f"env.{ek}", ev, diags)
                 _check_secret_leak(name, f"env.{ek}", ek, ev, diags)
+
+
+def _check_project_dir_fallback(server: str, field_path: str, value: str, diags: list[Diagnostic]) -> None:
+    """Require `${CLAUDE_PROJECT_DIR:-.}` fallback because Claude Code injects it into spawned processes,
+    not always into `.mcp.json` interpolation."""
+    for match in ENV_REF_RE.finditer(value):
+        if match.group(1) == "CLAUDE_PROJECT_DIR" and match.group(2) is None:
+            diags.append(
+                Diagnostic(
+                    "error",
+                    server,
+                    f"Bare '${{CLAUDE_PROJECT_DIR}}' in {field_path} is not guaranteed during Claude Code "
+                    "config interpolation; use '${CLAUDE_PROJECT_DIR:-.}' instead",
+                )
+            )
 
 
 def _check_secret_leak(server: str, field_path: str, key: str, value: str, diags: list[Diagnostic]) -> None:
@@ -322,9 +345,27 @@ def _uses_project_dir_placeholder(cfg: dict[str, Any]) -> bool:
     return any(m.group(1) in PROJECT_DIR_VARS for text in texts for m in ENV_REF_RE.finditer(text))
 
 
+def _unwrap_cmd_env_wrapper(command: str, args: list[str]) -> tuple[str, list[str]]:
+    """Strip Claude Code Windows `cmd /c ... && npx ...` DATA_DIR shell wrapper when syncing to
+    clients (Codex/Antigravity) that receive explicit resolved `env` and `cwd`."""
+    if (
+        command.lower() in {"cmd", "cmd.exe"}
+        and len(args) == 2
+        and args[0].lower() == "/c"
+        and "&&" in args[1]
+        and "CLAUDE_PROJECT_DIR" in args[1]
+    ):
+        tail = args[1].rsplit("&&", 1)[1].strip()
+        parts = shlex.split(tail, posix=False)
+        if parts:
+            return "cmd", ["/c", *parts]
+    return command, list(args)
+
+
 def _normalize_command_for_platform(
     command: str, args: list[str], target_platform: str
 ) -> tuple[str, list[str]]:
+    command, args = _unwrap_cmd_env_wrapper(command, args)
     if target_platform == "windows":
         if command.lower() == "npx":
             return "cmd", ["/c", "npx", *args]
@@ -861,15 +902,37 @@ def sync_all(
     return 0, messages, diags
 
 
-def audit_registry(repo_root: Path, *, probe: bool = False) -> tuple[int, list[str]]:
-    mcp_path = repo_root / CANONICAL_FILE
-    servers, diags = load_canonical_registry(mcp_path)
-    lines = [d.format() for d in diags]
-    if any(d.level == "error" for d in diags):
-        return 1, lines
+def _parse_mcp_http_jsonrpc(body: str, content_type: str) -> dict[str, Any] | None:
+    """Parse a JSON-RPC message from either `application/json` or `text/event-stream`."""
+    if "text/event-stream" in content_type.lower():
+        for line in body.splitlines():
+            if line.startswith("data:"):
+                payload = line[5:].strip()
+                if not payload:
+                    continue
+                try:
+                    obj = json.loads(payload)
+                    if isinstance(obj, dict) and ("result" in obj or "error" in obj):
+                        return obj
+                except json.JSONDecodeError:
+                    continue
+        return None
+    try:
+        obj = json.loads(body)
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        return None
 
-    env = load_effective_env(repo_root)
-    init_payload = json.dumps(
+
+def _probe_http_mcp(url: str, headers: dict[str, str], timeout: int = 12) -> str:
+    """Run MCP initialize + notifications/initialized + tools/list over Streamable HTTP."""
+    base_headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "User-Agent": "trifact-sync-mcp/0.1",
+        **headers,
+    }
+    init_body = json.dumps(
         {
             "jsonrpc": "2.0",
             "id": 1,
@@ -882,46 +945,229 @@ def audit_registry(repo_root: Path, *, probe: bool = False) -> tuple[int, list[s
         }
     ).encode("utf-8")
 
+    try:
+        req = urllib.request.Request(url, data=init_body, method="POST", headers=base_headers)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            ctype = resp.headers.get("Content-Type", "")
+            session_id = resp.headers.get("Mcp-Session-Id") or resp.headers.get("mcp-session-id")
+            raw_body = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            www_auth = exc.headers.get("WWW-Authenticate", "")
+            oauth_hint = " (OAuth/Bearer)" if "resource_metadata" in www_auth else ""
+            return f"auth_required: HTTP {exc.code}{oauth_hint}"
+        return f"http_error: HTTP {exc.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return f"external_service_unavailable: {type(exc).__name__}"
+
+    init_msg = _parse_mcp_http_jsonrpc(raw_body, ctype)
+    if not init_msg or "result" not in init_msg:
+        return "http_200_non_mcp: initialize response was not valid MCP JSON-RPC"
+
+    server_info = init_msg["result"].get("serverInfo", {})
+    sname = server_info.get("name", "unknown")
+    sver = server_info.get("version", "")
+    init_label = f"mcp_initialized({sname} {sver}".strip() + ")"
+
+    session_headers = dict(base_headers)
+    if session_id:
+        session_headers["Mcp-Session-Id"] = session_id
+
+    # Send notifications/initialized (best-effort)
+    try:
+        notif_body = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}).encode("utf-8")
+        urllib.request.urlopen(
+            urllib.request.Request(url, data=notif_body, method="POST", headers=session_headers),
+            timeout=timeout,
+        ).close()
+    except (urllib.error.URLError, TimeoutError, OSError):
+        pass
+
+    # Query tools/list to verify real tool discovery
+    tools_body = json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}).encode("utf-8")
+    try:
+        t_req = urllib.request.Request(url, data=tools_body, method="POST", headers=session_headers)
+        with urllib.request.urlopen(t_req, timeout=timeout) as t_resp:
+            t_ctype = t_resp.headers.get("Content-Type", "")
+            t_raw = t_resp.read().decode("utf-8", errors="replace")
+        t_msg = _parse_mcp_http_jsonrpc(t_raw, t_ctype)
+        if t_msg and isinstance(t_msg.get("result", {}).get("tools"), list):
+            n_tools = len(t_msg["result"]["tools"])
+            return f"{init_label}, tools_discovered({n_tools})"
+        return f"{init_label}, tools_list_failed"
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return f"{init_label}, tools_list_error({type(exc).__name__})"
+
+
+def _kill_process_tree(proc: subprocess.Popen[str]) -> None:
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    else:
+        proc.kill()
+
+
+def _probe_stdio_mcp(cmd: list[str], cwd: Path, extra_env: dict[str, str], timeout: float = 20.0) -> str:
+    """Run MCP initialize + notifications/initialized + tools/list over stdio."""
+    env = os.environ.copy()
+    env.update(extra_env)
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(cwd),
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    assert proc.stdin and proc.stdout
+    incoming: list[dict[str, Any]] = []
+    lock = threading.Lock()
+
+    def reader() -> None:
+        assert proc.stdout
+        for line in proc.stdout:
+            s = line.strip()
+            if not s:
+                continue
+            try:
+                obj = json.loads(s)
+                if isinstance(obj, dict):
+                    with lock:
+                        incoming.append(obj)
+            except json.JSONDecodeError:
+                continue
+
+    threading.Thread(target=reader, daemon=True).start()
+    root_uri = cwd.resolve().as_uri()
+    try:
+        proc.stdin.write(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {"roots": {"listChanged": False}},
+                        "clientInfo": {"name": "trifact-sync-mcp", "version": "0.1.0"},
+                    },
+                }
+            )
+            + "\n"
+        )
+        proc.stdin.flush()
+
+        deadline = time.monotonic() + timeout
+        init_label: str | None = None
+        answered_ids: set[Any] = set()
+        while time.monotonic() < deadline:
+            with lock:
+                batch = list(incoming)
+                incoming.clear()
+            for msg in batch:
+                # Handle server->client roots/list requests (e.g. Shrimp)
+                if msg.get("method") == "roots/list" and "id" in msg and msg["id"] not in answered_ids:
+                    answered_ids.add(msg["id"])
+                    proc.stdin.write(
+                        json.dumps(
+                            {
+                                "jsonrpc": "2.0",
+                                "id": msg["id"],
+                                "result": {"roots": [{"uri": root_uri, "name": cwd.name}]},
+                            }
+                        )
+                        + "\n"
+                    )
+                    proc.stdin.flush()
+                elif msg.get("id") == 1 and "result" in msg and init_label is None:
+                    info = msg["result"].get("serverInfo", {})
+                    init_label = (
+                        f"mcp_initialized({info.get('name', 'unknown')} {info.get('version', '')}".strip()
+                        + ")"
+                    )
+                    proc.stdin.write(
+                        json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}) + "\n"
+                    )
+                    proc.stdin.write(
+                        json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}) + "\n"
+                    )
+                    proc.stdin.flush()
+                elif msg.get("id") == 2 and isinstance(msg.get("result", {}).get("tools"), list):
+                    n_tools = len(msg["result"]["tools"])
+                    return f"{init_label or 'mcp_initialized'}, tools_discovered({n_tools})"
+            if proc.poll() is not None:
+                return f"stdio_exited(rc={proc.returncode})"
+            time.sleep(0.1)
+        if init_label:
+            return f"{init_label}, tools_list_timeout"
+        return "stdio_initialize_timeout"
+    finally:
+        _kill_process_tree(proc)
+
+
+def _probe_local_http_dep(url: str, timeout: int = 3) -> bool:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout):
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
+
+def audit_registry(
+    repo_root: Path, *, probe: bool = False, probe_stdio: bool = False
+) -> tuple[int, list[str]]:
+    mcp_path = repo_root / CANONICAL_FILE
+    servers, diags = load_canonical_registry(mcp_path)
+    lines = [d.format() for d in diags]
+    if any(d.level == "error" for d in diags):
+        return 1, lines
+
+    env = load_effective_env(repo_root)
+    plat = detect_platform()
+
     for name in sorted(servers):
         cfg = servers[name]
         if "url" in cfg:
             url = cfg["url"]
-            missing_vars = [
-                m.group(1)
-                for hv in cfg.get("headers", {}).values()
-                for m in ENV_REF_RE.finditer(hv)
-                if m.group(1) not in env and m.group(2) is None
-            ]
-            status = "remote-http"
+            missing_vars: list[str] = []
+            resolved_headers: dict[str, str] = {}
+            for hk, hv in cfg.get("headers", {}).items():
+                val, missing = _resolve_template(hv, repo_root, env)
+                if val is None:
+                    missing_vars.extend(missing)
+                else:
+                    resolved_headers[hk] = val
+            tags = ["config_valid", "remote-http"]
             if missing_vars:
-                status += f" [missing env: {', '.join(missing_vars)}]"
+                tags.append(f"missing_env({', '.join(missing_vars)})")
             if probe:
-                try:
-                    req = urllib.request.Request(
-                        url,
-                        data=init_payload,
-                        method="POST",
-                        headers={
-                            "Content-Type": "application/json",
-                            "Accept": "application/json, text/event-stream",
-                            "User-Agent": "trifact-sync-mcp/0.1",
-                        },
-                    )
-                    with urllib.request.urlopen(req, timeout=10) as resp:
-                        status += f" [probe: HTTP {resp.status} OK]"
-                except urllib.error.HTTPError as exc:
-                    if exc.code in {401, 403}:
-                        status += f" [probe: HTTP {exc.code} auth required]"
-                    else:
-                        status += f" [probe: HTTP {exc.code}]"
-                except (urllib.error.URLError, TimeoutError, OSError) as exc:
-                    status += f" [probe: unreachable ({type(exc).__name__})]"
-            lines.append(f"  {name:14s} {status} -> {url}")
+                tags.append(_probe_http_mcp(url, resolved_headers))
+            lines.append(f"  {name:14s} {' | '.join(tags)} -> {url}")
         else:
-            cmd = cfg["command"]
-            found = shutil.which(cmd)
-            status = f"stdio ({cmd}: {'OK' if found else 'MISSING'})"
-            lines.append(f"  {name:14s} {status}")
+            cmd_norm, args_norm = _normalize_command_for_platform(cfg["command"], cfg.get("args", []), plat)
+            found = shutil.which(cmd_norm)
+            tags = ["config_valid", f"stdio({cmd_norm}={'OK' if found else 'MISSING'})"]
+            resolved_env: dict[str, str] = {}
+            for ek, ev in cfg.get("env", {}).items():
+                val, _ = _resolve_template(ev, repo_root, env)
+                if val is not None:
+                    resolved_env[ek] = val
+                    if ek.endswith("_URI") and val.startswith(("http://", "https://")) and probe:
+                        up = _probe_local_http_dep(val)
+                        tags.append(f"service({ek}={'UP' if up else 'external_service_unavailable'})")
+            if probe_stdio and found:
+                resolved_args = [_resolve_template(a, repo_root, env)[0] or a for a in args_norm]
+                tags.append(_probe_stdio_mcp([cmd_norm, *resolved_args], repo_root, resolved_env))
+            lines.append(f"  {name:14s} {' | '.join(tags)}")
     return 0, lines
 
 
@@ -968,7 +1214,16 @@ def main(argv: list[str] | None = None) -> int:
     add_common(p_check)
 
     p_audit = sub.add_parser("audit", help="Audit server definitions, local runtimes, and env vars")
-    p_audit.add_argument("--probe", action="store_true", help="Probe remote HTTP endpoints")
+    p_audit.add_argument(
+        "--probe",
+        action="store_true",
+        help="Run MCP initialize + tools/list on remote HTTP servers and check local service URIs",
+    )
+    p_audit.add_argument(
+        "--probe-stdio",
+        action="store_true",
+        help="Also run MCP initialize + tools/list on local stdio servers",
+    )
     p_audit.add_argument("--root", type=Path, default=ROOT)
 
     p_restore = sub.add_parser("restore", help="List or restore backed up generated MCP configs")
@@ -980,7 +1235,7 @@ def main(argv: list[str] | None = None) -> int:
     action = args.action or "sync"
 
     if action == "audit":
-        code, lines = audit_registry(args.root, probe=args.probe)
+        code, lines = audit_registry(args.root, probe=args.probe, probe_stdio=args.probe_stdio)
         for line in lines:
             print(line)
         return code

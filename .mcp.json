@@ -10,9 +10,12 @@
     "shrimp": {
       "type": "stdio",
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "mcp-shrimp-task-manager"],
+      "args": [
+        "/c",
+        "if defined CLAUDE_PROJECT_DIR (set \"DATA_DIR=%CLAUDE_PROJECT_DIR%\\.shrimp\") else (set \"DATA_DIR=%CD%\\.shrimp\") && npx -y mcp-shrimp-task-manager"
+      ],
       "env": {
-        "DATA_DIR": "${CLAUDE_PROJECT_DIR}/.shrimp",
+        "DATA_DIR": "${CLAUDE_PROJECT_DIR:-.}/.shrimp",
         "TEMPLATES_USE": "en",
         "ENABLE_GUI": "false"
       }
@@ -57,7 +60,7 @@
         "--context",
         "claude-code",
         "--project",
-        "${CLAUDE_PROJECT_DIR}"
+        "${CLAUDE_PROJECT_DIR:-.}"
       ]
     }
   }
