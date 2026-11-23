@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
@@ -26,5 +27,7 @@ __pycache__/
 web/node_modules/
 web/.next/
 
-# Local agent settings (backed up by scripts/backup.py)
+# Local agent settings and tool state (backed up by scripts/backup.py where applicable)
 .agents/settings.local.json
+.claude/
+.codex/
