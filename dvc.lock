@@ -1151,9 +1151,9 @@ stages:
       size: 9208
     - path: src/trifact/lake
       hash: md5
-      md5: 2c57464b5b599e253b964bc53c004b24.dir
-      size: 71523
-      nfiles: 9
+      md5: d0b204cd164f11bc636346a48b841705.dir
+      size: 84471
+      nfiles: 10
     params:
       params.yaml:
         lake:
@@ -1195,6 +1195,9 @@ stages:
           - wiki: ruwiki
             lang: ru
             name: ruwiki-20261101-pages-articles3.xml-p1042044p2198269.bz2
+          - wiki: ruwiki
+            lang: ru
+            name: ruwiki-20261101-pages-articles4.xml-p2198270p3698269.bz2
           - wiki: enwiki
             lang: en
             name: enwiki-20261101-pages-articles1.xml-p1p41242.bz2
@@ -1210,9 +1213,9 @@ stages:
     outs:
     - path: data/raw/wikipedia_wikitext
       hash: md5
-      md5: f2a4fafad0404e738098205e54d52894.dir
-      size: 4460593453
-      nfiles: 22
+      md5: 5646142b89932f4dc0d5b878aefb062a.dir
+      size: 5376577170
+      nfiles: 25
   eval_langid:
     cmd: python -m trifact.evaluation.eval_langid score
     deps:

@@ -1,0 +1,55 @@
+{
+  "status": "passed",
+  "shards_added": 3,
+  "total_shards": 24,
+  "rows_by_lang": {
+    "en": 336391,
+    "kk": 296389,
+    "ru": 1585667
+  },
+  "seconds": 29.5,
+  "rows_by_lang_table": {
+    "kk": {
+      "part": 249063,
+      "redirects": 47326
+    },
+    "ru": {
+      "part": 790327,
+      "redirects": 795340
+    },
+    "en": {
+      "part": 216913,
+      "redirects": 119478
+    }
+  },
+  "source_manifest_sha256": "fdf9110804bc8505781704caa413c8854380015deceab595160fb94d7df4e062",
+  "mlflow_sha256": "82fc569e01dcaa71c0cb1f8b400d5c721757867501626f4c0633c5af828535fc",
+  "mlflow_snapshot": "workspace-data/stage-01-03-reconcile/2026-11-23-cloud/wikitext/wikitext-drive-1795428944573307800.db",
+  "part4_cloud_parse": {
+    "seconds": 699.9,
+    "rows_per_s": 461.5,
+    "mb_per_s": 1.05,
+    "peak_rss_mb": 612.8,
+    "workers": 1
+  },
+  "code_version": "d5a1ea6892480de79675f05a7da86bd033a114f1",
+  "dvc_md5": "5646142b89932f4dc0d5b878aefb062a.dir",
+  "independent_restore": {
+    "status": "passed",
+    "cache_before_restore": "empty",
+    "workspace": "independent Git checkout",
+    "dvc_md5": "5646142b89932f4dc0d5b878aefb062a.dir",
+    "dvc_files": 25,
+    "shards": 24,
+    "bytes": 5376569566,
+    "sha256": "fdf9110804bc8505781704caa413c8854380015deceab595160fb94d7df4e062",
+    "rows_by_lang": {
+      "en": 336391,
+      "kk": 296389,
+      "ru": 1585667
+    },
+    "pull_seconds": 34.3,
+    "mlflow_run": "fd1aed2d5b244649b95bd8b35d70f8ae"
+  },
+  "cost_usd": 0
+}

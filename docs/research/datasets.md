@@ -13,7 +13,7 @@ Markers: **✓** verified via HF datasets-server / API (2026-11-18); **●** mea
 | Multidomain Kazakh | `kz-transformers/multidomain-kazakh-dataset` | ● 24,883,808 CSV records (HF card/server: 15,510,000 partial) | ● 6.97 GB parquet | Apache-2.0 (`release: false`) |
 | KazParC (`kk`/`ru`/`en`/`tr` parallel) | `issai/kazparc` | ● 15,103,193 rows (all configs, incl. synthetic) | ● 2.26 GB parquet | CC BY 4.0, gated |
 | Wikidata | `dumps.wikimedia.org` JSON `20261116` | ● 122,308,973 entities (2026-11-19); `kk` labels 0.38%, `en` 76.4% | ● 103.9 GB bz2 → 5.29 GB parquet | CC0 |
-| Wikipedia wikitext (full `kk`, `ru` 1–3, `en` 1–4) | `dumps.wikimedia.org` `20261101` `pages-articles` | ● articles `kk` 249,063, `ru` 467,338, `en` 216,913 + redirects `kk` 47,326, `ru` 530,018, `en` 119,478 (2026-11-18) | ● 4.46 GB parquet | CC BY-SA 4.0 + GFDL |
+| Wikipedia wikitext (full `kk`, `ru` 1–4, `en` 1–4) | `dumps.wikimedia.org` `20261101` `pages-articles` | ● articles `kk` 249,063, `ru` 790,327, `en` 216,913 + redirects `kk` 47,326, `ru` 795,340, `en` 119,478 (2026-11-23) | ● 5.38 GB Parquet, 24 shards | CC BY-SA 4.0 + GFDL |
 
 ## 2. NER
 

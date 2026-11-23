@@ -280,6 +280,8 @@ def step_wikitext_merge(uv: list[str], drive: Path) -> dict[str, Any]:
                 )
             )
         m.code_version = git_sha(ROOT)
+        if os.name == "nt":
+            run(*uv, "dvc", "unprotect", src / "source.yaml")
         m.write(src)
 
     problems = verify_source(src, deep=True)
