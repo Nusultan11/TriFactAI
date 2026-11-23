@@ -1,31 +1,31 @@
-# 14. Шардированные идемпотентные batch-задания, локально и в облаке
+# 14. Sharded Idempotent Batch Jobs
 
 Date: 2026-11-18
 
 ## Status
 
-Amended by [25. Облачные вычисления](0025-cloud-only-computing.md).
-
 Accepted
 
-Amended by [20. Kaggle как batch GPU, NLLB для перевода, учитель на llama.cpp](0020-kaggle-batch-gpu-mt-and-teacher.md)
+Amends [10. DVC with S3-Compatible Remote](0010-dvc-with-s3-remote.md)
 
-Amended by [24. Google Drive для данных и резервных копий](0024-google-drive-storage.md)
+Amended by [20. Kaggle Batch GPU, NLLB MT, and llama.cpp Teacher](0020-kaggle-batch-gpu-mt-and-teacher.md)
 
-Amends [10. DVC с S3-remote](0010-dvc-with-s3-remote.md)
+Amended by [24. Google Drive for Data and Backups](0024-google-drive-storage.md)
+
+Amended by [25. Cloud-Only Computing and Stage 1–3 Recovery](0025-cloud-only-computing.md)
 
 ## Context
 
-Массовые операции занимают часы и сутки: эмбеддинги 35M чанков, NER-разметка корпуса, генерация учителем миллионов примеров, kk-перевод XNLI. Арендованная GPU может прерваться в любой момент. Облачные задания не видят локальный SeaweedFS. Одна и та же операция должна запускаться и на ноутбуке (пилот, малые шарды), и в облаке.
+Mass batch jobs (35M corpus embeddings, corpus NER annotation, synthetic teacher generation, `kk` XNLI translation) run for hours on preemptible cloud GPUs that cannot reach local SeaweedFS. Jobs must be crash-resumable and executable identically on pilot slices and full-scale cloud runs.
 
 ## Decision
 
-- Задание — модуль `python -m trifact.batch.<job> --input <layer/...> --output <layer/...> --shard i/N`. Единица работы — входной Parquet-шард. Результат записывается во временный файл и атомарно переименовывается, после чего рядом создаётся маркер `_SUCCESS`. При повторном запуске готовые шарды пропускаются.
-- Каждое задание пишет в MLflow throughput (записей/с), пиковую RAM/VRAM, время, тип GPU и стоимость часа.
-- Локально и в облаке используется один и тот же Docker-образ. Облачный запуск: `dvc pull` нужных шардов из remote `cloud`, запуск задания, `dvc push` результата.
-- У DVC два remote: `local` (SeaweedFS, по умолчанию) и `cloud` (S3-совместимый бакет у облачного провайдера, выбирается в этапе 1). Через remote `cloud` идут только данные, нужные облачным заданиям.
-- Бюджет облачного запуска (часы × тариф) фиксируется в `params.yaml` до запуска (ROADMAP 3.6). При превышении задание останавливается.
+- Run batch jobs as `python -m trifact.batch.<job> --input <layer/...> --output <layer/...> --shard i/N`, with one input Parquet shard as the unit of work. Write outputs to temp files, atomically rename, and emit a `_SUCCESS` marker; re-runs skip completed shards.
+- Log `records/s`, peak RAM/VRAM, wall time, GPU model, and hourly cost to MLflow.
+- Use one shared Docker/uv environment; pull only required input shards, execute, and push outputs immediately.
+- Configure DVC remotes for local S3 (`local`, SeaweedFS) and cloud object storage (`cloud`; subsequently amended to Google Drive in ADR-0024/0025).
+- Record cloud budget in `params.yaml` before launch (ROADMAP 3.6) and halt on budget breach.
 
 ## Consequences
 
-Прерывание задания стоит не больше одного шарда работы. Любую стадию можно сначала проверить локально на пилотном срезе (`scale.profile: pilot`), а потом запустить в облаке с теми же параметрами. Обмен большими векторами (~72 GB fp16 для 35M) — дорогая операция, поэтому коллекцию корпуса можно собирать прямо на Serving VM (ADR-0013).
+Preemption loses at most one active shard. Pilot validation (`scale.profile: pilot`) uses identical code and parameters as full cloud runs. Because transferring ~72 GB of fp16 vectors is costly, corpus collections may be built directly on the Serving VM (ADR-0013).

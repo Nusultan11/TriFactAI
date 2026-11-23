@@ -59,7 +59,7 @@ def test_every_adr_is_referenced_from_another_document() -> None:
 
 def test_answer_contract_in_architecture_matches_schema() -> None:
     doc = ARCH_DOC.read_text(encoding="utf-8")
-    block = re.search(r"\*\*Контракт ответа\*\*\s*```json\n(.*?)```", doc, re.DOTALL).group(1)
+    block = re.search(r"\*\*Response contract\*\*\s*```json\n(.*?)```", doc, re.DOTALL).group(1)
     example = json.loads(block)
     claim = example["claims"][0]
     claim["verdict"] = "supported"  # the doc lists the enum as "a | b | c"

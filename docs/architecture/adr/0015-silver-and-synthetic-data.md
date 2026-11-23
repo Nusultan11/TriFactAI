@@ -1,4 +1,4 @@
-# 15. Silver- и синтетические данные: генерация, фильтры, родословная лицензий
+# 15. Silver and Synthetic Data: Generation, Filters, and License Lineage
 
 Date: 2026-11-18
 
@@ -6,29 +6,28 @@ Date: 2026-11-18
 
 Accepted
 
-Amended by [20. Kaggle как batch GPU, NLLB для перевода, учитель на llama.cpp](0020-kaggle-batch-gpu-mt-and-teacher.md)
+Amended by [20. Kaggle Batch GPU, NLLB MT, and llama.cpp Teacher](0020-kaggle-batch-gpu-mt-and-teacher.md)
 
 ## Context
 
-Gold-данных мало, особенно для казахского: KazNERD ≈ 113k предложений, WikiANN kk — 3k, а NLI для kk нет вообще. Межъязыковых пар (вопрос kk ↔ фрагмент ru/en) почти нет. Миллионный масштаб достижим только через silver-разметку и синтетику, но такие данные шумные. Кроме того, лицензия источника наследуется производным набором.
+Gold training data is scarce for Kazakh (KazNERD ≈ 113k sentences, WikiANN `kk` 3k, zero `kk` NLI, almost no cross-lingual `kk ↔ ru/en` retrieval pairs). Million-scale training requires silver and synthetic data, which introduce noise and inherit upstream license restrictions.
 
 ## Decision
 
-- **Silver NER**: ссылки внутри статей Wikipedia → QID → тип по Wikidata `P31` (PER / ORG / LOC). Цель — 5–10M предложений на трёх языках. Шум оценивается на gold-разметке и на ручной выборке. Обучение идёт по curriculum: сначала silver, потом gold.
-- **Синтетика учителем** (`Qwen3.5-35B-A3B`, vLLM, ADR-0012/0014): запросы к чанкам (3–5M), grounded QA с `[chunk_id]` включая межъязыковые и неотвечаемые (1–2M), kk-перевод XNLI (400k).
-- **Обязательные фильтры**: round-trip retrieval (сгенерированный запрос находит свой чанк в top-k), NLI-согласованность ответа и контекста, ответ подтверждается контекстом, MinHash-дедуп, ограничения длины, проверка языка ответа.
-- **Eval никогда не строится из синтетики без ручной проверки**. Синтетика и silver используются только в train; источники eval деконтаминируются (ADR-0007).
-- **Родословная лицензий**: `dataset.yaml` перечисляет лицензии входов. Наборы с NC-входами (WikiNEuRal, KazLLM как учитель и т. п.) помечаются `release: false` и не попадают в выпускаемые модели.
+- **Silver NER:** Wikipedia internal links → Wikidata QID → `P31`/`P279` class (`PER`/`ORG`/`LOC`), targeting 5–10M sentences across KK/RU/EN. Estimate noise against gold and human review; train via silver → gold curriculum.
+- **Synthetic teacher (`Qwen3.5-35B-A3B`):** generate chunk queries (3–5M), grounded QA with `[chunk_id]` incl. cross-lingual & unanswerable (1–2M), and `kk` XNLI translation (400k; MT execution amended by ADR-0020).
+- **Mandatory filters:** round-trip retrieval (generated query retrieves source chunk in top-k), NLI consistency against cited context, MinHash dedup, length bounds, and answer language verification.
+- **Train-only rule:** Never place unreviewed synthetic or silver rows in eval; decontaminate train against eval (ADR-0007).
+- **License lineage:** List all input licenses in `dataset.yaml`. Any dataset using NC or `research_only` inputs propagates `release: false` and is excluded from released weights.
 
 ## Consequences
 
-Объём данных растёт на порядки, но качество зависит от фильтров. Их пороги подбираются по ручной выборке, а отсев по каждой причине записывается в data card. Генерация стоит денег: бюджет утверждается до запуска.
+Training volume scales by orders of magnitude, bounded by filter quality and compute budget. Calibrate filter thresholds on human review, log per-filter drop rates in `card.md`, and approve cloud spend prior to generation.
 
-## Реализация (2026-11-21)
+## Implementation Notes (2026-11-21)
 
-Решение не меняется, ниже — как оно выполнено на этапе 3 (замеры — PROGRESS, этап 3):
-
-- **Тип silver-сущности** — ближайший класс замыкания `P279` среди классов её `P31`; приоритет PER > ORG > LOC разрешает только равную глубину. Чистый приоритет делал страны и города ORG через «sovereign state» (согласие ORG с gold 0.32–0.60 против 0.79–0.93 после исправления).
-- **NLI-согласованность ответа** проверяется по утверждениям: текст перед каждой группой цитат против окон из 3 предложений процитированных пассажей; ответ проходит, если у его слабейшего утверждения лучшее окно даёт entailment ≥ `teacher.filters.min_nli_entail`. NLI по целому пассажу отвергал дословно подтверждённые утверждения.
-- **Цитаты в промпте учителя** — номера пассажей `[1]…[k]`, при импорте переводятся в `chunk_id`: длинные id обрезали 16.5 % ответов на `max_tokens`.
-- Учитель работает на llama.cpp (ADR-0020), не на vLLM.
+Stage 3 execution details (measurements in `docs/PROGRESS.md`):
+- **Silver entity typing:** assign closest `P279` closure class among `P31` classes; `PER > ORG > LOC` resolves ties only (pure priority misclassified countries/cities as ORG via "sovereign state"; fix lifted ORG agreement with gold from `0.32–0.60` to `0.79–0.93`).
+- **QA NLI filter:** score each claim (text before each citation group) against 3-sentence windows of cited passages; pass if the weakest claim's best window has `entailment >= teacher.filters.min_nli_entail` (full-passage NLI rejected verbatim-supported claims).
+- **Prompt citations:** use numeric passage IDs `[1]…[k]` mapped back to `chunk_id` on import (long chunk IDs truncated 16.5% of responses at `max_tokens`).
+- Teacher runs on `llama.cpp` (ADR-0020), not `vLLM`.

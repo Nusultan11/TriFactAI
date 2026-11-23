@@ -1,105 +1,105 @@
-# Каталог данных и план масштаба
+# Dataset Catalog & Scale Plan
 
-Строки помечены: **✓** — число получено из HF datasets-server / API 2026-11-18; **●** — посчитано при загрузке этапа 1 (2026-11-18) и сверено с метаданными, итог в `data/raw/<источник>/source.yaml`; **≈** — по карточке или публикации, не проверено.
+Markers: **✓** verified via HF datasets-server / API (2026-11-18); **●** measured during Stage 1–3 acquisition and reconciled in `data/raw/<source>/source.yaml`; **≈** card/paper estimate, unverified.
 
-## 1. Текстовые корпуса (RAG-индекс, предобучение, silver-разметка)
+## 1. Text Corpora (RAG Index, Pretraining, Silver Annotation)
 
-| Источник | HF ID | Объём | Размер | Лицензия |
+| Source | HF ID / Origin | Volume | Size | License |
 |---|---|---|---|---|
-| Wikipedia EN | `wikimedia/wikipedia` `20231101.en` | ✓ 6 407 814 статей | ✓ 11.6 GB parquet | CC BY-SA |
-| Wikipedia RU | `wikimedia/wikipedia` `20231101.ru` | ✓ 1 945 063 статей | ✓ 4.9 GB | CC BY-SA |
-| Wikipedia KK | `wikimedia/wikipedia` `20231101.kk` | ✓ 238 615 статей | ✓ 0.18 GB | CC BY-SA |
-| FineWeb-2 KK | `HuggingFaceFW/fineweb-2` `kaz_Cyrl` | ✓ 3 375 998 документов | ✓ 6.9 GB | ODC-By |
-| Multidomain Kazakh | `kz-transformers/multidomain-kazakh-dataset` | ● 24 883 808 записей CSV (карточка и datasets-server дают 15 510 000 — частичный подсчёт) | ● 6.97 GB parquet | Apache-2.0 |
-| KazParC (параллельный kk/ru/en/tr) | `issai/kazparc` | ● 15 103 193 строк (все конфиги, вкл. синтетику) | ● 2.26 GB parquet | CC BY 4.0, gated |
-| Wikidata | dumps.wikimedia.org (JSON) `20261116` | ● 122 308 973 сущностей (2026-11-19); kk-метки у 0.38 %, en у 76.4 % | ● 103.9 GB bz2 → 5.29 GB parquet | CC0 |
-| Wikipedia wikitext (kk целиком, ru части 1–3, en части 1–4) | dumps.wikimedia.org `20261101` pages-articles | ● статьи kk 249 063, ru 467 338, en 216 913 + redirect kk 47 326, ru 530 018, en 119 478 (2026-11-18) | ● 4.46 GB parquet | CC BY-SA 4.0 + GFDL |
+| Wikipedia EN | `wikimedia/wikipedia` `20231101.en` | ✓ 6,407,814 articles | ✓ 11.6 GB parquet | CC BY-SA |
+| Wikipedia RU | `wikimedia/wikipedia` `20231101.ru` | ✓ 1,945,063 articles | ✓ 4.9 GB | CC BY-SA |
+| Wikipedia KK | `wikimedia/wikipedia` `20231101.kk` | ✓ 238,615 articles | ✓ 0.18 GB | CC BY-SA |
+| FineWeb-2 KK | `HuggingFaceFW/fineweb-2` `kaz_Cyrl` | ✓ 3,375,998 docs | ✓ 6.9 GB | ODC-By |
+| Multidomain Kazakh | `kz-transformers/multidomain-kazakh-dataset` | ● 24,883,808 CSV records (HF card/server: 15,510,000 partial) | ● 6.97 GB parquet | Apache-2.0 (`release: false`) |
+| KazParC (`kk`/`ru`/`en`/`tr` parallel) | `issai/kazparc` | ● 15,103,193 rows (all configs, incl. synthetic) | ● 2.26 GB parquet | CC BY 4.0, gated |
+| Wikidata | `dumps.wikimedia.org` JSON `20261116` | ● 122,308,973 entities (2026-11-19); `kk` labels 0.38%, `en` 76.4% | ● 103.9 GB bz2 → 5.29 GB parquet | CC0 |
+| Wikipedia wikitext (full `kk`, `ru` 1–3, `en` 1–4) | `dumps.wikimedia.org` `20261101` `pages-articles` | ● articles `kk` 249,063, `ru` 467,338, `en` 216,913 + redirects `kk` 47,326, `ru` 530,018, `en` 119,478 (2026-11-18) | ● 4.46 GB parquet | CC BY-SA 4.0 + GFDL |
 
 ## 2. NER
 
-| Источник | HF ID | Объём | Языки | Лицензия |
+| Source | HF ID | Volume | Languages | License |
 |---|---|---|---|---|
-| KazNERD | `issai/kaznerd` | ● 112 702 предложения, 25 классов (✓ классы проверены по IOB2-файлу) | kk | CC BY 4.0, gated |
-| WikiANN | `unimelb-nlp/wikiann` | ✓ kk 3 000 · ru 40 000 · en 40 000 | kk/ru/en | не указана → проверить |
-| WikiNEuRal | `Babelscape/wikineural` | ✓ 1 027 506 предложений (9 языков); загружены ● en 115 907, ru 115 440 | ru/en | проверить (CC BY-NC-SA у оригинала) |
-| NEREL | `iluvvatar/NEREL` | ● 1 011 документов, ≈ 29 типов сущностей | ru | проверить |
-| **Silver NER из Wikipedia** | строим сами | **цель: 5–10 M предложений** | kk/ru/en | производная CC BY-SA |
+| KazNERD | `issai/kaznerd` | ● 112,702 sentences, 25 classes (✓ IOB2 verified) | `kk` | CC BY 4.0, gated |
+| WikiANN | `unimelb-nlp/wikiann` | ✓ `kk` 3,000 · `ru` 40,000 · `en` 40,000 | `kk`/`ru`/`en` | Unknown → `research_only` |
+| WikiNEuRal | `Babelscape/wikineural` | ✓ 1,027,506 (9 langs); acquired ● `en` 115,907, `ru` 115,440 | `ru`/`en` | CC BY-NC-SA 4.0 (`research_only`) |
+| NEREL | `iluvvatar/NEREL` | ● 1,011 docs, ≈ 29 entity types | `ru` | Unknown → `research_only` |
+| **Silver NER (Wikipedia)** | Constructed in-house | **Target: 5–10 M sentences** | `kk`/`ru`/`en` | CC BY-SA derivative |
 
-Silver NER: ссылки внутри статей Wikipedia → QID Wikidata → тип по `P31` (human → PER, organization → ORG, geographic → LOC). Так строились WikiANN/WikiNEuRal; мы получаем миллионы размеченных предложений на каждом языке, включая казахский.
+Silver NER maps internal Wikipedia links → Wikidata QID → `P31`/`P279` class (`PER`/`ORG`/`LOC`), generating millions of labeled sentences across all three languages.
 
 ## 3. QA
 
-| Источник | HF ID | Объём | Язык | Лицензия |
+| Source | HF ID | Volume | Language | License |
 |---|---|---|---|---|
-| SQuAD v2 | `rajpurkar/squad_v2` | ✓ 142 192 (вкл. неотвечаемые) | en | CC BY-SA 4.0 |
-| SberQuAD | `kuznetsoffandrey/sberquad` | ✓ 74 300 | ru | не указана → проверить |
-| KazQAD | `issai/kazqad` (`kazqad`, `nq-translate-kk`, `nq-original-en`) | ● kk 68 246 · en 68 770 | kk/en | CC BY-SA 4.0, gated |
-| **Синтетический grounded QA** | строим сами (учитель Qwen3.5-35B-A3B) | **цель: 1–2 M пар после фильтрации** | kk/ru/en + межъязыковые | производная |
+| SQuAD v2 | `rajpurkar/squad_v2` | ✓ 142,192 (incl. unanswerable) | `en` | CC BY-SA 4.0 |
+| SberQuAD | `kuznetsoffandrey/sberquad` | ✓ 74,300 | `ru` | Unknown → `research_only` |
+| KazQAD | `issai/kazqad` (`kazqad`, `nq-translate-kk`, `nq-original-en`) | ● `kk` 68,246 · `en` 68,770 | `kk`/`en` | CC BY-SA 4.0, gated |
+| **Synthetic Grounded QA** | Teacher `Qwen3.5-35B-A3B` | **Target: 1–2 M filtered pairs** | `kk`/`ru`/`en` + cross-lingual | Derivative |
 
 ## 4. Retrieval
 
-| Источник | HF ID | Объём | Язык |
+| Source | HF ID | Volume | Language |
 |---|---|---|---|
-| MS MARCO | `microsoft/ms_marco` | ● 1 112 939 строк запрос + пассажи (v1.1, v2.1) | en |
-| mMARCO | `unicamp-dl/mmarco` (`russian`) | ● ru 9 758 627 (коллекция и запросы), multi 39 780 811 (тройки id) | ru |
-| MIRACL | `miracl/miracl` (`ru`, `en`) + `miracl/miracl-corpus` | ● запросы с оценками en 43 952 · ru 54 585; корпус en 32 893 221 · ru 9 543 918 пассажей | ru/en |
-| ru-HNP | `deepvk/ru-HNP` | ✓ 102 590 (hard negatives) | ru |
-| bge-m3-data | `Shitao/bge-m3-data` | ≈ обучающие данные BGE-M3 | мульти |
-| **Синтетические запросы** | строим сами | **цель: 3–5 M (запрос, чанк)** | kk/ru/en, 9 направлений |
+| MS MARCO | `microsoft/ms_marco` | ● 1,112,939 query+passage rows (v1.1, v2.1) | `en` |
+| mMARCO | `unicamp-dl/mmarco` (`russian`) | ● `ru` 9,758,627 (collection & queries), `multi` 39,780,811 (ID triples) | `ru` |
+| MIRACL | `miracl/miracl` + `miracl/miracl-corpus` | ● queries/qrels `en` 43,952 · `ru` 54,585; corpus `en` 32,893,221 · `ru` 9,543,918 passages | `ru`/`en` |
+| ru-HNP | `deepvk/ru-HNP` | ✓ 102,590 (hard negatives) | `ru` |
+| bge-m3-data | `Shitao/bge-m3-data` | ≈ BGE-M3 training data | Multi |
+| **Synthetic Queries** | Teacher-generated | **Target: 3–5 M `(query, chunk)`** | `kk`/`ru`/`en`, 9 directions |
 
 ## 5. NLI
 
-| Источник | HF ID | Объём | Язык |
+| Source | HF ID | Volume | Language |
 |---|---|---|---|
-| XNLI | `facebook/xnli` | ✓ 400 202 на язык (ru, en) | ru/en |
-| XNLI-kk | строим сами (перевод учителем + фильтр) | цель: 400k | kk |
+| XNLI | `facebook/xnli` | ✓ 400,202 per language (`ru`, `en`) | `ru`/`en` |
+| XNLI-kk | Constructed (NLLB MT + QC filters) | Target: 400k | `kk` |
 
-## 6. План масштаба
+## 6. Scale Plan
 
-| Слой | Целевой объём | Хранение (оценка) |
+| Layer | Target & Measured (`●`) Volume | Storage (Est. & Measured) |
 |---|---|---|
-| raw-корпуса | ~27 M документов (Wikipedia 8.6 M + FineWeb-2 kk 3.4 M + multidomain kk 15.5 M); ● 36.9 M (multidomain kk — 24.9 M записей) | ~40 GB parquet; ● весь raw-слой 48.5 GB (19 источников, вместе с Wikidata и wikitext) |
-| curated (после чистки/дедупа) | ожидаемо 60–80 % от raw; ● 30.85 M документов = 84 % (kk 19.86 M, ru 4.62 M, en 6.37 M; 2026-11-20) | ~30 GB; ● corpus 23.7 GB |
-| **RAG-индекс** | **~35 M чанков** (оценка: ~20 M en, ~7 M ru, ~8 M kk); ● нарезано 59.63 M (kk 29.59 M, ru 11.78 M, en 18.25 M), отбор для индекса — этап 6 | векторы fp16 на диске ~72 GB; binary quantization в RAM ~4.5 GB |
-| NER | 5–10 M silver + ~1.3 M gold/реальных предложений; ● silver 4.52 M (kk 0.24 M), gold 0.44 M (все доступные gold-наборы), 2026-11-20 | ~5 GB |
-| Retrieval pairs | 10–20 M (MS MARCO, mMARCO, синтетика, KazParC); ● 14.98 M, 9 направлений, kk-kk 63.5k; синтетических запросов 33.5k | ~10 GB |
-| SFT grounded QA | 1–2 M; ● 0.31 M (синтетика учителя 1.8k — квота Kaggle, PROGRESS блокер 3) | ~5 GB |
-| NLI | ~1.2 M; ● train 1.0 M (en 393k, ru 393k, kk 210k MT) | ~0.5 GB |
-| Eval (заморожен) | 30–50k, включая 3.5k проверенных вручную, все 9 языковых направлений; ● qa 32.4k и ner заморожены; retrieval 38.6k запросов и nli 12.7k ждут ручной проверки | — |
-| Eval `docproc` (заморожен, этап 4) | ● 150 документов: по 18 на вид (pdf_text, pdf_columns, pdf_tables, pdf_scan, pdf_word, docx, html, txt; по 6 на kk/ru/en) + 6 смешанных kk/ru/en; 239 стр. PDF; 3 длинных PDF по 300 стр.; 17 враждебных файлов. Текст — абзацы `clean/wikipedia` (CC-BY-SA-3.0) | 161 MB |
+| Raw corpora | Target ~27 M docs; ● 36.9 M (`multidomain_kk` = 24.9 M) | Est. ~40 GB; ● full raw layer 48.5 GB (19 sources incl. Wikidata + wikitext) |
+| Curated (clean + dedup + decontam) | Target 60–80% of raw; ● 30.85 M docs = 84% (`kk` 19.86 M, `ru` 4.62 M, `en` 6.37 M; 2026-11-20) | Est. ~30 GB; ● corpus 23.7 GB |
+| **RAG index** | **Target ~35 M chunks** (~20 M `en`, ~7 M `ru`, ~8 M `kk`); ● 59.63 M chunked (`kk` 29.59 M, `ru` 11.78 M, `en` 18.25 M; subset chosen in Stage 6) | fp16 vectors on disk ~72 GB; binary quant in RAM ~4.5 GB |
+| NER | Target 5–10 M silver + ~1.3 M gold; ● silver 4.52 M (`kk` 0.24 M), gold 0.44 M (2026-11-20) | ~5 GB |
+| Retrieval pairs | Target 10–20 M; ● 14.98 M across 9 directions (`kk-kk` 63.5k; synthetic queries 33.5k) | ~10 GB |
+| SFT grounded QA | Target 1–2 M; ● 0.31 M (teacher synthetic 1.8k — Kaggle quota, `PROGRESS.md` Blocker 3) | ~5 GB |
+| NLI | Target ~1.2 M; ● train 1.0 M (`en` 393k, `ru` 393k, `kk` 210k MT) | ~0.5 GB |
+| Eval (frozen) | Target 30–50k (incl. 3.5k human-verified, 9 directions); ● `qa` 32.4k & `ner` frozen; `retrieval` 38.6k queries & `nli` 12.7k awaiting human review | — |
+| Eval `docproc` (frozen, Stage 4) | ● 150 docs (18 × 8 kinds, 6 per `kk`/`ru`/`en`) + 6 mixed `kk`/`ru`/`en`; 239 PDF pages; 3 × 300-page PDFs; 17 hostile files (`clean/wikipedia`, CC-BY-SA-3.0) | 161 MB |
 
-Ступени построения индекса — эксперимент RET-S, оценки пропускной способности — [архитектура §7.3, §9](../architecture/docs/01-architecture.md).
+Index scale ladder (`RET-S`) and throughput estimates: [01-architecture.md §7.3, §9](../architecture/docs/01-architecture.md).
 
-## 7. Лицензии — решения этапа 1
+## 7. License Decisions (Stage 1, Checked 2026-11-18)
 
-Решения записаны в `params.yaml: sources.*.license` и копируются в манифест каждого источника (ADR-0017). `allowed` — условия разрешают использование, в том числе выпуск производных в рамках лицензии. `research_only` — только обучение и оценка, производные наследуют `release: false` (ADR-0015). `blocked` — не скачивается. Проверено 2026-11-18.
+Stored in `params.yaml: sources.*.license` and copied to each `source.yaml` (ADR-0017). `allowed`: usable and releasable under license terms. `research_only`: train/eval only, derivatives inherit `release: false` (ADR-0015). `blocked`: never acquired.
 
-| Источник | Лицензия | Решение | release | Основание |
+| Source | License | Decision | `release` | Evidence |
 |---|---|---|---|---|
-| Wikipedia, MIRACL corpus | CC BY-SA 3.0 (+ GFDL) | allowed | да | карточка HF, условия Wikimedia |
-| Wikipedia wikitext (дампы `20261101`) | CC BY-SA 4.0 + GFDL | allowed | да | Wikimedia Terms of Use, dumps.wikimedia.org/legal.html (2026-11-18) |
-| FineWeb-2 kk | ODC-By 1.0 + CommonCrawl ToU | allowed | да | карточка HF |
-| Multidomain Kazakh | Apache-2.0 (карточка) | allowed | **нет** | собран из CC100, OSCAR, новостей и книг; лицензия карточки не снимает права третьих лиц на тексты |
-| KazParC | CC BY 4.0 | allowed | да | в карточке HF лицензии нет; авторы: arXiv:2403.19399 и страница релиза ISSAI |
-| KazNERD | CC BY 4.0 | allowed | да | карточка HF |
-| KazQAD | CC BY-SA 4.0 | allowed | да | карточка HF |
-| SQuAD v2 | CC BY-SA 4.0 | allowed | да | карточка HF |
-| MIRACL (topics, qrels) | Apache-2.0 | allowed | да | карточка HF |
-| ru-HNP | Apache-2.0 | allowed | да | карточка HF; пары сгенерированы gpt-3.5-turbo |
-| Wikidata | CC0 1.0 | allowed | да | Wikidata:Licensing |
-| WikiANN | не указана (текст CC BY-SA) | research_only | нет | карточка HF «unknown»; github.com/afshinrahimi/mmner — Apache-2.0 для кода, данные на Dropbox без лицензии |
-| NEREL | не указана | research_only | нет | нет лицензии ни в карточке, ни в github.com/nerel-ds/NEREL; статья RANLP 2021 — CC BY 4.0 |
-| SberQuAD | не указана | research_only | нет | карточка HF «unknown», TFDS «No known license» |
-| WikiNEuRal | CC BY-NC-SA 4.0 | research_only | нет | карточка HF |
-| XNLI | CC BY-NC 4.0 | research_only | нет | карточка HF |
-| MS MARCO, mMARCO | условия MS MARCO (некоммерческие исследования) | research_only | нет | microsoft.github.io/msmarco/Notice; mMARCO — перевод MS MARCO |
+| Wikipedia, MIRACL corpus | CC BY-SA 3.0 (+ GFDL) | `allowed` | yes | HF card, Wikimedia terms |
+| Wikipedia wikitext (`20261101`) | CC BY-SA 4.0 + GFDL | `allowed` | yes | Wikimedia Terms of Use, `dumps.wikimedia.org/legal.html` |
+| FineWeb-2 `kk` | ODC-By 1.0 + CommonCrawl ToU | `allowed` | yes | HF card |
+| Multidomain Kazakh | Apache-2.0 (HF card) | `allowed` | **no** | Aggregates CC100, OSCAR, news, books; card does not clear third-party text |
+| KazParC | CC BY 4.0 | `allowed` | yes | Missing on HF card; confirmed in arXiv:2403.19399 and ISSAI release page |
+| KazNERD | CC BY 4.0 | `allowed` | yes | HF card |
+| KazQAD | CC BY-SA 4.0 | `allowed` | yes | HF card |
+| SQuAD v2 | CC BY-SA 4.0 | `allowed` | yes | HF card |
+| MIRACL (topics, qrels) | Apache-2.0 | `allowed` | yes | HF card |
+| ru-HNP | Apache-2.0 | `allowed` | yes | HF card (pairs generated by `gpt-3.5-turbo`) |
+| Wikidata | CC0 1.0 | `allowed` | yes | `Wikidata:Licensing` |
+| WikiANN | Unknown (text CC BY-SA) | `research_only` | no | HF card `unknown`; `github.com/afshinrahimi/mmner` code is Apache-2.0, Dropbox data unlicensed |
+| NEREL | Unknown | `research_only` | no | No data license on HF or GitHub; RANLP 2021 paper is CC BY 4.0 |
+| SberQuAD | Unknown | `research_only` | no | HF card `unknown`, TFDS "No known license" |
+| WikiNEuRal | CC BY-NC-SA 4.0 | `research_only` | no | HF card |
+| XNLI | CC BY-NC 4.0 | `research_only` | no | HF card |
+| MS MARCO, mMARCO | MS MARCO terms (non-commercial research) | `research_only` | no | `microsoft.github.io/msmarco/Notice`; mMARCO inherits terms |
 
-Решение `research_only` для WikiANN, NEREL и SberQuAD можно повысить до `allowed`, если правообладатель подтвердит лицензию. Для этого достаточно правки `params.yaml` и перезаписи манифеста, повторная загрузка не нужна.
+`research_only` for WikiANN, NEREL, or SberQuAD can be upgraded to `allowed` by editing `params.yaml` and rewriting the manifest once rights holders confirm licensing (no re-download needed).
 
-## 8. Внешние наборы только для оценки
+## 8. External Evaluation-Only Benchmarks
 
-| Набор | HF ID / источник | Что проверяет | Условия |
+| Suite | HF ID / Source | Purpose | Terms |
 |---|---|---|---|
-| LLM-AggreFact | `lytang/LLM-AggreFact` | поддержка утверждения документом (11 наборов, en) | карточка HF: только как benchmark, в обучении и предобучении не использовать (проверено 2026-11-21) |
+| LLM-AggreFact | `lytang/LLM-AggreFact` | Document-level claim support (11 English suites) | HF card: evaluation benchmark only — never use in training or pretraining (checked 2026-11-21) |
 
-Такие наборы не входят в train и не деконтаминируются против корпуса: они нужны как внешняя проверка, а не как eval гейта.
+External benchmarks are excluded from train and corpus decontamination; they serve as auxiliary checks outside promotion gates.

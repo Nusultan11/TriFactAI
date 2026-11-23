@@ -1,4 +1,4 @@
-# 2. Qdrant для dense- и BM25-поиска
+# 2. Qdrant for Dense and BM25 Search
 
 Date: 2026-11-18
 
@@ -6,16 +6,16 @@ Date: 2026-11-18
 
 Accepted
 
-Amended by [13. Двухуровневый индекс Qdrant](0013-two-tier-qdrant-index.md)
+Amended by [13. Two-Tier Qdrant Index](0013-two-tier-qdrant-index.md)
 
 ## Context
 
-Гибридный поиск требует лексического (BM25) и векторного индекса. Отдельный Elasticsearch/OpenSearch — ещё один тяжёлый сервис (≥1–2 GB RAM) и синхронизация двух индексов.
+Hybrid retrieval requires both lexical (BM25) and dense vector indexing. Running a separate Elasticsearch/OpenSearch cluster adds ≥1–2 GB RAM overhead and cross-store synchronization complexity.
 
 ## Decision
 
-Одна коллекция Qdrant с named vectors: `dense` (BGE-M3, 1024, cosine) и `bm25` (sparse с IDF-модификатором). Фильтры по `document_id`, `lang`, `entity_ids` через payload-индексы. RRF считаем в приложении, чтобы контролировать `k` и логировать ранги каждого метода.
+Use a single Qdrant collection with named vectors: `dense` (BGE-M3, 1024-d, cosine) and `bm25` (sparse with IDF modifier), plus payload indexes on `document_id`, `lang`, and `entity_ids`. Compute RRF in application code to control `k` and log per-leg ranks.
 
 ## Consequences
 
-Меньше инфраструктуры и одна точка консистентности. Казахская морфология в BM25 слабее, чем у Elasticsearch с анализаторами; компенсируем нормализацией текста и сравнением sparse-векторов BGE-M3 как альтернативы (эксперимент).
+Simpler infrastructure with a single consistency boundary. Kazakh morphology is weaker under Qdrant BM25 than Elasticsearch analyzers; mitigated via text normalization and benchmarking BGE-M3 sparse vectors as an alternative.

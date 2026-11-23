@@ -1,4 +1,4 @@
-# 9. Model Registry и гейт продвижения по метрикам
+# 9. Model Registry and Metric-Driven Promotion Gate
 
 Date: 2026-11-18
 
@@ -6,16 +6,16 @@ Date: 2026-11-18
 
 Accepted
 
-Amended by [22. Протокол оценки](0022-evaluation-protocol.md)
+Amended by [22. Evaluation Protocol](0022-evaluation-protocol.md)
 
 ## Context
 
-Моделей несколько (NER, embedder, reranker, LLM-адаптер), и нужно гарантировать, что сервис использует проверенные версии.
+The platform serves multiple models (NER, embedder, reranker, NLI, LLM adapter) and must guarantee that production only loads verified versions.
 
 ## Decision
 
-Все модели регистрируются в MLflow Model Registry. Сервисы при старте загружают версию с alias `champion`. Новая версия получает `challenger` и становится `champion` только если Evaluation Harness подтвердил пороги из `params.yaml: promotion` (архитектура §10) на замороженном тесте, с bootstrap CI или ≥ 3 сидами. Если fine-tuning не обыграл baseline, он не продвигается.
+Register all models in MLflow Model Registry. Services load alias `champion` on startup. New versions receive alias `challenger` and advance to `champion` only when the Evaluation Harness confirms `params.yaml: promotion` thresholds (`01-architecture.md §10`) on frozen test sets with bootstrap CI or ≥3 seeds. If fine-tuning fails to beat baseline, it is not promoted.
 
 ## Consequences
 
-Каждый ответ API содержит версии моделей; откат — перенос alias.
+Every API response records model versions; rollback is an alias reassignment.

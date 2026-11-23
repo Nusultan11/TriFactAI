@@ -1,538 +1,244 @@
-# TriFact AI — журнал прогресса
+# TriFact AI — Progress Log
 
-Читается перед любой работой ([AGENTS.md §3](../AGENTS.md)). Записи этапов добавляются сверху.
+Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new entries at the top.
 
-## Текущее состояние
+## Current State
 
-| | |
+| Field | Status |
 |---|---|
-| **Текущий этап** | Stage 1–3 · переквалификация для облака. В Colab проверено восстановление Git, выборочных DVC-выходов и модели. Полное восстановление raw и Stage 2–3 открыты |
-| **Последний завершённый этап** | 1 — Data Platform & Acquisition (2026-11-20); этап 4 завершён раньше (2026-11-20) |
-| **Декомпозиция** | В shrimp добавлены задачи среды, перепроверки Stage 1, Stage 2, Stage 3 и публикации |
-| **Удалённый репозиторий** | `origin` → https://github.com/Nusultan11/TriFactAI (`main`) |
-| **DVC на ноутбуке** | `drive_desktop` по умолчанию ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). На Google Drive сверены имена и размеры всех 5 158 объектов кеша (220 ГиБ). В чистой копии репозитория `dvc pull` восстановил 9 файлов `data/review.dvc` |
-| **Raw-слой** | 19 источников: 17 HF + Wikidata `20261116` (122 308 973 сущностей) + Wikipedia wikitext `20261101`; сверки строк сошлись у всех |
+| **Active stage** | Stage 1–3 cloud requalification. Colab CPU verified Git, selective DVC restore, and model restore; full `raw` and Stage 2–3 cloud requalification remain open |
+| **Last completed stage** | Stage 1 — Data Platform & Acquisition (2026-11-20); Stage 4 completed earlier (2026-11-20) |
+| **Remote repository** | `origin` → `https://github.com/Nusultan11/TriFactAI` (`main`) |
+| **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All 5,158 cache objects (220 GiB) verified by name and size on Drive; clean-clone `dvc pull` restored 9 `data/review.dvc` files |
+| **Raw layer** | 19 sources: 17 HF + Wikidata `20261116` (122,308,973 entities) + Wikipedia wikitext `20261101`; all row checks passed |
 
-## Блокеры (нужно действие пользователя или время)
+## Open Blockers (User Action, Quota, or Budget Required)
 
-1. **Ручная проверка этапа 3 (eval и silver).** Человек размечает:
-   - `data/eval/review/sheet-01.csv` — 3 500 элементов: MT-запросы retrieval, kk-NLI. ROADMAP 3.5 требует разметки всего листа. `retrieval` и `nli` имеют статус `candidate`. После разметки запускать `python -m trifact.data.build_eval freeze`.
-   - `data/review/ner_silver/to_label.csv` — 600 предложений silver NER, по 200 на язык (ADR-0015, оценка шума человеком).
-   - Оценка LLM этих проверок не заменяет.
-2. **Ручная проверка этапа 2.** Лист `data/review/quality_human/to_label.csv` — 1 500 документов, 500 на язык (350 оставленных, 150 отброшенных, стратифицировано). Порядок:
-   1. Заполнить лист и сохранить как `labels.csv`.
-   2. Выполнить `python -m trifact.evaluation.review_quality score --review-dir data/review/quality_human --reviewer "<имя>"`.
+1. **Stage 3 human review (eval & silver NER):**
+   - `data/eval/review/sheet-01.csv` — 3,500 items (MT retrieval queries, `kk` NLI). ROADMAP 3.5 requires full human labeling; `retrieval` and `nli` remain `candidate` until `python -m trifact.data.build_eval freeze`.
+   - `data/review/ner_silver/to_label.csv` — 600 silver NER sentences (200/language, ADR-0015 noise audit).
+   - AI/LLM judgments do not substitute for human labels.
+2. **Stage 2 human review:**
+   - `data/review/quality_human/to_label.csv` — 1,500 stratified docs (500/language: 350 kept, 150 dropped). Save completed sheet as `labels.csv`, then run `python -m trifact.evaluation.review_quality score --review-dir data/review/quality_human --reviewer "<name>"`.
+   - Prior `data/review/quality` and 550 re-checked langid paragraphs were LLM-labeled (Claude, tagged in `reviewer`) and do not replace human review.
+3. **Kaggle GPU quota for synthetic teacher:**
+   - On 2026-11-22, API reported `7.78 / 30` GPU-hours remaining (reset `2026-11-28 00:00 UTC`). Prior 6 h run produced 12,624 / 30,000 query prompts and 4,554 / 10,000 QA prompts → 33,471 queries and 1,824 QA pairs after filtering.
+   - Below `datasets.md §6` synthetic targets; requires additional weekly quota or approved `params.yaml: cloud.budget_usd > 0`.
+4. **Colab GPU tier & budget:**
+   - Hosted CPU runtime (12.67 GB RAM, 107.72 GB disk) verified with Drive. Account has `0.00` compute units (NVIDIA L4 unavailable without paid units); `params.yaml: cloud.budget_usd: 0`. Recovery protocol: [ADR-0025](architecture/adr/0025-cloud-only-computing.md).
+5. **Optional MCP servers:**
+   - `github` MCP: invalid `Authorization` header (`GITHUB_PERSONAL_ACCESS_TOKEN`).
+   - `mlflow` MCP: `127.0.0.1:5000` refused connection (2026-11-22). Historical MLflow runs logged via local HTTP; shared cloud MLflow server remains to be qualified.
 
-   Прежняя проверка `data/review/quality` и 550 перепроверенных абзацев langid сделаны LLM (Claude) и так помечены (`reviewer`). Человеческую проверку они не заменяют.
-3. **Квота Kaggle для синтетики учителя.** 22.11.2026 API вернул 7.78 из 30 GPU-часов. Следующий сброс указан на 2026-11-28 00:00 UTC. Предыдущий 6-часовой прогон дал:
-   - 12 624 из 30 000 промптов запросов и 4 554 из 10 000 QA;
-   - после фильтров: 33 471 запрос и 1 824 QA-пары.
+## Downstream Notes (Carry Forward)
 
-   Цели datasets.md §6 для синтетики этим не достигаются. Нужны новые недели квоты или утверждённый бюджет облака (`cloud.budget_usd: 0`). Платные задания без бюджета не запускаются.
-4. **Colab.** Hosted CPU-сессия (12.67 GB RAM, 107.72 GB диска) подключена к Drive. В настройках текущего аккаунта L4 недоступен; бюджет задан в `params.yaml: cloud.budget_usd`. Схема восстановления — [ADR-0025](architecture/adr/0025-cloud-only-computing.md).
-5. **MCP-серверы.**
-   - `github`: неверный заголовок Authorization (`GITHUB_PERSONAL_ACCESS_TOKEN`).
-   - `mlflow`: endpoint `127.0.0.1:5000` отклонил подключение 2026-11-22.
-
-   Исторические записи MLflow проводились по HTTP. Облачную запись и восстановление предстоит проверить.
-
-## Что учесть дальше
-
-- `fineweb2_kk` даёт пик RSS 5.2 GB при 4 воркерах, потому что входные row group большие. Лимит `lake.peak_ram_gb` = 10 GB соблюдён. Если параллельно идут тяжёлые задания, запускать с `--workers 2`.
-- В CSV `multidomain_kk` 24 883 808 записей, а карточка и datasets-server дают 15.51 M (частичный подсчёт). Сверка идёт полным чтением CSV (`csv_record_count`). Состав корпуса (CC100, OSCAR, новости) пересекается с FineWeb-2, поэтому межисточниковая дедупликация на этапе 2 обязательна.
-- Источники с `research_only` (WikiANN, NEREL, SberQuAD, WikiNEuRal, XNLI, MS MARCO, mMARCO) идут только в train/eval, их производные наследуют `release: false` ([datasets.md §7](research/datasets.md)). `multidomain_kk` — allowed, но тоже `release: false`.
-- В KazParC есть синтетические конфиги `sync` и `sync_raw` (таблицы `sync_pairs`, `sync_entries`). На этапе 3 отделить их от ручных пар, чтобы синтетика не попала в eval (ADR-0015).
-- Память на этой машине (15.4 GB RAM, ночные перезагрузки) — главное ограничение массовых заданий.
-  - Тяжёлые задания идут строго по одному.
-  - EDA — 2 воркера, пик 8.7 GB; NER — 3 воркера.
-  - Polars: отфильтрованные строки держат string views на все прочитанные текстовые буферы. Поэтому выборки из больших корпусов делаются через pyarrow-фильтр по ключам (`task_common.rows_with_keys`), а не фильтром или semi join по ленивому скану.
-- Синтетика учителя (ADR-0015, ADR-0020): llama.cpp на 2×T4 даёт ~3.6 ток/с на слот при промптах ~1 500 токенов. Суммарно ~56 ток/с против 740 в коротком бенчмарке. Перед следующим прогоном:
-  - короче evidence в QA-промптах, пассажи уже нумеруются вместо длинных chunk_id;
-  - замерить префилл отдельно от декода.
-- NLI-фильтр синтетического QA проверяет каждое утверждение по окнам из 3 предложений процитированного пассажа: максимум по окнам, минимум по утверждениям. Порог `teacher.filters.min_nli_entail` = 0.7 не откалиброван человеком. Доля прошедших ответов: 0.70 при пороге 0.5 и 0.58 при 0.7.
-- NLI-модель mDeBERTa-xnli обучена на XNLI: на XNLI validation её согласие 1.0. Как проверка согласованности меток kk-перевода XNLI она годится только с этой оговоркой. Независимая проверка — этап 8.
-- Hypothesis-only baseline XNLI: 0.52–0.56 при случайном уровне 0.33. Артефакты разметки есть во всех языках. На этапе 8 метрики NLI сравниваются с этим baseline.
-- Решения EDA, применяемые ниже по конвейеру (`curation.downstream`, этапы 6–7):
-  - kk-документы с долей специфичных казахских букв < 0.05 не идут в индекс и обучающие смеси: 1.06% curated kk, кандидаты на повреждённую кодировку или русский текст;
-  - валидные ИИН и e-mail маскируются.
-- Wikidata: kk-метки есть только у 0.38% сущностей (en — 76.4%). Связывание сущностей для kk должно опираться на ru/en-метки, алиасы и sitelinks kkwiki (titles в `task/kb`).
-- Retrieval-пары kk-kk — всего ~63k. Межъязыковые направления почти целиком (~97%) состоят из предложений KazParC: это короткие параллельные предложения, не пассажи. Добирать kk-kk синтетикой учителя (блокер 3) и взвешивать источники на этапе 6.
-- `HF_TOKEN` хранится только в `.env`, никогда в `.env.example`. Gated-наборы (KazNERD, KazQAD, KazParC) требуют токен для `dvc repro`, но не для `dvc pull`.
-- Qwen3.5: только bf16 LoRA, QLoRA не применять; нужен vLLM ≥ 0.17 (ADR-0012). Совместимость PEFT и llama.cpp проверить первым шагом этапа 7.
-- Полный индекс 35M, скорее всего, не поместится в 15 GB RAM вместе со стеком. Ступени RET-S решат, нужен ли Serving VM (ADR-0013).
-- Перекачка векторов корпуса (~72 GB fp16) дорогая: коллекцию лучше собирать там, где она будет обслуживаться (ADR-0014).
-- Обработка документов (ADR-0021): воркеру нужен бинарник Tesseract 5 (`TRIFACT_TESSERACT` в Linux-образе) и ~2.1 GB RAM на процесс парсера с моделями Docling. Скан или таблица на CPU — 2–9 с/стр, поэтому загрузка сканов в нагрузочном тесте этапа 9 — отдельный сценарий.
-- Бенчмарк `docproc` синтетический по вёрстке (реальный текст, известная разметка). Перенос на реальные файлы проверяется набором `real_docs` (≥ 50, `evaluation.real_docs_min`, этап 10). В первую очередь там смотреть пороги маршрутизатора (`docproc.router`, `docproc.pymupdf`) и таблицы без линеек.
-- Варианты чанкинга (`chunking.variants`) выбираются на этапе 6 по retrieval. `chunk_corpus` пока режет корпус без секций (`flat`), а `DocumentChunker` режет загрузки по секциям.
-- `dvc.yaml`: выходы `build_eval` перечислены по наборам (`data/eval/{ner,qa,retrieval,nli,review}`), потому что `data/eval/docproc` — выход стадии `build_docproc`.
+- `fineweb2_kk` peaks at 5.2 GB RSS with 4 workers due to large input row groups (within `lake.peak_ram_gb: 10`); use `--workers 2` when sharing RAM.
+- `multidomain_kk` CSV has 24,883,808 records (HF card/datasets-server show 15.51 M partial count); verified via full `csv_record_count`. Overlaps with FineWeb-2 (CC100, OSCAR, news) → cross-source dedup mandatory.
+- `research_only` sources (WikiANN, NEREL, SberQuAD, WikiNEuRal, XNLI, MS MARCO, mMARCO) are train/eval only and propagate `release: false` ([datasets.md §7](research/datasets.md)); `multidomain_kk` is `allowed` with `release: false`.
+- Separate KazParC synthetic configs (`sync`, `sync_raw` → `sync_pairs`, `sync_entries`) from human pairs so synthetic rows never enter eval (ADR-0015).
+- **Polars memory trap:** filtered Polars views pin underlying string buffers. Subset large corpora via PyArrow key filter (`task_common.rows_with_keys`), not Polars lazy filter/semi-join.
+- **Teacher synthetic throughput (ADR-0015, ADR-0020):** `llama.cpp` on 2× T4 achieved ~3.6 tok/s per slot (~56 tok/s total) at ~1,500-token prompts vs. 740 tok/s in short benchmark. Next run: shorten QA evidence, keep numeric passage IDs, measure prefill vs. decode separately.
+- **Synthetic QA NLI filter:** scores each claim over 3-sentence passage windows (max over windows, min over claims). `teacher.filters.min_nli_entail: 0.7` is uncalibrated by humans (pass rate: 0.70 at 0.5, 0.58 at 0.7).
+- `mDeBERTa-xnli` was trained on XNLI (validation agreement 1.0); treat its `kk` XNLI consistency score with that caveat until Stage 8 independent evaluation.
+- XNLI hypothesis-only baseline: `0.52–0.56` vs. `0.33` chance across all languages; compare Stage 8 NLI models against this baseline.
+- **EDA downstream rules (`curation.downstream`, Stages 6–7):** exclude `kk` docs with Kazakh-letter share `< 0.05` (1.06% of curated `kk`: broken encoding or `ru`); mask checksum-valid IIN and emails (do not mask phone regex — fires on 45% of `en` wikitext dates/coordinates).
+- **Wikidata `kk` gap:** only `0.38%` of entities have `kk` labels (`en`: `76.4%`); `kk` entity linking must leverage `ru`/`en` labels, aliases, and `kkwiki` sitelinks (`task/kb`).
+- **Retrieval `kk-kk` shortage:** ~63k pairs; ~97% of cross-lingual pairs are short KazParC sentences rather than passages. Supplement with teacher synthetic queries (Blocker 3) and reweight sources in Stage 6.
+- Keep `HF_TOKEN` only in `.env` (never `.env.example`); required for `dvc repro` on gated sets (KazNERD, KazQAD, KazParC), not `dvc pull`.
+- **Qwen3.5 (ADR-0012):** bf16 LoRA only (never QLoRA), `vLLM >= 0.17`; verify PEFT + `llama.cpp` compatibility at Stage 7 start.
+- Full 35M Qdrant index likely exceeds 15 GB RAM alongside the serving stack; `RET-S` decides Serving VM (ADR-0013). Build vector collections where served to avoid transferring ~72 GB fp16 vectors (ADR-0014).
+- **Document processing (ADR-0021):** worker needs Tesseract 5 binary (`TRIFACT_TESSERACT` on Linux) and ~2.1 GB RAM/parser process with Docling; scans/tables take 2–9 s/page on CPU → separate load-test scenario in Stage 9. Verify synthetic benchmark transfer on `real_docs` (≥50 files, Stage 10).
+- `chunking.variants` are chosen in Stage 6; `chunk_corpus` currently chunks flat, while `DocumentChunker` respects sections.
+- `dvc.yaml` lists `build_eval` outputs individually (`data/eval/{ner,qa,retrieval,nli,review}`) because `data/eval/docproc` belongs to `build_docproc`.
 
 ---
 
-## Stage 1–3 · облачная переквалификация (2026-11-22)
+## Stage 1–3 · Cloud Requalification (2026-11-22)
 
-- **Проверка в Colab CPU.** Из Google Drive в чистой VM восстановлены `data/review.dvc` (9 файлов), `data/external.dvc` (242 файла), модель lid.176 с проверкой SHA-256 и Git bundle с коммитом `32bc2a6`. DVC status чистый для двух целей, включая сверку с remote. Квитанция `workspace-data/colab-recovery/02a36f308d6d4126b9c1ca9e6f567ce3.json`, 174.5 с.
-- **Пилоты Stage 2–3.** Прогон `workspace-data/colab-validation/stage-01-03-2026d1dadd71`: raw EDA NEREL, три профиля, 0.7 с, пик RSS 312.4 МиБ. QA-импорт обоих прогонов учителя дал 16 904 кандидата до NLI. Снимок MLflow содержит 2 run. Первый импорт retrieval упал на вычислении порога длины вне контекста таблицы Polars; исправлены выражение и регрессионный тест для двух типов запросов.
-
-- Добавлен [блокнот Colab](../notebooks/cloud_stages.ipynb) для закреплённой Git-ревизии, подключения DVC с проверкой хешей, запуска CPU-стадий и GPU-шардов и снимков MLflow. Colab L4 и независимое облачное восстановление ожидают проверки. Изменений в сохранённых наборах и существующих DVC-указателях эта переквалификация не сделала.
-- **Stage 1.** Через смонтированный Google Drive проверены 19 исходных `source.yaml` и их MD5, решения по лицензиям, успешные сверки строк из манифестов, наличие и размер 584 Parquet-шардов. Hugging Face подтвердил 17 закреплённых ревизий. Wikimedia вернул HTTP 200 на HEAD дампа, файла контрольных сумм, зеркала и девяти URL wikitext со штатным User-Agent. Полное повторное хеширование всех шардов в независимой облачной среде ещё не выполнялось. FastText lid.176 восстановлен из двух частей с совпадением закреплённого SHA-256 в отдельной временной папке Windows.
-- **Stage 2.** В Drive найдены исходные EDA: raw, clean, curated, entities — 41, 14, 12 и 1 профиль. Зафиксированный пик RSS raw и curated — 10 513 и 11 200 МиБ, выше 10 ГиБ. В DVC каждый слой EDA теперь получает нужный ему вход. Облачный повтор и человеческая проверка остаются открытыми.
-- **Stage 3.** Дубликаты вердиктов блокируют заморозку eval, требуется полный пакет. Контроль утечек возвращает ошибку при ненулевом пересечении вне общего пула retrieval-пассажей. Исторические 198 совпадений retrieval-запросов требуют повторной проверки после пересборки train. Доступные task EDA и манифесты не подтверждают закрытие этапа.
-- **Kaggle 2× T4.** В Drive под `workspace-data/kaggle` сохранены проверенные пакеты версии 1 `trifact-teacher-queries2` и `trifact-teacher-qa2`: 15 042 результата retrieval и 5 600 результатов судьи из 65 600 промптов, 5 629 результатов QA из 24 000 промптов. Число строк Parquet совпало со сводками. ID уникальны и сопоставлены с метаданными промптов; 270 и 210 соответственно остановились по лимиту длины. Замеры учителя — 0.524 и 0.142 запроса/с. Это сырые выходы, предстоит импорт и прогон фильтров качества. Отдельный [NLI-пилот на 512 парах](https://www.kaggle.com/code/nurs2005/trifact-cloud-nli-pilot) отправлен как версия 1.
-- **Пакеты разметки.** В [приватной папке Drive](https://drive.google.com/drive/folders/12hhFB-DBU5LoCItabO3r_eGGw5qRZ2nH) есть исходные листы, `review.html` и `machine_labels.csv`. Разбираемые ответы судьи версии 1 дали предложения для 1 500 из 1 500 документов, 3 403 из 3 500 eval-элементов и 457 из 600 предложений silver NER. HTML сохраняет решения человека по элементам. На момент подготовки принятых человеческих вердиктов не было.
-- Загрузка метаданных промптов в новый приватный Kaggle dataset для CPU-фильтрации отклонена автоматической проверкой разрешений. Пакеты импорта доступны в Drive для авторизованной сессии Colab.
+- **Colab CPU verification:** Restored `data/review.dvc` (9 files), `data/external.dvc` (242 files), `lid.176` with SHA-256 check, and Git bundle (`32bc2a6`) from Drive in a clean VM. Clean `dvc status` (local + remote). Receipt: `workspace-data/colab-recovery/02a36f308d6d4126b9c1ca9e6f567ce3.json` (174.5 s).
+- **Stage 2–3 pilots (`workspace-data/colab-validation/stage-01-03-2026d1dadd71`):** raw EDA on NEREL (3 profiles, 0.7 s, peak RSS 312.4 MiB); QA import of both teacher runs yielded 16,904 pre-NLI candidates; MLflow snapshot contains 2 runs. Fixed retrieval import Polars expression context bug and added regression test for both query types.
+- Added [notebooks/cloud_stages.ipynb](../notebooks/cloud_stages.ipynb) for pinned Git checkout, verified Drive DVC mount, CPU/GPU stages, and MLflow snapshots. Colab L4 and full independent cloud restore remain open; no stored datasets or DVC pointers were altered.
+- **Stage 1 audit:** Verified 19 `source.yaml` manifests + MD5s, licenses, row checks, and 584 Parquet shard sizes on mounted Drive; HF confirmed 17 pinned revisions; Wikimedia returned HTTP 200 on dump/checksum/mirror/9 wikitext HEADs. Full shard re-hashing in an independent cloud VM remains open. `lid.176` reconstructed from 2 parts with exact SHA-256 match.
+- **Stage 2 audit:** Located raw/clean/curated/entities EDA outputs on Drive (41/14/12/1 profiles); recorded raw/curated peak RSS 10,513 / 11,200 MiB (>10 GiB). Updated `dvc.yaml` so each EDA layer receives only its input. Cloud rerun and human review remain open.
+- **Stage 3 audit:** Duplicate verdicts block eval freeze; leakage check fails on non-zero overlap outside shared MIRACL passage pool; historical 198 retrieval query overlaps require re-check after train rebuild.
+- **Kaggle 2× T4 outputs archived on Drive (`workspace-data/kaggle`):** v1 `trifact-teacher-queries2` (15,042 retrieval + 5,600 judge outputs / 65,600 prompts, 0.524 req/s, 270 length-truncated) and `trifact-teacher-qa2` (5,629 QA outputs / 24,000 prompts, 0.142 req/s, 210 length-truncated). Parquet row counts and IDs verified; raw outputs awaiting import/filtering. Separate NLI pilot (512 pairs) submitted as v1 (`nurs2005/trifact-cloud-nli-pilot`).
+- **Assisted review packets:** Private Drive folder holds raw sheets, `review.html`, and `machine_labels.csv` (judge v1 suggestions: 1,500/1,500 docs, 3,403/3,500 eval items, 457/600 silver NER). No accepted human verdicts yet.
+- Uploading prompt metadata as a new private Kaggle dataset was blocked by automated permissions check; import bundles remain available on Drive for Colab.
 
 ---
 
-## Пересмотр архитектуры и этапов по скиллам (2026-11-21)
+## Architecture & Stage Alignment Review (2026-11-21)
 
-Документы сверены с методиками `.agents/skills`. Код и данные этапов 1–4 не менялись, `dvc status` по уже выполненным стадиям прежний.
+Audited docs against `.agents/skills`; Stage 1–4 code, data, and `dvc status` unchanged.
 
-**Найденные пробелы и решения**
-
-| Пробел | Решение |
+| Gap | Resolution |
 |---|---|
-| faithfulness стоит в гейте LLM, но не определён | [ADR-0022](architecture/adr/0022-evaluation-protocol.md): доля утверждений, поддержанных цитатами, по верификатору с ручной проверкой вердиктов (`verification.faithfulness_audit_claims`) |
-| бутстреп по примерам при зависимых примерах (вопросы одного контекста, переводы запроса) | ADR-0022: парный бутстреп по кластерам, сиды внутри ресэмплов |
-| нет правил для LLM-судей и проверки загрязнения предобучения | ADR-0022: судья только после калибровки человеком; метрики на подмножестве не из Wikipedia и `real_docs` |
-| prompt injection через документы не описана и не меряется | [ADR-0023](architecture/adr/0023-untrusted-evidence-in-prompts.md): изоляция пассажей, проверка выхода, набор атак в e2e, гейт `promotion.e2e_injection_no_worse` |
-| в `promotion` нет порогов Verification | `verification_contradicted_precision_min`, `verification_ece_max` (стартовые, пересмотр на этапе 8) |
-| в архитектуре §10 числа гейта дублировали `params.yaml` | таблица гейта ссылается на ключи `promotion` |
-| этапы 5–10 без постадийной диагностики | ROADMAP: recall кандидатов EL, candidate recall и ANN против точного поиска (RET-S), RET-C, регрессии адаптера, тест верификатора на ответах системы, трассы e2e и стадии-виновники, дрейф, `real_docs` |
-| bf16 LoRA (ADR-0012) невозможна на T4 Kaggle при нулевом бюджете | ROADMAP 7.0 — предусловие, риск в архитектуре §17 |
-| факты о VLM-OCR и проверщиках утверждений лежали в скиллах | перенесены в models.md §5, §6.4 и datasets.md §8, скиллы ссылаются на них |
+| `faithfulness` in LLM gate undefined | [ADR-0022](architecture/adr/0022-evaluation-protocol.md): verifier-supported claim share + human audit (`verification.faithfulness_audit_claims`) |
+| Example-level bootstrap on dependent items | ADR-0022: cluster paired bootstrap with joint seed resampling |
+| No LLM-judge or contamination rules | ADR-0022: human-calibrated judge only; non-Wikipedia & `real_docs` slices |
+| Prompt injection unspecified/unmeasured | [ADR-0023](architecture/adr/0023-untrusted-evidence-in-prompts.md): spotlighting, independent output checks, attack suite, `promotion.e2e_injection_no_worse` |
+| Missing Verification gate thresholds | Added `verification_contradicted_precision_min`, `verification_ece_max` (starter values) |
+| Gate numbers duplicated in `01-architecture.md §10` | Replaced with `params.yaml: promotion` key references |
+| Stages 5–10 lacked per-stage diagnostics | Added candidate recall, ANN vs. exact (`RET-S`), `RET-C`, adapter regressions, system-answer verifier test, e2e traces, drift, `real_docs` |
+| bf16 LoRA incompatible with Kaggle T4 at $0 budget | Added ROADMAP 7.0 precondition and `01-architecture.md §17` risk |
+| VLM-OCR & claim-verifier facts lived in skills | Moved to `models.md §5, §6.4` and `datasets.md §8` |
 
-**Изменено:** архитектура §7.2–§7.5, §10, §12, §14, §16, §17; ROADMAP этапы 5–10; ADR-0009 (Amended by 22); `params.yaml: promotion`, `verification`; models.md; datasets.md; скиллы evaluation, verification, rag-pipeline, retrieval, llm-finetuning, mlops, document-processing.
-
-**C4-модель** (`workspace.dsl`) не менялась: новых контейнеров и связей нет.
+C4 model (`workspace.dsl`) unchanged.
 
 ---
 
-## Инструменты агента — библиотека Agent Skills (2026-11-21)
+## Agent Skills Library (2026-11-21; modernized 2026-11-23)
 
-Вне этапов ROADMAP: методическая база для автономного агента.
-
-- **Состав.** 11 скиллов в [.agents/skills/](../.agents/skills/README.md):
-  - `trifact-data-pipeline`, `trifact-eda`, `trifact-document-processing`, `trifact-ner-linking`;
-  - `trifact-training-hpo`, `trifact-retrieval`, `trifact-rag-pipeline`, `trifact-llm-finetuning`;
-  - `trifact-verification`, `trifact-evaluation`, `trifact-mlops`.
-
-  Каждый скилл содержит условия применения, ссылки на документы-владельцы, метод, критерии выбора инструментов, типичные ошибки, критерии готовности и источники. Числа проекта не копируются.
-- **Совместимость.** Формат — спецификация agentskills.io, во frontmatter только `name` и `description`.
-  - Codex читает `.agents/skills/` напрямую.
-  - Claude Code читает зеркало `.claude/skills/`. Его генерирует [scripts/sync_skills.py](../scripts/sync_skills.py), потому что symlink не подходит: `core.symlinks=false` на Windows.
-  - Тест [tests/test_skills.py](../tests/test_skills.py) и хук pre-commit проверяют спецификацию, ссылки и синхронность зеркала.
-- **Проверка.**
-  - `codex debug prompt-input` (codex-cli 0.144.0): все 11 скиллов в списке модели, описания и кириллица целы.
-  - Лексическая проверка выбора скилла на 18 типовых задачах RU/EN: 18/18.
-  - Тест YAML поймал двоеточия в описаниях, из-за которых Claude Code загрузил бы скилл без метаданных; исправлено.
-  - Claude Code (desktop) подхватил все 11 скиллов из `.claude/skills/` без перезапуска сессии, `trifact-evaluation` загружен через Skill.
-- **Исправлено попутно:** docstring `train_llm`, `llm_client` (Qwen3-1.7B + QLoRA → Qwen3.5 + bf16 LoRA, ADR-0012) и `retrieval.store` (две коллекции, ADR-0013).
+- Built 11 domain skills under [.agents/skills/](../.agents/skills/README.md) (`trifact-{data-pipeline,eda,document-processing,ner-linking,training-hpo,retrieval,rag-pipeline,llm-finetuning,verification,evaluation,mlops}`) following `agentskills.io`.
+- Historical note: initially mirrored to `.claude/skills/` via `scripts/sync_skills.py` and verified in Codex (`codex-cli 0.144.0`, 18/18 routing accuracy) and Claude Code desktop. On 2026-11-23 (`4bc2093`), `CLAUDE.md`, `.claude/skills/`, and `scripts/sync_skills.py` were removed so `.agents/skills/` is the single canonical directory.
+- Fixed stale docstrings in `train_llm`, `llm_client` (ADR-0012), and `retrieval.store` (ADR-0013).
 
 ---
 
-## Этап 3 — Task Datasets: остановлен (2026-11-21)
+## Stage 3 — Task Datasets: Stopped (2026-11-21)
 
-Всё, что не зависит от человека и квоты Kaggle, собрано, проверено и записано в DVC и MLflow. Остановлен по блокерам 1 и 3:
-- eval `retrieval` и `nli` ждут ручной проверки 3 500 элементов и потому не заморожены;
-- шум silver NER оценён на gold, но человеческая оценка 600 предложений не сделана;
-- синтетика учителя меньше целей.
+All work independent of human labels and Kaggle quota is built, verified, and logged in DVC/MLflow. Stopped on Blockers 1 & 3 (`retrieval`/`nli` eval unfrozen, 600 silver NER sentences unreviewed, teacher synthetic below target).
 
-**Что сделано**
+**Completed**
+- **3.1 NER** ([build_ner.py](../src/trifact/data/build_ner.py), [build_kb.py](../src/trifact/data/build_kb.py)): mapped KazNERD, WikiANN, WikiNEuRal, NEREL to PER/ORG/LOC (ADR-0006); fixed 16 KazNERD BIO errors; built silver via wikitext links → redirects → KB titles → Wikidata type (3-pass, 200k-sentence chunks). Switched KB typing from label-priority (`PER > ORG > LOC`, which misclassified countries/cities as ORG via "sovereign state") to closest `P279` class → ORG agreement with gold jumped: `kk 0.32 → 0.93`, `ru 0.49 → 0.79`, `en 0.60 → 0.82`.
+- **3.2 Retrieval** ([build_pairs.py](../src/trifact/data/build_pairs.py)): MS MARCO, mMARCO-ru, MIRACL, ru-HNP, QA pairs (incl. MT queries, NQ `kk↔en`), KazParC (human + `synthetic_mt`-tagged sync), teacher queries; source + BM25 hard negatives; isolated process per builder.
+- **3.3 SFT** ([build_sft.py](../src/trifact/data/build_sft.py)): `0.60/0.25/0.15` mix, `kk >= 0.30`, frozen QA eval questions excluded.
+- **Synthetic teacher** ([synthetic.py](../src/trifact/data/synthetic.py), ADR-0015, ADR-0020): Qwen3.5-35B-A3B (`UD-IQ4_XS`) via `llama.cpp` on Kaggle 2× T4. Query filters: parse, length, language, copy, BM25 round-trip, duplicate. QA filters: parse, language, citation, refusal, 3-sentence-window NLI.
+- **3.4 NLI** ([build_nli.py](../src/trifact/data/build_nli.py)): XNLI `ru`/`en` + NLLB-200-distilled-1.3B `kk` MT (`chrF >= 30`, langid, `mDeBERTa-xnli` label consistency).
+- **3.5 Eval** ([build_eval.py](../src/trifact/data/build_eval.py), ADR-0007): `ner` and `qa` frozen (`frozen.json`, SHA-256); `retrieval` and `nli` candidate.
+- **3.6 Budget:** `$0` cloud spend (`cloud.budget_usd: 0`), ~29 / 30 free Kaggle GPU-hours used.
+- **3.7 Task EDA** ([task_eda.py](../src/trifact/data/task_eda.py)) → `reports/eda/task.json`, MLflow `eda/eda-task`.
+- **Corpus chunks** ([chunk_corpus.py](../src/trifact/data/chunk_corpus.py)): ≤350 XLM-R tokens, overlap 50, exact offsets.
 
-- **3.1 NER** ([build_ner.py](../src/trifact/data/build_ner.py)).
-  - Gold KazNERD, WikiANN, WikiNEuRal и NEREL приведены к PER/ORG/LOC (ADR-0006). Сплиты по документу, 16 BIO-ошибок KazNERD исправлены.
-  - Silver: ссылки wikitext → редиректы → titles KB → тип Wikidata. Три прохода, память ограничена частями по 200k предложений.
-  - KB ([build_kb.py](../src/trifact/data/build_kb.py)): замыкание P279 от корневых классов PER/ORG/LOC.
-    - Тип сущности — ближайший класс; приоритет меток используется только при равной глубине.
-    - Прежнее правило «приоритет PER > ORG > LOC» делало страны и города ORG через «sovereign state». Исправление подняло согласие ORG с gold: kk 0.32 → 0.93, ru 0.49 → 0.79, en 0.60 → 0.82.
-- **3.2 Retrieval** ([build_pairs.py](../src/trifact/data/build_pairs.py)): MS MARCO, mMARCO-ru, MIRACL, ru-HNP, QA-пары (включая MT-запросы и NQ kk↔en), KazParC (ручные пары и sync — с пометкой `synthetic_mt`), запросы учителя.
-  - Hard negatives: MS MARCO, mMARCO и qrels MIRACL — из источника; QA — BM25.
-  - Каждый билдер идёт в своём процессе.
-- **3.3 SFT** ([build_sft.py](../src/trifact/data/build_sft.py)): смесь answerable / cross-lingual / unanswerable = 0.60/0.25/0.15, доля kk ≥ 0.30. Вопросы замороженного QA-eval в SFT исключены.
-- **Синтетика учителя** ([synthetic.py](../src/trifact/data/synthetic.py), ADR-0015, ADR-0020): Qwen3.5-35B-A3B (GGUF IQ4_XS) на llama.cpp, Kaggle 2×T4.
-  - Фильтры запросов: parse, length, language, copy, BM25 round-trip, duplicate.
-  - Фильтры QA: parse, language, citation, refusal, NLI. NLI проверяет каждое утверждение по окнам из 3 предложений пассажа.
-- **3.4 NLI** ([build_nli.py](../src/trifact/data/build_nli.py)): XNLI ru/en; kk — перевод NLLB-200-distilled-1.3B (Kaggle).
-  - QC перевода: chrF обратного перевода ≥ 30, язык.
-  - Согласованность меток проверена mDeBERTa-xnli.
-- **3.5 Eval** ([build_eval.py](../src/trifact/data/build_eval.py), ADR-0007): ner, qa, retrieval (9 направлений), nli; проверка утечек по 64-битным хэшам нормализованных текстов. `ner` и `qa` заморожены (`frozen.json`, sha256 шардов).
-- **3.6 Бюджет**: облачных расходов нет (`cloud.budget_usd: 0`). Kaggle — бесплатная квота, за неделю использовано ~29 из 30 GPU-ч.
-- **3.7 EDA task-наборов** ([task_eda.py](../src/trifact/data/task_eda.py)) → `reports/eda/task.json`, MLflow `eda/eda-task`.
-- **Чанки корпуса** ([chunk_corpus.py](../src/trifact/data/chunk_corpus.py)): до 350 токенов XLM-R, перекрытие 50, точные смещения.
+**Results**
 
-**Результаты**
-
-| Набор | kk | ru | en | Итого | Цель datasets.md §6 |
+| Dataset | kk | ru | en | Total | Target (`datasets.md §6`) |
 |---|---|---|---|---|---|
-| NER gold, предложений (train / val / test) | 90 135 / 11 948 / 12 307 | 121 262 / 22 216 / 23 081 | 112 030 / 21 376 / 21 597 | 435 952 | ~1.3 M gold — всех доступных gold-наборов меньше |
-| NER silver (train) | 239 225 | 2 006 149 | 2 274 843 | 4 520 217 | 5–10 M — ниже, см. отклонения |
-| Retrieval-пары | см. направления | | | 14 984 724 | 10–20 M ✓ |
-| SFT | доля 0.30 | | | 307 966 | 1–2 M — ниже |
-| NLI train (en / ru / kk) | 210 255 | 392 645 | 392 645 | 995 545 | ~1.2 M — близко |
-| Чанки корпуса | 29.59 M | 11.78 M | 18.25 M | 59.63 M | ~35 M — выше (kk multidomain) |
-| Синтетика: запросы / QA | 11 161 / 947 | 11 150 / 583 | 11 160 / 294 | 33 471 / 1 824 | ниже (блокер 3) |
-| KB: сущностей | kk-меток 0.38% | | | 105.6 M | — |
+| NER gold sentences (`train/val/test`) | 90,135 / 11,948 / 12,307 | 121,262 / 22,216 / 23,081 | 112,030 / 21,376 / 21,597 | 435,952 | ~1.3 M (all public gold < target) |
+| NER silver (train) | 239,225 | 2,006,149 | 2,274,843 | 4,520,217 | 5–10 M (below; expandable via ru/en dump parts) |
+| Retrieval pairs | see directions | — | — | 14,984,724 | 10–20 M ✓ |
+| SFT | 0.30 share | — | — | 307,966 | 1–2 M (below; Blocker 3) |
+| NLI train | 210,255 | 392,645 | 392,645 | 995,545 | ~1.2 M |
+| Corpus chunks | 29.59 M | 11.78 M | 18.25 M | 59.63 M | ~35 M (subset selected in Stage 6 `RET-S`) |
+| Synthetic queries / QA | 11,161 / 947 | 11,150 / 583 | 11,160 / 294 | 33,471 / 1,824 | Below (Blocker 3) |
+| KB entities | `kk` labels 0.38% | — | — | 105.6 M | — |
 
-- Retrieval по направлениям: en-en 705 382, ru-ru 959 945, kk-kk 63 547; межъязыковые — 2.16–2.27 M на каждое из 6 направлений.
-- Eval:
+- Retrieval directions: `en-en` 705,382; `ru-ru` 959,945; `kk-kk` 63,547; cross-lingual 2.16–2.27 M each (6 directions).
+- Eval sets: `ner` (gold test, frozen), `qa` (32,427, frozen), `retrieval` (38,640 queries, 94,105 qrels, 35,237 docs, candidate), `nli` (12,670, candidate), human review sheet (3,500 items).
+- Leakage check: `retrieval` queries 198/38,640; `retrieval` passages 2,573/35,237 (shared MIRACL corpus negatives); NLI 0.
+- Silver NER noise vs. gold: type agreement on shared surfaces PER `0.92–0.99`, LOC `0.92–0.96`, ORG `0.79–0.93`; gazetteer lower bound F1 `0.12` (KazNERD) – `0.31` (WikiANN `kk`).
+- Teacher synthetic (6 h on 2× T4): 12,624/30,000 queries (~56 tok/s total); 4,554/10,000 QA → 1,824 after NLI (pass rate 0.58 at 0.7 threshold).
+- NLI `kk`: 418,122 / 528,819 translated sentences passed QC; label consistency on test: `en 0.873`, `kk 0.768`.
 
-  | Набор | Объём | Статус |
-  |---|---|---|
-  | ner | gold test | заморожен |
-  | qa | 32 427 | заморожен |
-  | retrieval | 38 640 запросов, 94 105 qrels, 35 237 документов | кандидат |
-  | nli | 12 670 | кандидат |
-  | ручная проверка | 3 500 элементов | — |
-
-- Утечки eval ↔ train после исправлений:
-  - запросы retrieval — 198 из 38 640;
-  - пассажи retrieval — 2 573 из 35 237, это пассажи общего корпуса MIRACL, которые в train служат негативами других запросов;
-  - NLI — 0.
-- Silver NER, шум против gold:
-  - согласие типа на общих поверхностях: PER 0.92–0.99, LOC 0.92–0.96, ORG 0.79–0.93;
-  - газеттир из silver против gold test: F1 0.12 (KazNERD) – 0.31 (WikiANN kk). Газеттир — грубая нижняя оценка, без контекста.
-- Синтетика учителя, 6 ч на 2×T4:
-  - запросы: 12 624 из 30 000 промптов, ~56 ток/с суммарно;
-  - QA: 4 554 из 10 000, после NLI осталось 1 824 пары;
-  - доля прошедших NLI при пороге 0.7: 0.58.
-- NLI kk: 418 122 из 528 819 переведённых предложений прошли QC. Согласованность меток на test: en 0.873, kk 0.768.
-
-**Отклонения от целей datasets.md §6**
-
-- Silver NER 4.52 M < 5 M. kk-википедия даёт всего 239k предложений с типизированными ссылками; ru и en взяты частями дампа. Добирается расширением на остальные части ru/en wikitext. Gold-предложений столько, сколько есть в источниках.
-- SFT 0.31 M < 1 M: синтетика учителя ограничена квотой Kaggle (блокер 3).
-- Чанки 59.6 M > 35 M: kk-корпус multidomain больше исходной оценки. Отбор для индекса — этап 6 (RET-S).
-
-**Эксперименты и сравнения**
-
-- Типизация KB: «приоритет меток» против «ближайшего класса». Ближайший класс победил по согласию ORG с gold во всех языках, см. выше.
-- NLI-фильтр синтетического QA, доля прошедших ответов:
-
-  | Вариант | Доля |
-  |---|---|
-  | весь ответ против двух пассажей | 0.44 |
-  | каждое утверждение против всего пассажа | 0.40 |
-  | каждое утверждение против окон по 3 предложения (принят) | 0.58 |
-
-  Два явно подтверждённых, почти дословных утверждения получали p_entail 0.24 и 0.001 на полном пассаже. Это ограничение NLI на длинной посылке, а не ошибка учителя. Порог 0.7 без человеческой калибровки.
-- Нумерованные цитаты против id чанков: 753 из 4 554 ответов (16.5%) обрезались на `max_tokens` из-за длинных id. Нумерация принята для следующих прогонов.
-
-**Проблемы и решения**
-
-- **Утечка KazQAD.** NQ-часть переиспользует один контекст для разных id, и 2 257 en и 1 206 kk тестовых контекстов были в train. Split теперь проверяет и `ctx_key` (хэш контекста): из train и validation удалено 13 787 примеров, test не изменился, замороженный QA-eval чист.
-- **SberQuAD.** Неразмеченный официальный test (12 id совпадали с train) исключён из split и загрузчика.
-- **MIRACL.** docid — id страниц Википедии; 1.06 M из них есть и в ru, и в en корпусе, и пассаж мог взяться не на том языке. Теперь `doc_id = miracl/<lang>/<docid>`, выборка корпуса идёт по ключам каждого языка.
-- **Память**, все случаи OOM:
-  - финал silver NER — исправлено потоково, по частям;
-  - `build_pairs` — исправлено: процесс на билдер, pyarrow-фильтр по ключам, UInt32-id mMARCO;
-  - `train_keys` в build_eval — исправлено хэшами;
-  - выборка проверки качества — исправлено одним потоковым проходом;
-  - `scan_raw` с 86 параллельными сканами — исправлено одним сканом на язык.
-- **Профиль `pilot`.** Он по умолчанию в `params.yaml` запустил пары в пилотном режиме. Профиль переключён на `full`, все наборы пересобраны в full.
-- **Mojibake.** 4.2% пассажей mMARCO-ru (EDA) — такие пассажи исключены из пар.
-- **llama.cpp** не батчил гибридную модель без `-kvu` (305 → 740 ток/с в бенчмарке). Сборка из исходников падала на `CUDA::cuda_driver`, поэтому взят prebuilt-бинарник с проверкой `--list-devices`.
-
-**Удалено/очищено**: временные рабочие каталоги (`data/.cache/work/*`) и пробные замеры памяти, всё вне git.
+**Experiments & Fixes**
+- NLI QA filter pass rate: full answer vs. 2 passages `0.44`; per-claim vs. full passage `0.40`; **per-claim vs. 3-sentence windows `0.58` (adopted)** — full-passage NLI scored verbatim-supported claims at `0.24` and `0.001`.
+- Numeric citations `[n]` adopted over long `chunk_id` (753/4,554 = 16.5% truncated at `max_tokens`).
+- **KazQAD leakage:** shared contexts across IDs put 2,257 `en` and 1,206 `kk` test contexts in train; added `ctx_key` split guard → dropped 13,787 train/val rows, frozen QA eval clean.
+- **SberQuAD:** excluded unlabeled official test (12 IDs overlapped train).
+- **MIRACL:** namespaced `doc_id = miracl/<lang>/<docid>` (1.06 M Wikipedia page IDs overlapped between `ru` and `en`).
+- **OOM fixes:** chunked streaming silver NER, per-builder process + PyArrow `rows_with_keys` + UInt32 mMARCO IDs in `build_pairs`, hashed `train_keys` in `build_eval`, single-pass review sampling, one scan/language in `scan_raw`.
+- Switched default `scale.profile` from `pilot` to `full` and rebuilt sets. Excluded 4.2% mojibake passages in mMARCO-ru. Added `-kvu` in `llama.cpp` (305 → 740 tok/s batched) and used prebuilt CUDA binary with `--list-devices` check.
 
 ---
 
-## Этап 2 — Data Quality & Curation: остановлен (2026-11-21)
+## Stage 2 — Data Quality & Curation: Stopped (2026-11-21)
 
-Curated-слой собран по полному объёму, EDA всех слоёв выполнен, находки закрыты решениями. Остановлен по блокеру 2: критерий «ручная проверка ≥ 500 документов на язык подтверждает фильтры» не выполнен человеком. Лист готов, а прежняя проверка сделана LLM и человеческую не заменяет.
+Full `curated` layer and full EDA complete; stopped on Blocker 2 (human review of ≥500 docs/language pending; prior review was LLM-labeled).
 
-**Что сделано**
+**Completed & Results**
+- **2.1 Normalization** ([normalize.py](../src/trifact/ingestion/normalize.py)): vectorized with edge-case tests.
+- **2.2 Language ID** (`eval_langid`, `reports/langid.json`): 1,800 paragraphs (`kk`/`ru`/`en`/`ky`/`tt`, 550 LLM-audited). `lid.176` beat `GlotLID` by `+0.028` macro-F1 (95% CI `[0.016, 0.039]`), 5.7× faster; at `min_score: 0.65`, macro-F1 `0.945`, `kk` F1 `0.981`.
+- **2.3 Quality filters** ([quality.py](../src/trifact/data/quality.py), `reports/clean.json`): kept Wikipedia `99.0%`, FineWeb-2 `kk` `98.2%`, `multidomain_kk` `84.2%` (2.89 M were `ru`, 3.6 M too short).
+- **2.4 Dedup** ([dedup.py](../src/trifact/data/dedup.py)): `32,770,131 → 30,879,083` docs (`-5.77%`; 87,416 exact, 1,803,632 near MinHash-LSH; sampled LSH median Jaccard `0.83`, 96% ≥ `0.5`).
+- **2.5 Decontamination** ([decontaminate.py](../src/trifact/data/decontaminate.py)): dropped 31,361 docs, edited `0.54%`; re-scan = 0 leaks. Final `curated`: **30,847,722 docs** (`kk` 19.86 M, `ru` 4.62 M, `en` 6.37 M).
+- **2.6 Full streaming EDA** ([eda.py](../src/trifact/data/eda.py), [eda_report.py](../src/trifact/data/eda_report.py)): `raw` (41 profiles, 57 min), `clean` (14 profiles, 37 min, 8.7 GB peak RSS), `curated` (12 profiles, 70 min), `entities` (1 profile, 0.6 min) → `reports/eda/report.md`, 88 findings, 43 figures, MLflow `eda`.
+- **Tokenizer fertility (tokens/word):** Qwen3.5 `kk 3.64 / ru 2.44 / en 1.49` vs. Qwen3 `kk 4.85 / ru 3.06 / en 1.51` (`kk` 25% cheaper on Qwen3.5, still 2.4× `en`).
+- **2.7 Data cards:** `card.md` alongside every `dataset.yaml`; human review sheet `data/review/quality_human/to_label.csv` (1,500 stratified docs).
 
-- **2.1 Нормализация** ([normalize.py](../src/trifact/ingestion/normalize.py)): векторизованная, с тестами.
-- **2.2 langid** ([eval_langid](../src/trifact/evaluation/eval_langid.py), `reports/langid.json`): 1 800 абзацев (kk, ru, en и близкие ky/tt), gold — по языковому разделу Википедии, 550 абзацев перепроверены LLM.
-  - lid.176 против GlotLID: lid.176 лучше по macro-F1, разница бутстрепа 0.028 [0.016, 0.039] против GlotLID, и в 5.7 раза быстрее.
-  - При `min_score` 0.65: macro-F1 0.945, F1 kk 0.981.
-- **2.3 Фильтры качества** ([quality.py](../src/trifact/data/quality.py)), доля оставленных:
-
-  | Источник | Оставлено |
-  |---|---|
-  | Wikipedia | 99.0% |
-  | FineWeb-2 kk | 98.2% |
-  | multidomain_kk | 84.2% (2.89 M документов оказались ru, 3.6 M слишком короткие) |
-
-  Доли отсева по причинам — `reports/clean.json`.
-- **2.4 Дедупликация** ([dedup.py](../src/trifact/data/dedup.py)): 32 770 131 → 30 879 083 документа, −5.77%.
-  - Точных дублей 87 416, near (MinHash-LSH) 1 803 632.
-  - Проверка пар LSH: медиана Жаккара 0.83, у 96% пар ≥ 0.5. Межисточниковая матрица — в `reports/dedup.json`.
-- **2.5 Деконтаминация** ([decontaminate.py](../src/trifact/data/decontaminate.py)): удалено 31 361 документ, изменено 0.54%. Повторная проверка — 0 протёкших документов.
-  - Итог curated: 30 847 722 документа (kk 19.86 M, ru 4.62 M, en 6.37 M).
-- **2.6 Полный EDA** ([eda.py](../src/trifact/data/eda.py), [eda_report.py](../src/trifact/data/eda_report.py)) — потоково по всему объёму:
-
-  | Слой | Профилей | Время, мин | Пик RSS, GB (2 воркера) |
-  |---|---|---|---|
-  | raw | 41 | 57 | — |
-  | clean | 14 | 37 | 8.7 |
-  | curated | 12 | 70 | — |
-  | entities | 1 | 0.6 | — |
-  | task | — | — | — |
-
-  Итог: `reports/eda/report.md`, 88 находок, 43 графика. В MLflow — эксперимент `eda`: runs `eda-<слой>` и `eda-report` с артефактами.
-- **Токенизаторы**, фертильность (токенов на слово):
-
-  | Токенизатор | kk | ru | en |
-  |---|---|---|---|
-  | Qwen3.5 | 3.64 | 2.44 | 1.49 |
-  | Qwen3 | 4.85 | 3.06 | 1.51 |
-
-  kk у Qwen3.5 на 25% дешевле, но в 2.4 раза дороже en. Это учитывается в бюджете контекста этапа 7.
-- **2.7 Data cards**: у каждого набора есть `card.md` рядом с `dataset.yaml`.
-- **Лист человеческой проверки**: `data/review/quality_human/to_label.csv`, 1 500 документов, стратифицировано по доменам и причинам отсева.
-
-**Находки EDA и решения** (полный список — `reports/eda/findings.json`)
-
-| Находка | Решение |
-|---|---|
-| Повторы id: KazParC (id общие для языковых пар), MIRACL qrels (документ оценён для многих запросов), mMARCO triples и queries, MS MARCO (id общие для v1.1 и v2.1), NEREL | Свойства источников. Ключи построителей включают пару языков, сплит и конфиг; mMARCO и MS MARCO дедуплицируются по qid |
-| SberQuAD: 12 id официального test совпадают с train | Неразмеченный test исключён (этап 3) |
-| Mojibake в 4.2% пассажей mMARCO-ru | Пассажи исключены из retrieval-пар |
-| PII: e-mail и телефоны в 1–3% web- и wiki-документов, валидные ИИН у 0.02% kk; шаблон телефона срабатывает на даты и координаты (45% en wikitext) | `curation.downstream.pii_mask: [iin, email]` при сборке индекса и смесей (этапы 6–7); телефоны не маскируются |
-| kk-документы с долей казахских букв < 5% — 1.06% curated kk (повреждённая кодировка или ru) | `curation.downstream.kk_min_kk_letter_share: 0.05` — исключаются из индекса и смесей; добавлены в ручную проверку |
-| В ru-документах FineWeb-2 kk 5.1% казахских букв | ~4.7k документов (0.02% корпуса); оставлены, langid решает по документу |
-| Латиница в 6–7% заголовков kk/ru Википедии | Иностранные названия, а не ошибка; без действий |
-| Пустые `title`, `url`, `date` у multidomain, FineWeb, Wikipedia | Источники их не дают. Записано в data cards, временной срез EDA есть только у FineWeb-2 |
-| Wikidata: kk-метки у 0.38% сущностей (en 76.4%), у 72% сущностей нет sitelinks | Связывание kk опирается на ru/en-метки, алиасы и kkwiki-titles (`task/kb`) |
-| XNLI: hypothesis-only accuracy 0.52–0.56 при случайном уровне 0.33 | Набор сохраняется, этап 8 сравнивает модели с этим baseline |
-| Eval-вопрос совпал с вопросом SFT (MT SQuAD) | Вопросы eval исключаются из SFT (5 из пула) |
-| Порог langid: макс. macro-F1 при 0.30 (0.970), принят 0.65 (0.945) | 0.65 оставлен ради точности против близких ky/tt (ложные принятия 2.7% и 5.2%); пересматривается по человеческой разметке langid |
-
-**Проблемы и решения**
-
-- EDA падал по памяти. Строки wikitext весят 25–50 KB, и батч в 20k строк занимал 6.5 GB на воркер. Теперь батч ограничен ~32 MB, крайние примеры выбираются без сортировки текста, словарь строится по первым 200k символов документа, работают 2 воркера.
-- Ключи метрик MLflow с `>` отклонялись — имена очищаются.
+**Key EDA Findings → Decisions (`reports/eda/findings.json`)**
+- Duplicate IDs in KazParC, MIRACL qrels, mMARCO, MS MARCO, NEREL → composite keys / dedup by `qid`.
+- SberQuAD 12 test/train ID overlaps → unlabeled test excluded (Stage 3).
+- mMARCO-ru 4.2% mojibake → excluded from retrieval pairs.
+- PII: mask checksum-valid IIN (0.02% `kk`) and emails (`curation.downstream.pii_mask: [iin, email]`); skip phone regex (45% false positives on `en` wikitext).
+- `kk` docs with <5% Kazakh letters (1.06% curated `kk`) → excluded via `curation.downstream.kk_min_kk_letter_share: 0.05` and queued for human review.
+- FineWeb-2 `kk` `ru`-labeled docs with 5.1% Kazakh letters (~4.7k docs, 0.02%) and 6–7% Latin in `kk`/`ru` Wikipedia titles → retained.
+- Missing `title`/`url`/`date` in `multidomain`/`FineWeb`/`Wikipedia` → documented in data cards.
+- Wikidata `kk` labels 0.38% (72% no sitelinks) → rely on `ru`/`en` labels, aliases, `kkwiki` titles.
+- XNLI hypothesis-only accuracy `0.52–0.56` → retained; compared as baseline in Stage 8.
+- 5 SFT/eval question overlaps (MT SQuAD) → excluded from SFT.
+- Langid `min_score: 0.65` (macro-F1 `0.945`) kept over `0.30` (`0.970`) to limit `ky`/`tt` false accepts (`2.7%`/`5.2%`); revisit after human langid labels.
+- **Fixes:** bounded EDA batch size to ~32 MB (fixed 6.5 GB/worker wikitext OOM), capped vocab scan to first 200k chars, sanitized `>` in MLflow metric keys.
 
 ---
 
-## Этап 1 — Data Platform & Acquisition: завершён (2026-11-20)
+## Stage 1 — Data Platform & Acquisition: Completed (2026-11-20)
 
-Закрыт загрузкой и разбором Wikidata (блокер 1 прежней записи) и добавлением источника `wikipedia_wikitext`. Остальное описано в записи от 2026-11-18 ниже.
+Closed by completing Wikidata `20261116` and `wikipedia_wikitext` `20261101` (rest of Stage 1 logged below on 2026-11-18).
 
-**Что сделано**
-
-- **Wikidata `20261116`** ([wikidata.py](../src/trifact/data/wikidata.py)): дамп 103.9 GB bz2 скачан, sha1 сошёлся.
-  - Разбор идёт по диапазонам блоков bz2, по 512 MB на диапазон, 194 диапазона, 8 процессов.
-  - Блок ищется по магическому числу `0x314159265359` со сдвигом до байта. Каждому диапазону подаётся ещё 64 бита сверх конца, потому что libbz2 отдаёт блок только после заголовка следующего. Подача останавливается на EOS + 64 бита, поэтому CRC потока не проверяется.
-  - Строка на стыке двух диапазонов относится к более раннему.
-  - Тест [test_parse_by_block_ranges_matches_dump_order](../tests/data/test_wikidata.py) сверяет порядок и состав с последовательным разбором.
-- **`wikipedia_wikitext` `20261101`** ([wikitext.py](../src/trifact/data/wikitext.py)): статьи с разметкой (kk целиком, ru — части 1–3, en — части 1–4) и таблицы redirect. Это вход silver-NER: ссылки и редиректы.
-  - Сверка `xml_page_count`.
-  - Части ru/en взяты, потому что весь en-дамп не нужен для объёма silver.
-
-**Результаты**
-
-| Источник | Строк | Parquet, GB | Шардов | Проверка | Строк/с | Пик RSS, MB |
-|---|---|---|---|---|---|---|
-| wikidata | 122 308 973 сущностей | 5.29 | 211 | ✓ entity_count | 17 588 | 3 190 (8 воркеров) |
-| wikipedia_wikitext | en 336 391, kk 296 389, ru 997 356 (статьи + redirect) | 4.46 | 21 | ✓ xml_page_count | 593 | 1 306 (2 воркера) |
-
-- Разбор Wikidata занял 1 ч 56 мин, 14.25 MB/s сжатого потока.
-- Raw-слой: 19 источников, 270.7 M строк (146.8 M HF + 122.3 M Wikidata + 1.63 M wikitext), 48.5 GB Parquet.
-
-**Проблемы и решения**
-
-- `indexed_bzip2` разрастался по памяти на 100 GB-потоке, отсюда OOM. Его заменил собственный разбор по диапазонам блоков.
-- Первая версия диапазонов теряла 69 сущностей: блок отдаётся только после заголовка следующего. Исправлено подачей +64 бит.
-- На конце потока «Invalid data stream». Исправлено остановкой на EOS + 64 бит.
-- В манифестах `wikidata` и `wikipedia_wikitext` записано `code_version …-dirty`: разбор шёл при незакоммиченных правках. Код потом закоммичен без изменения логики разбора (`5037d41`, `9c6c0bf`). Сверки строк подтверждают результат, но точная ревизия кода прогона не восстанавливается.
-
-**DVC**: см. запись этапов 2–3 (push всех выходов).
+- **Wikidata `20261116`** ([wikidata.py](../src/trifact/data/wikidata.py)): 103.9 GB bz2 dump downloaded with SHA-1 match; parsed in 194 × 512 MB bz2 block ranges across 8 workers (1 h 56 min, 14.25 MB/s compressed) using magic `0x314159265359` + 64-bit tail feed, stopping at EOS + 64 bits. Verified by [test_wikidata.py](../tests/data/test_wikidata.py). Result: **122,308,973 entities**, 5.29 GB Parquet, 211 shards, `entity_count` ✓, 17,588 rows/s, 3,190 MB peak RSS.
+- **`wikipedia_wikitext` `20261101`** ([wikitext.py](../src/trifact/data/wikitext.py)): full `kk`, `ru` parts 1–3, `en` parts 1–4 + redirects: `en` 336,391, `kk` 296,389, `ru` 997,356, 4.46 GB Parquet, 21 shards, `xml_page_count` ✓, 593 rows/s, 1,306 MB peak RSS (2 workers).
+- **Total raw layer:** 19 sources, 270.7 M rows (146.8 M HF + 122.3 M Wikidata + 1.63 M wikitext), 48.5 GB Parquet.
+- **Fixes:** replaced `indexed_bzip2` (OOM on 100 GB stream) with custom bz2 block-range parser; fixed 69-entity boundary drop (+64-bit feed) and EOS `Invalid data stream`. Manifests recorded `-dirty` SHA; parser code committed unchanged in `5037d41`, `9c6c0bf`.
 
 ---
 
-## Этап 4 — Document Processing Engine: завершён (2026-11-20)
+## Stage 4 — Document Processing Engine: Completed (2026-11-20)
 
-**Что сделано**
+- **4.1 Frozen benchmark** ([build_docproc.py](../src/trifact/data/build_docproc.py), `data/eval/docproc`, SHA-256 `manifest.yaml`): 150 docs (18 per kind × 8 kinds: `pdf_text`, `pdf_columns`, `pdf_tables`, `pdf_scan`, `pdf_word`, `docx`, `html`, `txt` — 6 per `kk`/`ru`/`en` + 6 mixed `kk`/`ru`/`en`, 239 PDF pages) built from `clean/wikipedia` + 3 × 300-page PDFs + 17 hostile files.
+- **Parsers & Sandbox** ([parser.py](../src/trifact/ingestion/parser.py), [pdf.py](../src/trifact/ingestion/pdf.py), [docling_backend.py](../src/trifact/ingestion/docling_backend.py), [ocr.py](../src/trifact/ingestion/ocr.py), [engines.py](../src/trifact/ingestion/engines.py), [sandbox.py](../src/trifact/ingestion/sandbox.py)): unified `ParsedDoc`, content-sniffed format detection, PyMuPDF fast path + Docling (Heron/TableFormer/Tesseract CLI `kaz+rus+eng`, tessdata_best 4.1.0 SHA-256 pinned), `DOC-3` per-page router, isolated `SafeParser` (timeout + RSS cap + auto-restart).
+- **4.3 Chunking** ([chunker.py](../src/trifact/ingestion/chunker.py)): `DocumentChunker` with `s350`, `s200`, `s512`, `flat350` variants.
+- **4.2 Benchmark** ([eval_docproc.py](../src/trifact/evaluation/eval_docproc.py), `reports/docproc.json`, MLflow `docproc`, 12 `status=final` runs, isolated process/config, CPU 8 threads):
 
-- **4.1 Эталонный корпус** — [build_docproc.py](../src/trifact/data/build_docproc.py), `data/eval/docproc` (DVC, заморожен по `manifest.yaml` с sha256 каждого файла).
-  - 150 документов: по 18 на вид (6 на kk/ru/en) + 6 смешанных kk/ru/en, 239 стр. PDF.
-  - Виды: `pdf_text`, `pdf_columns` (половина — с перемешанным порядком потока), `pdf_tables` (таблицы с линейками и без), `pdf_scan` (растр 200–300 dpi с шумом, размытием, наклоном, JPEG), `pdf_word` и `docx` (свёрстаны и сохранены Microsoft Word, страница каждого абзаца прочитана из Word), `html` (навигация, шапка, подвал, скрипты, cp1251), `txt` (UTF-8/BOM/UTF-16/cp1251, CRLF, жёсткий перенос). Смешанные документы содержат сканированную вторую страницу.
-  - Текст — реальные абзацы и заголовки `clean/wikipedia`. Эталон — блоки в порядке чтения, страница блока, уровни заголовков, ячейки таблиц.
-  - Плюс 3 PDF по 300 стр. и 17 враждебных файлов с ожидаемым исходом.
-- **Парсеры** ([parser.py](../src/trifact/ingestion/parser.py), [pdf.py](../src/trifact/ingestion/pdf.py), [docling_backend.py](../src/trifact/ingestion/docling_backend.py), [ocr.py](../src/trifact/ingestion/ocr.py), [engines.py](../src/trifact/ingestion/engines.py)).
-  - Единый `ParsedDoc` (реализует `ParsedDocument`): нормализованный текст, интервалы страниц (покрывают текст), вложенные разделы с уровнями, таблицы с ячейками. Все смещения указывают в сохраняемый текст.
-  - PDF: быстрый путь PyMuPDF (XY-cut с объединением полос по общему междустолбцу, заголовки по размеру и жирности шрифта, удаление колонтитулов и номеров страниц, склейка переносов), Docling (layout + TableFormer, OCR Tesseract CLI / EasyOCR / RapidOCR), маршрутизатор DOC-3 по признакам страницы.
-  - DOCX: стили Title/Heading и `outlineLvl`, таблицы, страницы по разрывам, отрисованным Word, или по явным разрывам.
-  - HTML: отбрасывание служебных блоков, списки, таблицы, кодировка по BOM, `<meta charset>` и детектору, защита от глубокой вложенности.
-  - TXT: BOM, UTF-8, детектор кодировок, заголовки Markdown.
-  - Определение формата — по содержимому, а не по расширению.
-  - Tesseract `kaz/rus/eng` (tessdata_best 4.1.0) закреплён по sha256 в `params.yaml: docproc.ocr`.
-- **Устойчивость** — [sandbox.py](../src/trifact/ingestion/sandbox.py). `SafeParser` держит парсер в отдельном долгоживущем процессе с таймаутом и лимитом RSS (`docproc.limits`). Падение, зависание и переполнение памяти дают `ParseError(reason)`, после чего процесс перезапускается. Есть лимиты байтов, страниц и символов.
-- **4.3 Чанкинг** — `DocumentChunker` ([chunker.py](../src/trifact/ingestion/chunker.py), реализует `Chunker`): регионы между заголовками → предложения → окна токенов XLM-R; `page`, `section`, язык чанка (`TextLanguageDetector`: lid.176 + запасной вариант по письменности). Варианты `chunking.variants` (s350, s200, s512, flat350) подготовлены для этапа 6.
-- **4.2 Бенчмарк** — [eval_docproc.py](../src/trifact/evaluation/eval_docproc.py), `reports/docproc.json`, MLflow `docproc` (12 runs с тегом `status=final`).
-  - Метрики: CER/WER, порядок чтения (доля правильно упорядоченных пар найденных блоков), полнота блоков, точность страниц, P/R/F1 и точность уровней заголовков, обнаружение таблиц, F1 ячеек и совпадение формы, с/стр, пик RSS, bootstrap 95% CI.
-  - Каждая конфигурация запускается в отдельном процессе.
-
-**Результаты** (CER/WER в %, порядок, F1 заголовков, F1 ячеек таблиц, стр/с; CPU 8 потоков)
-
-| Вид | DOC-0 PyMuPDF | DOC-1 Docling | DOC-3 маршрутизатор (champion) |
+| Kind | DOC-0 PyMuPDF (CER/WER%, order, hdg F1, cell F1, p/s) | DOC-1 Docling | DOC-3 Router (Champion) |
 |---|---|---|---|
-| pdf_text | 0.35 / 1.8, 0.999, 1.00, —, **80** | 0.38 / 2.6, 0.999, 1.00, —, 0.64 | 0.35 / 1.8, 0.999, 1.00, —, **79** |
-| pdf_columns | 0.36 / 1.6, 1.000, 0.98, —, 72 | 0.41 / 2.5, 1.000, 1.00, —, 0.63 | 0.36 / 1.6, 1.000, 0.98, —, 73 |
-| pdf_tables | 6.01 / 9.8, 1.000, 1.00, **0.00**, 99 | 0.75 / 3.1, 1.000, 1.00, 0.99, 0.39 | 0.79 / 2.8, 1.000, 1.00, 0.99, 0.43 |
-| pdf_scan | 100 (нет текста) | 100 (нет текста) | 0.59 / 2.7, 0.999, 0.99, 0.84, 0.12 |
-| pdf_word | 3.40 / 5.0, 1.000, 1.00, 0.00, 103 | 0.19 / 1.0, 1.000, 1.00, 0.97, 0.41 | 0.16 / 0.9, 1.000, 1.00, 0.97, 0.47 |
-| mixed (kk+ru+en, 1 скан) | 43.7 | 43.9 | 0.39 / 2.1, 1.000, 1.00, —, 0.28 |
-| **все PDF** | 23.4 | 21.8 | **0.45 [0.35, 0.56]** |
+| `pdf_text` | `0.35 / 1.8`, `0.999`, `1.00`, —, **80** | `0.38 / 2.6`, `0.999`, `1.00`, —, `0.64` | `0.35 / 1.8`, `0.999`, `1.00`, —, **79** |
+| `pdf_columns` | `0.36 / 1.6`, `1.000`, `0.98`, —, `72` | `0.41 / 2.5`, `1.000`, `1.00`, —, `0.63` | `0.36 / 1.6`, `1.000`, `0.98`, —, `73` |
+| `pdf_tables` | `6.01 / 9.8`, `1.000`, `1.00`, **0.00**, `99` | `0.75 / 3.1`, `1.000`, `1.00`, `0.99`, `0.39` | `0.79 / 2.8`, `1.000`, `1.00`, `0.99`, `0.43` |
+| `pdf_scan` | `100` (no text) | `100` (no text) | `0.59 / 2.7`, `0.999`, `0.99`, `0.84`, `0.12` |
+| `pdf_word` | `3.40 / 5.0`, `1.000`, `1.00`, `0.00`, `103` | `0.19 / 1.0`, `1.000`, `1.00`, `0.97`, `0.41` | `0.16 / 0.9`, `1.000`, `1.00`, `0.97`, `0.47` |
+| `mixed` (`kk+ru+en`, 1 scan) | `43.7` | `43.9` | `0.39 / 2.1`, `1.000`, `1.00`, —, `0.28` |
+| **All PDFs** | `23.4` | `21.8` | **0.45 [0.35, 0.56]** |
 
-- DOC-3 по языкам (все PDF): CER kk 0.70 %, ru 0.34 %, en 0.31 %; точность страниц 0.994 / 0.995 / 0.986; F1 заголовков 0.99 / 0.99 / 0.99; F1 ячеек 0.94 / 0.97 / 0.98 (kk ниже из-за таблиц на сканах).
-- DOC-2, OCR сканов (CER kk / ru / en, %; с/стр): Docling + Tesseract 0.74 / 0.54 / 0.50, 8.6; PyMuPDF + Tesseract 3.5 / 3.0 / 3.6, 5.4; RapidOCR 20.9 / 19.3 / 10.3, 10.1; EasyOCR 36.1 / 5.4 / 5.4, 27.0. Подробно — models.md §6.3.
-- DOCX/HTML/TXT: нативные парсеры дают CER 0, порядок 1.0, F1 заголовков и ячеек 1.0 при 97 / 143 / 342 док/с. Docling-бэкенды: DOCX F1 заголовков 0.86, HTML CER 0.55 %, 59 / 25 док/с.
-- Пик RSS процесса конфигурации: DOC-0 129 MB, DOC-1 1.7 GB, DOC-3 2.1 GB, EasyOCR 4.1 GB. Прогрев моделей Docling — 27–35 с на процесс.
-- **НФТ:** длинные текстовые PDF (3 × 300 стр.) — DOC-3 165 стр/с при пике RSS 1.05 GB, DOC-0 146 стр/с и 149 MB. Цель ≥ 2 стр/с выполнена с запасом в 80 раз. Лимит RAM 10 GB соблюдён во всех конфигурациях.
-- **Устойчивость:** 17/17 враждебных файлов через `SafeParser` дали ожидаемый исход: пустой, мусор, PNG под видом PDF, обрезанный PDF, битый xref (восстановлен), зашифрованный (`encrypted`), только owner-пароль (прочитан), 2001 страница (`too_many_pages`), пустая страница (`no_text`), обрезанный и не-Word DOCX, legacy .doc, 20 000 вложенных `<div>`, бинарные HTML/TXT, смешанный kk/ru/en TXT, TXT на 25 MB. Тест песочницы покрывает зависание, `os._exit`, исключения и переполнение памяти: после каждого случая воркер продолжает работу.
-- **Чанкинг на разборах DOC-3** (150 документов): s350 — 1157 чанков, 235 токенов в среднем, 11.4 % чанков пересекают границу страницы, 0 нарушений смещений, язык чанка верен в 99.6 %; s200 — 1799 / 152 / 7.2 %; s512 — 942 / 287 / 13.8 %; flat350 (без секций) — 914 / 310 / 22.0 %.
-
-**Эксперименты**
-
-- **DOC-3-v0 → DOC-3.** Первый маршрутизатор отправлял многоколоночные страницы в Docling, а сканы распознавал PyMuPDF + Tesseract. По замеру колонки PyMuPDF читает не хуже Docling, но в 100 раз быстрее (pdf_columns: 0.77 → 73 стр/с). Сканы через Docling + Tesseract точнее (CER 2.17 % → 0.59 %, F1 заголовков 0.78 → 0.99, F1 ячеек 0.44 → 0.84) почти при той же скорости. Итог: `router.columns: false`, `router.scans: docling`.
-- **TableFormer FAST vs ACCURATE** (DOC-3-tableaccurate): F1 ячеек 0.993 против 1.000, CER таблиц 0.79 % против 0.77 % (CI пересекаются), страницы с таблицами в 1.4 раза быстрее. Выбран FAST (`docling.table_mode`).
-- **Отрицательные результаты:** EasyOCR и RapidOCR непригодны для kk (нет ә ң ұ һ / замена қ→к, ң→н). Docling-бэкенды DOCX/HTML хуже нативных и медленнее. DOC-1 (Docling везде) ни на одном виде PDF не лучше DOC-3 значимо (CI CER пересекаются), а на текстовых медленнее в 120 раз.
-- **Выбранный путь по виду документа:** текстовые и многоколоночные PDF — быстрый путь PyMuPDF; PDF с таблицами (в том числе из Word) — Docling + TableFormer FAST по страницам; сканы и сканированные страницы — Docling + Tesseract `kaz+rus+eng`; DOCX, HTML, TXT — нативные парсеры. Всё это одна конфигурация `docproc.engine: router` ([ADR-0021](architecture/adr/0021-document-processing-router.md)).
-
-**Проблемы и решения**
-
-- Docling Tesseract CLI падал с `KeyError: 'text'`: в собственном каталоге tessdata нет `configs/tsv`, и Tesseract отдавал обычный текст вместо TSV. Теперь `tessdata_dir` создаёт конфиг.
-- Прогрев Docling не загружал веса: модели грузятся при первой конвертации. Добавлен `DoclingEngine.warmup` (PDF с таблицей и растровой страницей).
-- Жирные шапки таблиц принимались за заголовки. Теперь блок с короткими соседями в той же строке заголовком не считается.
-- Порядок чтения занижался на повторяющихся предложениях: блок теперь ищется сначала после предыдущего найденного.
-- В первом проходе бенчмарка все конфигурации шли в одном процессе, и пик RSS включал модели предыдущих конфигураций. Теперь у каждой конфигурации свой процесс. Во втором проходе DOC-1 подхватил OCR из умолчаний `params.yaml`: исправлено, DOC-1 и DOC-3 перезапущены. Прогоны первых двух проходов помечены в MLflow тегом `status=superseded`.
-- `lxml` без `<meta charset>` читал UTF-8 как latin-1, а глубокая вложенность обрезалась. Кодировка теперь определяется явно, включён `huge_tree`, при `RecursionError` используется запасной путь.
-
-**Удалено/очищено:** заглушки `parser.py`, `ocr.py`, `eval_docproc.py` заменены реализацией. Загрузка tessdata переиспользует `langdetect.model_path`. `ruff --select F401,F841` чистый.
-
-**Коммиты:** см. `git log` от `0ef610a` (feat(ingestion), feat(data), exp(docproc), docs).
-
-**Бэкап:** `C:\Users\nurs\TrifactAI_backups\` с меткой `stage-04`.
+- **DOC-3 by language (all PDFs):** CER `kk 0.70%`, `ru 0.34%`, `en 0.31%`; page acc `0.994 / 0.995 / 0.986`; heading F1 `0.99 / 0.99 / 0.99`; cell F1 `0.94 / 0.97 / 0.98`.
+- **DOC-2 OCR (`pdf_scan` CER `kk/ru/en`%, `s/p`):** Docling+Tesseract `0.74/0.54/0.50` (`8.6`), PyMuPDF+Tesseract `3.5/3.0/3.6` (`5.4`), RapidOCR `20.9/19.3/10.3` (`10.1`), EasyOCR `36.1/5.4/5.4` (`27.0`).
+- **Office/Text:** native DOCX/HTML/TXT give CER `0`, order `1.0`, heading & cell F1 `1.0` at `97 / 143 / 342 docs/s` (beat Docling DOCX heading F1 `0.86`, HTML CER `0.55%`, `59 / 25 docs/s`).
+- **NFRs & Robustness:** 3 × 300-page PDFs → DOC-3 `165 p/s`, `1.05 GB` RSS (80× above ≥2 p/s target); peak RSS: DOC-0 `129 MB`, DOC-1 `1.7 GB`, DOC-3 `2.1 GB`, EasyOCR `4.1 GB` (all <10 GB); 17/17 hostile files + sandbox crash/hang/OOM tests passed.
+- **Chunking (150 DOC-3 docs):** `s350` 1,157 chunks (avg 235 tok, 11.4% page-crossing, 0 offset errors, 99.6% lang acc); `s200` 1,799/152/7.2%; `s512` 942/287/13.8%; `flat350` 914/310/22.0%.
+- **Key decisions ([ADR-0021](architecture/adr/0021-document-processing-router.md)):** `router.columns: false` (PyMuPDF 100× faster, equal quality), `router.scans: docling`, `table_mode: fast` (cell F1 `0.993` vs. `1.000`, 1.4× faster). Negative results: EasyOCR/RapidOCR drop Kazakh letters; Docling DOCX/HTML slower and worse; DOC-1 120× slower on text PDFs with no significant CER gain.
+- **Fixes:** `tessdata_dir` creates `configs/tsv` (fixed `KeyError: 'text'`), `DoclingEngine.warmup`, table-header false-heading filter, sequential block-search for reading order, per-config process isolation (superseded earlier MLflow runs), explicit HTML encoding + `huge_tree` + `RecursionError` fallback.
+- **Commits & Backup:** from `0ef610a`; backup tag `stage-04` in `C:\Users\nurs\TrifactAI_backups\`.
 
 ---
 
-## Этап 1 — Data Platform & Acquisition: остановлен (2026-11-18)
+## Stage 1 — Data Platform & Acquisition: Stopped (2026-11-18)
 
-Остановлен по блокеру 1 (дамп Wikidata). Всё, что от дампа не зависит, сделано и проверено.
+Paused on Wikidata dump download (subsequently completed 2026-11-20 above).
 
-**Что сделано**
+- **Completed:** `uv.lock` (Python 3.12), pre-commit, healthy [docker-compose](../infra/docker-compose.yml) + `s3-init`, `trifact.lake` (atomic `.tmp → fsync → rename` Parquet zstd shards, `source.yaml`, `verify`/`report`), streaming resumable HF loader ([acquire.py](../src/trifact/data/acquire.py), [ADR-0017](architecture/adr/0017-raw-layer-acquisition-protocol.md)), 17/17 HF sources acquired with verified row counts and licenses ([datasets.md §7](research/datasets.md)), MLflow `data` experiment.
+- **HF acquisition summary (`python -m trifact.lake report`, ~37 GB input → 38.76 GB Parquet, 146.8 M rows, 352 shards, ~9 MB/s net-bound, peak RSS ≤5.2 GB, `lake verify` 42 s):**
+  - `fineweb2_kk`: `kk` 3,375,998 (6.84 GB, 14 shards, 5,215 MB RSS, ODC-By-1.0)
+  - `kaznerd`: `kk` 112,702 (0.01 GB, 3 shards, CC-BY-4.0)
+  - `kazparc`: `multi` 15,103,193 (2.26 GB, 39 shards, CC-BY-4.0)
+  - `kazqad`: `en` 68,770, `kk` 68,246 (0.05 GB, 5 shards, CC-BY-SA-4.0)
+  - `miracl`: `en` 43,952, `ru` 54,585 (0.00 GB, 12 shards, Apache-2.0)
+  - `miracl_corpus`: `en` 32,893,221, `ru` 9,543,918 (7.32 GB, 86 shards, Apache-2.0)
+  - `mmarco_ru`: `multi` 39,780,811, `ru` 9,758,627 (2.14 GB, 52 shards, `research_only`)
+  - `ms_marco`: `en` 1,112,939 (1.64 GB, 12 shards, `research_only`)
+  - `multidomain_kk`: `kk` 24,883,808 (6.97 GB, 32 shards, 3,626 MB RSS, Apache-2.0 / `release: false`)
+  - `nerel`: `ru` 1,011 (0.00 GB, 5 shards, `research_only`)
+  - `ru_hnp`: `ru` 102,590 (0.06 GB, 3 shards, Apache-2.0)
+  - `sberquad`: `ru` 74,300 (0.01 GB, 3 shards, `research_only`)
+  - `squad_v2`: `en` 142,192 (0.01 GB, 2 shards, CC-BY-SA-4.0)
+  - `wikiann`: `en` 40,000, `kk` 3,000, `ru` 40,000 (0.00 GB, 9 shards, `research_only`)
+  - `wikineural`: `en` 115,907, `ru` 115,440 (0.02 GB, 6 shards, `research_only`)
+  - `wikipedia`: `en` 6,407,814, `kk` 238,615, `ru` 1,945,063 (11.38 GB, 63 shards, CC-BY-SA-3.0 + GFDL)
+  - `xnli`: `en` 400,202, `ru` 400,202 (0.08 GB, 6 shards, `research_only`)
+- **DVC & fault tolerance verified:** `dvc push -r local` (386 objects in 4 m 51 s), clean-clone `dvc pull` (3 sources in 24 s, `verify` OK), SIGKILL resume on `xnli`, CSV field-limit resume on `multidomain_kk`, Wikidata resume (1,534/1,549 chunks), 32 automated tests.
+- **Fixes:** MLflow `/health` pre-check, batch-wide JSONL schema union, lifted CSV field limit, normalized CRLF → LF with `test_dvc_dependencies_use_lf_line_endings` in [tests/test_architecture.py](../tests/test_architecture.py).
 
-- **Окружение.**
-  - `uv.lock`: Python 3.12, группы `ml` и `dev`.
-  - pre-commit: ruff check и format, mypy core, pytest.
-  - В [docker-compose](../infra/docker-compose.yml) у всех сервисов есть healthcheck. Одноразовый сервис `s3-init` создаёт бакеты.
-  - `docker compose up -d --wait`: все сервисы healthy (проверено).
-- **`trifact.lake`** ([layout](../src/trifact/lake/layout.py), [manifest](../src/trifact/lake/manifest.py), [stats](../src/trifact/lake/stats.py), [CLI](../src/trifact/lake/__main__.py)).
-  - Шарды Parquet (zstd) пишутся атомарно: `.tmp` → fsync → rename.
-  - Манифест `source.yaml` хранит происхождение, ревизию, решение по лицензии, sha256 и число строк каждого шарда, сверки строк, throughput и пик RSS.
-  - `verify` проверяет состав шардов, размеры, строки, sha256, сверки и лицензию. `report` выдаёт таблицу объёмов.
-- **Загрузчик HF** ([acquire.py](../src/trifact/data/acquire.py)). Протокол описан в [ADR-0017](architecture/adr/0017-raw-layer-acquisition-protocol.md).
-  - Источник: закреплённая SHA-ревизия.
-  - Чтение потоковое, батчами: parquet, arrow, csv, tsv, jsonl(.gz).
-  - Файлы обрабатываются параллельно.
-  - Докачка: маркеры готовых файлов в `_work/`, недокачанные HF-файлы продолжаются с места обрыва, sha256 LFS сверяется.
-  - Число строк сверяется с README `dataset_info`, datasets-server, футерами parquet или полным подсчётом строк и записей.
-  - Повторный запуск при той же ревизии только проверяет манифест.
-  - Источник с лицензией `blocked` не скачивается.
-- **Все HF-источники** из `params.yaml: sources` загружены (17, включая добавленный `miracl_corpus`). Все сверки строк сошлись.
-- **Wikidata** ([wikidata.py](../src/trifact/data/wikidata.py)).
-  - Загрузка: датированный дамп скачивается диапазонами по 64 MB в несколько соединений и через зеркала, с докачкой и сверкой sha1 по опубликованному `sha1sums`.
-  - Парсинг потоковый: параллельная распаковка bzip2 (indexed_bzip2) → чанки строк → пул процессов (orjson) → детерминированные шарды таблицы `entities` по диапазонам сущностей с маркерами прогресса → сверка `entity_count`.
-- **Лицензии**: решение по каждому источнику записано в его манифест ([datasets.md §7](research/datasets.md)). Измеренные объёмы перенесены в datasets.md (пометка ●).
-- **DVC.**
-  - Remotes: `local` (SeaweedFS S3, по умолчанию) и `cloud`.
-  - Каталоги `data/raw/<источник>` — persist-выходы стадий `acquire@*` и `wikidata`.
-  - `dvc.lock` закоммичен, `dvc status` чистый.
-  - Результаты push и восстановления — ниже.
-- **MLflow**: эксперимент `data`. Каждая реальная загрузка — один run. Холостые повторы run не создают.
+---
 
-**Результаты** (`python -m trifact.lake report`, вход с HF ~37 GB)
+## Stage 0 — Project Foundation: Completed (2026-11-18)
 
-| Источник | Строк по языкам | Parquet, GB | Шардов | Проверка строк | Throughput, строк/с | MB/s | Пик RSS, MB | Лицензия |
-|---|---|---|---|---|---|---|---|---|
-| fineweb2_kk | kk 3 375 998 | 6.84 | 14 | ✓ hf_datasets_server, parquet_footer | 4340.3 | 8.42 | 5215.3 | ODC-By-1.0 (allowed) |
-| kaznerd | kk 112 702 | 0.01 | 3 | ✓ hf_dataset_info | 24552.8 | 6.95 | 168.8 | CC-BY-4.0 (allowed) |
-| kazparc | multi 15 103 193 | 2.26 | 39 | ✓ csv_record_count, hf_dataset_info | 36233.7 | 14.0 | 1863.3 | CC-BY-4.0 (allowed) |
-| kazqad | en 68 770, kk 68 246 | 0.05 | 5 | ✓ hf_datasets_server, line_count | 10955.3 | 3.95 | 501.0 | CC-BY-SA-4.0 (allowed) |
-| miracl | en 43 952, ru 54 585 | 0.00 | 12 | ✓ line_count | 25205.3 | 0.64 | 139.6 | Apache-2.0 (allowed) |
-| miracl_corpus | en 32 893 221, ru 9 543 918 | 7.32 | 86 | ✓ line_count | 50881.2 | 7.59 | 642.8 | Apache-2.0 (text CC-BY-SA-3.0 Wikipedia) (allowed) |
-| mmarco_ru | multi 39 780 811, ru 9 758 627 | 2.14 | 52 | ✓ line_count | 95003.0 | 12.34 | 1475.4 | MS MARCO terms (non-commercial research) (research_only) |
-| ms_marco | en 1 112 939 | 1.64 | 12 | ✓ hf_dataset_info, parquet_footer | 4706.6 | 9.37 | 1214.0 | MS MARCO terms (non-commercial research) (research_only) |
-| multidomain_kk | kk 24 883 808 | 6.97 | 32 | ✓ csv_record_count | 2075.3 | 10.17 | 3625.7 | Apache-2.0 (allowed) |
-| nerel | ru 1 011 | 0.00 | 5 | ✓ line_count | 316.8 | 2.83 | 192.6 | unknown (research_only) |
-| ru_hnp | ru 102 590 | 0.06 | 3 | ✓ hf_datasets_server, parquet_footer | 6735.4 | 5.59 | 456.4 | Apache-2.0 (allowed) |
-| sberquad | ru 74 300 | 0.01 | 3 | ✓ hf_dataset_info, parquet_footer | 9938.9 | 2.52 | 347.0 | unknown (research_only) |
-| squad_v2 | en 142 192 | 0.01 | 2 | ✓ hf_dataset_info, parquet_footer | 28657.3 | 3.41 | 465.8 | CC-BY-SA-4.0 (allowed) |
-| wikiann | en 40 000, kk 3 000, ru 40 000 | 0.00 | 9 | ✓ hf_dataset_info, parquet_footer | 8872.3 | 0.66 | 210.8 | unknown (text CC-BY-SA-3.0) (research_only) |
-| wikineural | en 115 907, ru 115 440 | 0.02 | 6 | ✓ hf_datasets_server, parquet_footer | 27328.5 | 2.29 | 317.7 | CC-BY-NC-SA-4.0 (research_only) |
-| wikipedia | en 6 407 814, kk 238 615, ru 1 945 063 | 11.38 | 63 | ✓ hf_dataset_info, parquet_footer | 5668.0 | 10.5 | 2012.5 | CC-BY-SA-3.0 AND GFDL (allowed) |
-| xnli | en 400 202, ru 400 202 | 0.08 | 6 | ✓ hf_dataset_info, parquet_footer | 41556.4 | 6.01 | 412.3 | CC-BY-NC-4.0 (research_only) |
-
-- Итого 146.8 M строк, 38.76 GB Parquet, 352 шарда.
-- Throughput ограничен сетью: ~9 MB/s суммарно.
-- Пик RSS ≤ 5.2 GB у всех загрузок при лимите 10 GB.
-- `lake verify` с полной проверкой sha256 всех шардов занимает 42 с.
-
-Wikidata, реальный дамп, первые 50 000 сущностей:
-
-- 17.4 с на 8 воркерах, пик RSS 1.43 GB;
-- распаковка bzip2 — ~239 MB/s на 8 потоках, разбор — ~130 MB/s на процесс, степень сжатия ~9.9.
-
-Полный дамп — это ~1 TB JSON. По этим цифрам его парсинг займёт порядка 1.5–2 ч на 12 воркерах. Это оценка, не замер.
-
-**DVC (проверено)**
-
-- `dvc push -r local`: 386 объектов (352 шарда, манифесты, `.dir`) в SeaweedFS за 4 мин 51 с.
-- Восстановление с remote в чистый клон с пустым кешем: `dvc pull` трёх источников (kaznerd, xnli, ms_marco) — 24 с, `lake verify` (sha256) OK, `dvc status` чистый.
-- Локальное восстановление удалённого `data/raw/kaznerd` через `dvc checkout` — 3 с, `verify` OK.
-- `dvc status acquire` — «up to date». Стадия `wikidata` ждёт дамп (блокер 1), стадии этапов 2–9 ещё не запускались.
-
-**Отказоустойчивость (проверено на реальных данных)**
-
-- `xnli`: процесс убит SIGKILL после 2 файлов. Повторный запуск докачал оставшиеся 4, `verify` OK.
-- `multidomain_kk`: упал на CSV-поле длиннее 131 072 символов. После исправления продолжил с 3 из 5 файлов, 2 готовых переиспользованы.
-- Wikidata: загрузка остановлена и перезапущена. Продолжила с 1534 оставшихся чанков из 1549, без повторной загрузки.
-- Автотесты (32).
-  - Загрузчик: докачка после сбоя, идемпотентность, смена лицензии без перекачки, расхождение с метаданными, подмена шарда (sha256), `blocked`, ревизия не-SHA, частичный прогон, огромное CSV-поле.
-  - Wikidata: разбор, шардирование, возобновление после краха, докачка и sha1, неверная контрольная сумма, зеркала.
-
-**Проблемы и решения**
-
-- На усечённом файле indexed_bzip2 бросает `RuntimeError`, а не `EOFError`. Теперь при `allow_truncated` обрабатываются оба исключения.
-- Когда сервер MLflow недоступен, логирование висело на ретраях по нескольку минут. Теперь перед логированием идёт быстрый `/health`-запрос.
-- Схема jsonl выводилась по первой строке. Теперь она объединяется по всему батчу.
-- `multidomain_kk` упал на лимите поля CSV. Лимит снят, и стейджинг-файл теперь сохраняется при ошибке конвертации.
-- Рабочая копия части файлов была с CRLF (`core.autocrlf=true`), а git хранит LF. `dvc.lock` фиксировал хеши, которые чистый клон не воспроизводит: это показала проверка восстановления. Файлы приведены к LF, lock пересобран, добавлен тест [test_dvc_dependencies_use_lf_line_endings](../tests/test_architecture.py).
-- Часть стадий DVC запускалась со старой версией `acquire.py`. Повторный `dvc repro acquire` только проверил манифесты: 17/17 за 2 мин 41 с, без перекачки.
-
-**Удалено**: ничего из репозитория. Стейджинг и логи лежат вне git (`data/.cache/`).
-
-## Этап 0 — Фундамент проекта: завершён (2026-11-18)
-
-**Доработка инструкций (2026-11-18)**
-
-- [AGENTS.md](../AGENTS.md) переписан как набор чек-листов: карта документов (у каждого факта один владелец), «перед началом работы», цикл этапа, завершение этапа, правила, нештатные ситуации, бэкапы, инструменты, шаблон отчёта. В завершение этапа добавлен `git push`.
-- [ROADMAP.md](ROADMAP.md) ссылается на идентификаторы экспериментов архитектуры и не пересказывает модели. Исправлено противоречие с ADR-0012: на этапе 7 было «LoRA/QLoRA», стало bf16 LoRA. Критерий этапа 9 ссылался на §7 вместо §1 (НФТ).
-- Убраны дубли: таблица масштаба (владелец — datasets.md §6), железо (архитектура §1), бюджет памяти 35M (архитектура §7.3), оценки throughput (архитектура §9), сводка VRAM в models.md (архитектура §13), раскладка репозитория в README (архитектура §15).
-- Исправлены ссылки: ADR-0006 → NER-4 (было NER-3), web/README → этап 10 (было 8), номера разделов AGENTS в архитектуре и ADR-0011.
-- Подключён удалённый репозиторий GitHub, `main` запушен.
-
-**Что сделано**
-
-- Архитектура пересобрана под масштаб десятков миллионов записей и согласована с ROADMAP и AGENTS. Раньше `01-architecture.md`, `params.yaml`, `dvc.yaml` и ADR-0005 описывали MVP на 267k записей и Qwen3-1.7B + QLoRA, что противоречило ROADMAP (35M чанков, Qwen3.5, Parquet-lake).
-  - [01-architecture.md](architecture/docs/01-architecture.md): масштаб и профили `pilot` / `full`, NFR, три контура (Serving / Data & ML Platform / Observability), data lake и схемы шардов, онлайн-потоки и API v1, эксперименты DOC/NER/RET/GEN/VER по этапам, бюджет памяти индекса 35M, хранилища, офлайн-вычисления, гейт со значимостью, MLOps, наблюдаемость, развёртывание Local/Cloud, трассировка этапов → компонентов → модулей → DVC → ADR, риски.
-  - [workspace.dsl](architecture/workspace.dsl): новые контейнеры Data Lake и Batch Compute, внешние Wikimedia Dumps и Cloud Object Storage, 15 представлений, включая ModelLifecycle и DeploymentLocal/Cloud. Проверено MCP `structurizr` и `structurizr/structurizr inspect`: 0 ошибок, 0 предупреждений.
-  - Диаграммы ([diagrams/](architecture/diagrams/)) экспортированы из модели скриптом [scripts/export_diagrams.py](../scripts/export_diagrams.py).
-  - Новые ADR 0011–0016: Parquet lake, Qwen3.5 + bf16 LoRA (заменяет 0005), двухуровневый индекс Qdrant (дополняет 0002), шардированные batch-задания и два DVC remote (дополняет 0010), silver/синтетика и родословная лицензий, ответственность хранилищ. В ADR-0009 гейт дополнен требованием значимости.
-- Конфигурация: [params.yaml](../params.yaml) (все 17 источников, профили масштаба, курация, индекс, учитель, бюджет облака) и [dvc.yaml](../dvc.yaml) (29 стадий этапов 1–9; `acquire` разворачивается в 16 источников).
-- Каркас кода приведён к стадиям: добавлены `trifact.lake`, `trifact.batch`, стадии курации и KB, `train_nli`, `eval_docproc`, `eval_verification`, `gate`. Схемы дополнены `RetrievalScope`, `RetrievalStats`, `workspace_id`, `SourceType.CORPUS`. Python 3.12, зависимости Polars / DuckDB / PyArrow / datatrove / Optuna / ONNX Runtime.
-- Архитектурные тесты [tests/test_architecture.py](../tests/test_architecture.py): `core` ни от чего не зависит; все команды DVC указывают на существующие модули; источники `acquire` объявлены в params; на каждый ADR есть ссылка; JSON-контракт ответа из документа проходит валидацию схемой `Answer`.
-- Каталог моделей дополнен фактами о дообучении Qwen3.5 (exa). Документация Qdrant 1.20 (prefetch + RRF/DBSF, квантизация, multitenancy) проверена через context7.
-- Этап 1 декомпозирован в shrimp на 7 задач с зависимостями.
-- Git-репозиторий на `main`, первый коммит, бэкап.
-
-**Проблемы и решения**
-
-- Тесты нашли невалидный YAML в `dvc.yaml`: `${item}` внутри flow-последовательности. DVC тоже не смог бы его прочитать; исправлено кавычками.
-- На ADR-0003 не было ссылок из документации; ссылка добавлена в §7.3.
-- Инспектор Structurizr нашёл несвязанные элементы (Dynamic Batcher, Training Jobs в облаке); добавлены связи и узел S3-бакета.
-
-**Удалено**: `data/download.py`, `data/map_labels.py`, `data/build_rag_corpus.py`, `data/index_corpus.py` (заменены стадиями `acquire`, `build_ner`, `chunk_corpus`, `batch.index_corpus`), устаревшая диаграмма `Deployment.mmd`, MVP-бюджет как единственный режим (теперь это профиль `pilot`).
+- Scaled architecture from 267k MVP to tens-of-millions design: [01-architecture.md](architecture/docs/01-architecture.md), [workspace.dsl](architecture/workspace.dsl) (15 views, 0 Structurizr inspector errors), exported [diagrams/](architecture/diagrams/) via [scripts/export_diagrams.py](../scripts/export_diagrams.py), ADRs `0011`–`0016` (+ ADR-0009 significance amendment), `params.yaml`, `dvc.yaml` (29 stages), code skeletons, and [tests/test_architecture.py](../tests/test_architecture.py).
+- Deduplicated single-owner docs (`AGENTS.md`, `ROADMAP.md`, `models.md`, `datasets.md`, `README.md`), fixed `dvc.yaml` quoting and Structurizr links, connected GitHub `origin`, pushed `main`, and created initial backup.

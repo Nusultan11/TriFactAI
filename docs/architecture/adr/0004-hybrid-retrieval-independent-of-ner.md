@@ -1,4 +1,4 @@
-# 4. Гибридный поиск не зависит от NER
+# 4. Hybrid Retrieval Independent of NER
 
 Date: 2026-11-18
 
@@ -8,12 +8,12 @@ Accepted
 
 ## Context
 
-Сущности полезны для фильтрации и навигации, но ошибка NER (особенно на казахском) может отсечь нужный документ.
+Extracted entities aid filtering and navigation, but NER misses (especially in Kazakh) would cause hard retrieval failures if used as a mandatory filter.
 
 ## Decision
 
-Retrieval = BM25 + dense → RRF → cross-encoder reranker. Сущности используются только как мягкий сигнал (boost) или явный пользовательский фильтр, но никогда как обязательное условие поиска по умолчанию.
+Default retrieval executes `BM25 + dense → RRF → cross-encoder reranker`. Entities act solely as a soft boost or an explicit user-selected filter — never a mandatory default filter.
 
 ## Consequences
 
-Качество поиска не падает из-за ошибок NER; вклад Extraction в поиск измеряется в ablation отдельно.
+Retrieval recall is insulated from NER errors; Extraction's contribution is measured separately in Stage 9 ablation.

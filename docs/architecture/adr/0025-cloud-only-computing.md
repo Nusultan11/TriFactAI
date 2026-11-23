@@ -1,51 +1,26 @@
-# 25. Облачные вычисления и восстановление Stage 1–3
+# 25. Cloud-Only Computing and Stage 1–3 Recovery
 
 Date: 2026-11-22
 
 ## Status
 
-Accepted. Квалификация среды отмечается отдельно в [PROGRESS](../../PROGRESS.md).
+Accepted. Environment qualification status is tracked in [docs/PROGRESS.md](../../PROGRESS.md).
 
-Amends [14. Шардированные задания](0014-sharded-batch-jobs.md),
-[20. Kaggle и GPU-задания](0020-kaggle-batch-gpu-mt-and-teacher.md) и
-[24. Хранение в Google Drive](0024-google-drive-storage.md).
+Amends [14. Sharded Idempotent Batch Jobs](0014-sharded-batch-jobs.md), [20. Kaggle Batch GPU, NLLB MT, and llama.cpp Teacher](0020-kaggle-batch-gpu-mt-and-teacher.md), and [24. Google Drive for Data and Backups](0024-google-drive-storage.md).
 
 ## Context
 
-Объём DVC-объектов превышает диск отдельного Colab runtime. Облачные сеансы
-ограничены по времени, а доступный GPU зависит от аккаунта и квоты.
-Рабочая станция используется для управления облачными сеансами и работы с Git.
+The 220+ GiB DVC object store exceeds a single Colab runtime's disk, cloud sessions are ephemeral, and GPU availability depends on account quota and budget. The local workstation serves as a development, Git, and CLI control station rather than an ML compute host.
 
 ## Decision
 
-- Основные GPU-задания идут в Google Colab на NVIDIA L4, дополнительные —
-  в приватных Kaggle kernels на 2× T4. CPU-стадии выполняются на облачной VM
-  через тот же DVC-граф. Профиль и место выполнения записываются в результатах.
-- [Блокнот запуска](../../../notebooks/cloud_stages.ipynb) подключает
-  приватный Drive, разворачивает закреплённую Git-ревизию с `uv.lock` и
-  подключает существующий кеш `dvc` с проверкой содержимого. В новом клоне
-  DVC-remote задаётся явно при настройке облачного окружения. Для больших
-  стадий входы материализуются по нужным целям. Когда всей стадии требуется
-  больше RAM или диска, она требует шардирования либо облачного профиля
-  достаточного размера.
-- GPU-раннер Colab выполняет ограниченный входной шард. Отпечаток фиксирует
-  исходные файлы, код и lockfile. Раннер сверяет ID входов и выходов и SHA-256
-  результатов. Завершённый шард переиспользуется, незавершённый повторяется.
-  При обрыве VM теряется вычисление текущего шарда. История попыток хранится
-  в `workspace-data/colab` в Drive.
-- Метрики и артефакты пишутся через MLflow. В Colab SQLite работает на
-  диске VM, артефакты и согласованные снимки БД публикуются в Drive. Для
-  общей базы экспериментов и Registry нужен доступный облачный MLflow.
-- Указатели DVC публикуются после синхронизации и проверки объектов в
-  Drive. Снимок истории Git можно положить в `backups` с
-  `scripts/backup.py --git-only --keep 0`. Модели и артефакты
-  восстанавливаются из Drive в чистой облачной среде с проверкой контрольных сумм.
-- Бюджет берётся из `params.yaml: cloud.budget_usd`. Запуск, расходующий
-  платные ресурсы, требует утверждённого бюджета. Наличие L4 и фактический
-  расход квоты фиксируются по облачному запуску.
+- **Cloud execution:** Run primary GPU workloads on Google Colab (NVIDIA L4 preferred when available and permitted by quota/budget) via official Google Colab CLI (`colab`) or [notebooks/cloud_stages.ipynb](../../../notebooks/cloud_stages.ipynb); run secondary GPU workloads on private Kaggle kernels (2× T4 fp16) via Kaggle CLI; run CPU DVC stages on cloud CPU runtimes using the same DVC graph. Record compute profile and host in every run.
+- **Clean cloud bootstrap:** Mount private Drive, check out a pinned 40-char Git SHA with `uv.lock`, configure the local DVC remote explicitly pointing to Drive `dvc` with `verify=true`, and materialize only required stage inputs. Shard stages exceeding runtime RAM or disk.
+- **Bounded Colab GPU runner (`trifact.batch.colab`):** Execute one bounded input shard per invocation with input/code/lockfile fingerprinting, ID reconciliation, and output SHA-256 verification. Reuse completed shards; retry interrupted ones (losing at most the active shard); store attempt logs in Drive `workspace-data/colab`.
+- **MLflow persistence:** Run SQLite on VM disk while writing artifacts and atomic integrity-checked DB snapshots to Drive `workspace-data/mlflow` after each job (use a shared remote MLflow server when available for central Registry).
+- **DVC & Git backups:** Publish DVC pointers only after Drive object sync/verification; snapshot Git history to Drive `backups` via `scripts/backup.py --git-only --keep 0`; verify clean-VM model/artifact restore via checksums.
+- **Budget guardrail:** Enforce `params.yaml: cloud.budget_usd`; never start paid workloads without approved budget; log actual GPU type and quota usage per run.
 
 ## Consequences
 
-Исторические Kaggle-выходы и DVC-указатели сохраняют исходные пути и происхождение.
-Допуск Colab к полному прогону зависит от проверки восстановления, пилота на L4 и
-бюджета. Заморозка eval зависит от человеческих листов и проверок ROADMAP.
+Historical Kaggle outputs and DVC pointers preserve their original paths and provenance. Full-scale Colab L4 runs depend on clean recovery verification, L4 pilot qualification, and approved compute budget; eval freeze remains gated on human review sheets and ROADMAP criteria.

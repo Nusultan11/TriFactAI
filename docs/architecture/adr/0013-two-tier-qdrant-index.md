@@ -1,4 +1,4 @@
-# 13. Двухуровневый индекс Qdrant: корпус и рабочие пространства
+# 13. Two-Tier Qdrant Index: Corpus and Workspaces
 
 Date: 2026-11-18
 
@@ -6,25 +6,24 @@ Date: 2026-11-18
 
 Accepted
 
-Amends [2. Qdrant для dense- и BM25-поиска](0002-qdrant-for-dense-and-sparse.md)
+Amends [2. Qdrant for Dense and BM25 Search](0002-qdrant-for-dense-and-sparse.md)
 
 ## Context
 
-Данные двух видов ведут себя по-разному:
+Two data tiers behave differently:
+- **Corpus** (Wikipedia, FineWeb-2 `kk`, `multidomain_kk`): ~35M chunks, built offline, static between releases, tied to one embedder version. At 1024-d `fp32`, vectors require 143 GB vs. 15 GB local RAM.
+- **User documents:** thousands to hundreds of thousands of chunks, mutated online, isolated per `workspace_id`.
 
-- **Корпус** (Wikipedia, FineWeb-2 kk, multidomain kk): ~35M чанков. Строится офлайн и не меняется между релизами. Привязан к конкретной версии эмбеддера: при смене модели корпус индексируется заново. В fp32 при размерности 1024 векторы занимают 143 GB, а RAM на машине 15 GB.
-- **Документы пользователей**: тысячи–сотни тысяч чанков, обновляются онлайн, изолированы по рабочему пространству.
-
-При одной общей коллекции пришлось бы выбирать один режим и для неизменяемых данных, и для изменяемых. Кроме того, переиндексация корпуса затронула бы документы пользователей.
+A single collection would force identical storage/indexing settings for both and couple corpus re-indexing to user data.
 
 ## Decision
 
-- `corpus_chunks__<embedder>@<version>` — отдельная коллекция на каждую версию эмбеддера. Исходные векторы хранятся на диске в float16. В RAM лежит квантизованная копия (binary, scalar int8 или turbo — выбор по эксперименту этапа 6) с rescoring и oversampling. Граф HNSW строится после bulk-загрузки, payload хранится на диске. Сервис обращается к коллекции через alias `corpus_chunks`, а alias переключается только после гейта (blue/green). Для Qwen3-Embedding дополнительно проверяется MRL-размерность 256–512.
-- `workspace_chunks__<embedder>@<version>` — пользовательские чанки: векторы в RAM, payload-индекс `workspace_id` с `is_tenant=true`, фильтры по `document_id`, `lang`, `entity_ids`.
-- Векторы внутри коллекции: `dense` и `sparse` (BM25 с IDF-модификатором или sparse BGE-M3 — выбор по эксперименту). Нативный BM25 text-index Qdrant 1.20 — альтернатива для сравнения.
-- Слияние результатов. При сервинге dense и sparse объединяются **на сервере** (Query API: prefetch + RRF/DBSF), а результаты двух коллекций — в приложении, по рангам RRF. В режиме eval каждый метод запрашивается отдельно, чтобы логировать ранги и считать ablation.
-- Текст чанка для промпта берётся из payload Qdrant. Источник истины для корпуса — lake (`task/chunks`), для пользовательских документов — PostgreSQL.
+- `corpus_chunks__<embedder>@<version>`: one collection per embedder version; original vectors on disk in `float16`; quantized copy in RAM (`binary`, `scalar int8`, or `turbo` — selected in Stage 6 `RET-S`) with `rescore` + `oversampling`; HNSW built after bulk upload; payload on disk. Accessed via alias `corpus_chunks`, switched blue/green after promotion gate. Benchmark MRL `256`/`512` for Qwen3-Embedding.
+- `workspace_chunks__<embedder>@<version>`: user chunks with in-RAM vectors, `workspace_id` payload index (`is_tenant=true`), and filters on `document_id`, `lang`, `entity_ids`.
+- Vectors per collection: `dense` + `sparse` (BM25 with IDF modifier or BGE-M3 sparse, plus Qdrant 1.20 native BM25 text index as comparison).
+- Fusion: server-side (`Query API` prefetch + RRF/DBSF) during serving, cross-collection RRF in application code; per-leg queries logged separately in eval mode for ablation.
+- Prompt text comes from Qdrant payload; source of truth is the data lake (`task/chunks`) for corpus and PostgreSQL for user documents.
 
 ## Consequences
 
-Корпус можно переиндексировать без простоя и сразу откатить переключением alias. Память при сервинге ограничена квантизованной копией. Полный индекс на 35M может не уложиться в 15 GB RAM вместе с остальным стеком. Поэтому этап 6 измеряет ступени 1M / 10M / 35M, и если полный индекс локально не помещается, он обслуживается на облачном Serving VM (32–64 GB RAM). Локальный профиль работает с подмножеством корпуса.
+Zero-downtime corpus re-indexing and instant alias rollback. Serving RAM is bounded by quantized vectors. Stage 6 `RET-S` (`1M → 10M → 35M`) decides whether the full 35M index requires a cloud Serving VM (32–64 GB RAM) while local dev serves a subset.

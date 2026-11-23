@@ -1,4 +1,4 @@
-# 18. Стадии курации на собственном шардированном раннере (без datatrove)
+# 18. Custom Sharded Runner for Curation Stages (Without datatrove)
 
 Date: 2026-11-18
 
@@ -6,38 +6,25 @@ Date: 2026-11-18
 
 Accepted
 
-Amends [11. Data lake на Parquet со слоями и манифестами](0011-parquet-data-lake.md) (пункт «datatrove для фильтров и MinHash-дедупа»)
+Amends [11. Layered Parquet Data Lake with Manifests](0011-parquet-data-lake.md) (replaces `datatrove` for filtering and MinHash dedup)
 
 ## Context
 
-ADR-0011 предполагал datatrove для фильтров качества и MinHash-дедупликации. На этапе 2 выяснилось следующее.
-
-- Стадии `clean`, `dedup` и `decontaminate` должны вести себя так же, как задания [ADR-0014](0014-sharded-batch-jobs.md) и загрузка [ADR-0017](0017-raw-layer-acquisition-protocol.md):
-  - единица работы — входной шард;
-  - маркеры готовности;
-  - отпечаток параметров, кода и входного манифеста;
-  - манифест `dataset.yaml` с отсевом по причинам и sha256 шардов.
-
-  У executors datatrove своя раскладка выходов и свой учёт задач. Пришлось бы поддерживать два протокола возобновления и сверки.
-- Межисточниковой дедупликации нужен глобальный шаг: связные компоненты по совпадающим LSH-бандам всех источников сразу, корнем становится документ источника с наивысшим приоритетом. Кроме того, удалённые дубликаты должны сохраняться со ссылкой на оставленный документ.
-- Деконтаминация удаляет строки, а не только документы (ADR-0019). Готового блока для этого нет.
-- Фильтры зависят от домена и языка (Wikipedia, CC100, Leipzig и т. д.), а их пороги подбираются ручной проверкой. Векторизованные выражения Polars дают все признаки документа за один проход по батчу.
-- Память: на Windows commit-лимит 31.4 GB, из них при простое свободно около 13.6 GB. Пул Polars в каждом процессе по умолчанию берёт все ядра и держит per-thread арены. На этапе 2 это раздувало commit воркера примерно до трёх RSS, и полный прогон падал с MemoryError. Число потоков Polars на воркер пришлось ограничивать явно (`cpu_count // workers`).
+Stage 2 revealed four mismatches with `datatrove`:
+1. `clean`, `dedup`, and `decontaminate` require the same shard-unit, completion-marker, fingerprint, and `dataset.yaml` protocol as [ADR-0014](0014-sharded-batch-jobs.md) and [ADR-0017](0017-raw-layer-acquisition-protocol.md); `datatrove` executors enforce a separate state/layout protocol.
+2. Cross-source dedup needs global connected components across all sources with source-priority root selection and audit retention of removed duplicates.
+3. Line-level decontamination (ADR-0019) has no off-the-shelf `datatrove` block.
+4. Domain/language-specific quality filters map cleanly to single-pass vectorized Polars expressions, whereas uncapped Polars thread pools per worker caused Windows commit-limit OOMs (3× RSS) until capped at `cpu_count // workers`.
 
 ## Decision
 
-- Курация (`trifact.data.clean`, `dedup`, `decontaminate`) работает на общем раннере `trifact.data.curation`. Его части:
-  - `StageDir` с отпечатком (sha256 от имени стадии, параметров, кода с LF-нормализацией и входных манифестов): если отпечаток изменился, каталог очищается, если совпал — готовые единицы пропускаются;
-  - `run_units` — пул процессов с маркерами единиц и `POLARS_MAX_THREADS = cpu_count // workers`;
-  - атомарная запись шардов `UnitWriter`;
-  - `stage_report` с отсевом, throughput и пиковой RSS.
-- Признаки и фильтры считаются выражениями Polars. Определение языка — fastText (`fasttext-predict`) по абзацам. MinHash, n-граммы и 13-граммы деконтаминации считаются на numpy (`trifact.data.hashing`): 32-битные аффинные перестановки над смешанными 64-битными хешами словесных 5-грамм, около 17 MB/s на ядро. Связные компоненты — `scipy.sparse.csgraph`.
-- Зависимость `datatrove` удаляется: код её не использует.
+- Run `trifact.data.{clean,dedup,decontaminate}` on shared runner `trifact.data.curation`:
+  - `StageDir`: SHA-256 fingerprint of stage name, params, LF-normalized code, and input manifests (cleans dir on change; skips finished units on match).
+  - `run_units`: worker pool with unit markers and `POLARS_MAX_THREADS = cpu_count // workers`.
+  - `UnitWriter`: atomic zstd Parquet writes; `stage_report`: drop counts, throughput, peak RSS.
+- Compute quality features in Polars, paragraph langid via `fasttext-predict`, MinHash/n-grams/13-grams in NumPy (`trifact.data.hashing`: 32-bit affine permutations over mixed 64-bit hashes, ~17 MB/s per core), and connected components via `scipy.sparse.csgraph`.
+- Remove unused `datatrove` dependency.
 
 ## Consequences
 
-- Один протокол возобновления, отпечатков и манифестов для всех стадий данных.
-- Обрыв стоит не больше шардов, которые были в работе. Замер прерывания и возобновления на полном профиле — в PROGRESS, этап 2.
-- Пиковую память контролирует один параметр `curation.workers`.
-- Поддержка фильтров и MinHash теперь на проекте. Корректность MinHash (несмещённость оценки Jaccard) и фильтров закреплена тестами (`tests/data/test_hashing.py`, `test_quality.py`).
-- Готовые фильтры datatrove (C4, Gopher, FineWeb) не используются. Их идеи (доля повторов строк и n-грамм, стоп-слова, многоточия, маркеры списков) реализованы как параметры `params.yaml: curation.quality`.
+One unified resumability, fingerprinting, and manifest protocol across all data stages; peak memory governed by `curation.workers`; MinHash unbiasedness and quality filters verified by unit tests (`tests/data/test_hashing.py`, `test_quality.py`). Filter heuristics (Gopher/FineWeb) live as `params.yaml: curation.quality`.

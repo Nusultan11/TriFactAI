@@ -1,4 +1,4 @@
-# 10. DVC для данных и моделей, S3-совместимое хранилище (SeaweedFS) как remote
+# 10. DVC with S3-Compatible Remote (SeaweedFS)
 
 Date: 2026-11-18
 
@@ -6,18 +6,18 @@ Date: 2026-11-18
 
 Accepted
 
-Amended by [14. Шардированные идемпотентные batch-задания](0014-sharded-batch-jobs.md)
+Amended by [14. Sharded Idempotent Batch Jobs](0014-sharded-batch-jobs.md)
 
-Amended by [24. Google Drive для данных и резервных копий](0024-google-drive-storage.md)
+Amended by [24. Google Drive for Data and Backups](0024-google-drive-storage.md)
 
 ## Context
 
-Датасеты и веса не помещаются в git, а эксперименты должны воспроизводиться.
+Datasets and model weights do not belong in Git, yet every pipeline stage must remain reproducible.
 
 ## Decision
 
-DVC-пайплайн (`dvc.yaml`) с параметрами в `params.yaml`; remote — SeaweedFS S3 (`s3://trifact-dvc`). MinIO не используется: его образы больше не публикуются на Docker Hub. MLflow хранит артефакты на своём volume с `--serve-artifacts`; при переезде в облако артефакты переносятся в тот же S3. Ревизия каждого HF-датасета фиксируется в `params.yaml`.
+Track pipelines with DVC (`dvc.yaml`) and parameters in `params.yaml`, using SeaweedFS S3 (`s3://trifact-dvc`) as the local S3 remote (MinIO omitted because images are no longer published on Docker Hub). Store MLflow artifacts on its volume with `--serve-artifacts` (portable to S3 in cloud deployments). Pin every HF dataset revision by SHA in `params.yaml`.
 
 ## Consequences
 
-`dvc repro` воспроизводит любой этап; при переезде в облако SeaweedFS заменяется любым S3.
+`dvc repro` reproduces any stage; SeaweedFS can be swapped for any S3-compatible object store.

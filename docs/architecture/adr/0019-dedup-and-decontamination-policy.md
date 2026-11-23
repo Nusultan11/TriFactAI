@@ -1,4 +1,4 @@
-# 19. Политика дедупликации и деконтаминации корпусов
+# 19. Corpus Deduplication and Decontamination Policy
 
 Date: 2026-11-18
 
@@ -6,40 +6,30 @@ Date: 2026-11-18
 
 Accepted
 
-Amends [7. Сплиты по исходному документу и замороженный тест](0007-leakage-safe-splits.md) (как именно train-корпуса очищаются от eval-текстов)
+Amends [7. Source-Document Splits and Frozen Evaluation Sets](0007-leakage-safe-splits.md) (defines train corpus decontamination against eval sources)
 
 ## Context
 
-В архитектуре §5.3 планировались точный хеш и MinHash-LSH для дедупа, а также 13-граммы и MinHash для деконтаминации. Пилотный прогон этапа 2 (wikipedia, fineweb2_kk, multidomain_kk) показал следующее.
-
-- Схема LSH 16 бандов × 8 строк (порог S-кривой J ≈ 0.7) удаляла 1.45% документов, но медиана настоящего Jaccard в выборке из 500 пар была всего 0.65. Около 1.1% документов составляли шаблонные заготовки Wikipedia («X — село в …», «X is a moth of the family …»). Они похожи по 5-граммам, хотя описывают разные сущности.
-- Деконтаминация целыми документами по одному совпадению 13-граммы удаляла 3.2% корпуса, в том числе 4.7% Wikipedia. Причина в том, что контексты KazQAD, SberQuAD, SQuAD и MIRACL сами взяты из Wikipedia. Длинная статья целиком терялась из-за одного абзаца, совпавшего с eval-контекстом. Кроме того, несколько 13-грамм встречаются в сотнях документов: это шаблоны вроде «… is a species of …» и юридические формулы.
-- MinHash по eval-текстам для такой задачи не подходит, и это следует из устройства данных, а не из замера. Eval-контексты — абзацы, поэтому их Jaccard с целым документом мал, даже когда абзац вошёл в документ дословно. Дословное вхождение находят 13-граммы.
+Stage 2 pilot runs (`wikipedia`, `fineweb2_kk`, `multidomain_kk`) showed:
+- 16×8 MinHash-LSH (midpoint $J \approx 0.70$) removed 1.45% of docs with median exact Jaccard `0.65` (500 pairs), driven by ~1.1% templated Wikipedia stubs (`"X — село в …"`, `"X is a moth of the family …"`) describing distinct entities.
+- Document-level 13-gram decontamination dropped 3.2% of corpus (4.7% of Wikipedia) because KazQAD/SberQuAD/SQuAD/MIRACL contexts come from Wikipedia, and template 13-grams (`"… is a species of …"`) match hundreds of docs.
+- MinHash cannot detect paragraph-level eval overlap inside long documents (low whole-doc Jaccard).
 
 ## Decision
 
-**Дедупликация** (`trifact.data.dedup`, параметры `params.yaml: curation.minhash`):
+**Deduplication (`trifact.data.dedup`, `params.yaml: curation.minhash`):**
+- Exact duplicates: matching hash of lowercased, whitespace-collapsed text.
+- Near-duplicates: 14 bands × 9 rows (126 permutations, midpoint $J \approx 0.75$) over word 5-grams; global connected components across all sources.
+- Keep highest-priority source (`curation.sources` order), then earliest shard.
+- Exception `keep_near_within: [wikipedia]`: retain near-duplicates whose cluster root is also in Wikipedia (distinct entity stubs); still remove exact duplicates and cross-source Wikipedia copies.
+- Write removed docs to `removed` (`kept_doc_id`, `kept_source`); log exact Jaccard on 500 random pairs (`pair_check`).
 
-- Точный дубль — совпадение хеша текста после lowercase и схлопывания пробелов.
-- Near-дубль — LSH 14 бандов × 9 строк (126 перестановок, порог S-кривой J ≈ 0.75) над словесными 5-граммами. Кластеры — связные компоненты по совпавшим бандам и точному хешу во всех источниках сразу.
-- В кластере остаётся документ источника с наивысшим приоритетом (порядок `curation.sources`), а внутри источника — первый по порядку шардов.
-- Исключение `keep_near_within: [wikipedia]`: near-дубль Wikipedia, корень которого тоже в Wikipedia, остаётся, потому что заготовки описывают разные сущности. Точные дубли и копии Wikipedia в других источниках удаляются.
-- Удалённые документы пишутся в таблицу `removed` со ссылкой `kept_doc_id` и `kept_source`. Точность проверяется настоящим Jaccard на 500 случайных парах (`pair_check` в манифесте).
-
-**Деконтаминация** (`trifact.data.decontaminate`, `curation.decontamination`):
-
-- Eval-грамы — словесные 13-граммы всех сплитов eval-источников, нормализованных так же, как корпус. Колонки и токены задаются в `sources`, пассажи MIRACL — по qrels с `relevance > 0`.
-- Грама, найденная более чем в `max_gram_docs` = 100 документах корпуса, считается шаблоном и игнорируется. Список шаблонов пишется в манифест.
-- Удаляются строки, содержащие eval-граму. Документ удаляется целиком, если грама пересекает границу строк или удалено больше `max_removed_share` = 50% символов.
-- Удалённые и изменённые документы пишутся в таблицу `contaminated` (действие, число строк, затронутые eval-источники).
-- После фильтра выход сканируется повторно. Хотя бы одна оставшаяся eval-грама — ошибка стадии.
-- MinHash против eval не применяется.
+**Decontamination (`trifact.data.decontaminate`, `curation.decontamination`):**
+- Index normalized word 13-grams across all splits of eval sources (MIRACL passages with `relevance > 0`).
+- Ignore template grams appearing in `> max_gram_docs` (100) corpus docs; log ignored templates in manifest.
+- Strip lines containing any eval 13-gram; drop entire document if a gram spans line breaks or `> max_removed_share` (50%) of chars are removed.
+- Write removed/edited docs to `contaminated`. Re-scan output; any surviving eval 13-gram fails the stage. Do not use MinHash against eval.
 
 ## Consequences
 
-- На пилоте:
-  - Дедуп удаляет 0.31% документов, медиана Jaccard пар 0.83, а у 98.4% пар J ≥ 0.5. Из fineweb2_kk удалены 148 копий статей Wikipedia.
-  - Деконтаминация удаляет 0.71% документов и правит 2.5%. Повторный скан находит 0 утечек.
-- Near-дубли внутри Wikipedia (шаблонные заготовки) остаются в корпусе. Для их балансировки при обучении служит `minhash_cluster` и `dup_count` в шардах.
-- Удалённая часть документа может содержать полезный контекст. Ради отсутствия утечек это принимается: eval-тексты и их окружение в train не попадают.
-- Параметры меняются только новым замером точности пар и доли удаления.
+Pilot results: dedup removed 0.31% (median Jaccard `0.83`, 98.4% ≥ `0.5`, caught 148 Wikipedia copies in `fineweb2_kk`); decontamination dropped 0.71% and edited 2.5% with 0 post-scan leaks. Retained Wikipedia stubs carry `minhash_cluster` and `dup_count` for optional down-weighting. Parameter changes require a new `pair_check` and drop-rate measurement.

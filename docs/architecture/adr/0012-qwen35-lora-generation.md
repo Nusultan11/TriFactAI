@@ -1,4 +1,4 @@
-# 12. Семейство Qwen3.5 для генерации, bf16 LoRA вместо QLoRA
+# 12. Qwen3.5 Generation Family, bf16 LoRA Instead of QLoRA
 
 Date: 2026-11-18
 
@@ -10,16 +10,16 @@ Supersedes [5. Qwen3-1.7B + QLoRA](0005-qwen3-qlora-local-gguf-serving.md)
 
 ## Context
 
-ADR-0005 выбирал Qwen3-1.7B + QLoRA. С тех пор вышли модели Qwen3.5 Small (0.8B / 2B / 4B / 9B): гибрид Gated DeltaNet и Gated Attention в пропорции 3:1, 2–4 KV-головы, контекст 262k, 201 язык, словарь 248k. KV-кэш растёт только в четверти слоёв, поэтому длинный контекст из многих фрагментов-доказательств обходится дешевле. Более крупный словарь должен снизить фертильность токенизатора на казахском. Документация Unsloth для Qwen3.5 не рекомендует QLoRA (4-bit) из-за повышенных ошибок квантизации и приводит требования bf16 LoRA к памяти: 0.8B ≈ 3 GB, 2B ≈ 5 GB, 4B ≈ 10 GB, 9B ≈ 22 GB VRAM. Для Qwen3.5 нужны vLLM ≥ 0.17 и свежие `transformers` / `llama.cpp`.
+Qwen3.5 Small (`0.8B`/`2B`/`4B`/`9B`) uses a 3:1 Gated DeltaNet + Gated Attention hybrid (2–4 KV heads, 262k context, 201 languages, 248k vocab), growing KV cache in only 1/4 of layers and reducing Kazakh tokenizer fertility. Unsloth documentation advises against 4-bit QLoRA for Qwen3.5 due to elevated quantization errors and specifies bf16 LoRA VRAM requirements (`0.8B ≈ 3 GB`, `2B ≈ 5 GB`, `4B ≈ 10 GB`, `9B ≈ 22 GB`). Requires `vLLM >= 0.17` and current `transformers`/`llama.cpp`.
 
 ## Decision
 
-- Цель локального сервинга — `Qwen/Qwen3.5-2B` (GGUF Q4_K_M ≈ 1.4 GB в llama.cpp, режим non-thinking). Остальные кандидаты: 0.8B (скорость, драфт-модель) и 4B / 9B (качество, облачный сервинг). Контрольный baseline — `Qwen/Qwen3-1.7B`.
-- Дообучение — **bf16 LoRA** (PEFT или Unsloth) на облачной GPU 24 GB+. Локально на 4 GB — только smoke-тест на 0.8B.
-- Учитель для синтетических данных — `Qwen/Qwen3.5-35B-A3B` на vLLM в облаке (ADR-0015).
-- Сервинг: merge адаптера → GGUF → llama.cpp (локально); на GPU-сервере — vLLM с LoRA-адаптером. Шаблон чата при сервинге — тот же, что при обучении.
-- Окончательный выбор размера делает гейт ADR-0009 на этапе 7. Если дообучение не обыграло baseline, в сервинг идёт лучший baseline.
+- Primary local serving target: `Qwen/Qwen3.5-2B` (GGUF `Q4_K_M` ≈ 1.4 GB on `llama.cpp`, non-thinking mode); additional candidates `0.8B` (fast/draft) and `4B`/`9B` (cloud quality); control baseline `Qwen/Qwen3-1.7B`.
+- Fine-tuning: **bf16 LoRA** (PEFT or Unsloth) on cloud Ampere+ GPU (24 GB+).
+- Synthetic teacher: `Qwen/Qwen3.5-35B-A3B` (ADR-0015; execution subsequently amended by ADR-0020 and ADR-0025).
+- Serving: merged GGUF on `llama.cpp` locally; `vLLM` with LoRA adapter on GPU servers, using the exact training chat template.
+- Final size selection governed by Stage 7 promotion gate (ADR-0009); serve best baseline if fine-tuning does not win.
 
 ## Consequences
 
-Обучать в облаке дороже, чем делать QLoRA, но результат стабильнее. Совместимость PEFT, llama.cpp и vLLM с `qwen3_5` проверяется в начале этапа 7. Влияние квантизации Q4/Q5/Q8 на метрики измеряется на замороженном eval. KazLLM / Sherkala (лицензия NC) используются только как baseline для оценки.
+Cloud bf16 LoRA costs more than QLoRA but is more stable. Verify `qwen3_5` compatibility in PEFT, `llama.cpp`, and `vLLM` at Stage 7 start; measure `Q4`/`Q5`/`Q8` quantization impact on frozen eval. Non-commercial KazLLM / Sherkala remain evaluation-only baselines.

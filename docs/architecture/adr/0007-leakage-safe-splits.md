@@ -1,4 +1,4 @@
-# 7. Сплиты по исходному документу и замороженный тест
+# 7. Source-Document Splits and Frozen Evaluation Sets
 
 Date: 2026-11-18
 
@@ -6,16 +6,16 @@ Date: 2026-11-18
 
 Accepted
 
-Amended by [19. Политика дедупликации и деконтаминации корпусов](0019-dedup-and-decontamination-policy.md)
+Amended by [19. Corpus Deduplication and Decontamination Policy](0019-dedup-and-decontamination-policy.md)
 
 ## Context
 
-В QA-датасетах на один контекст приходится несколько вопросов; при случайном сплите один и тот же текст попадает в train и test, и метрики завышаются.
+QA datasets attach multiple questions to the same context; random row-level splitting leaks identical passages across train and test, inflating metrics.
 
 ## Decision
 
-train/val/test делятся по исходному документу (статья Wikipedia или контекст). Тестовый набор и cross-lingual eval собираются до любого обучения, версионируются в DVC и не меняются. Стадия `validate` проверяет пересечения по хешам текстов и near-duplicates.
+Split `train`/`val`/`test` strictly by source document (Wikipedia article or context). Assemble and freeze test and cross-lingual eval suites before any training, versioned in DVC with SHA-256 manifests. Enforce exact-hash and near-duplicate overlap checks during `validate` and `build_eval`.
 
 ## Consequences
 
-Метрики честнее и, скорее всего, ниже; повторные эксперименты сравнимы между собой.
+Reported metrics are honest (typically lower) and remain comparable across all subsequent experiments.

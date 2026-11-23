@@ -1,4 +1,4 @@
-# 24. Google Drive для данных и резервных копий
+# 24. Google Drive for Persistent Data and Backups
 
 Date: 2026-11-22
 
@@ -6,23 +6,23 @@ Date: 2026-11-22
 
 Accepted
 
-Amends [10. DVC с S3-remote](0010-dvc-with-s3-remote.md)
+Amends [10. DVC with S3-Compatible Remote](0010-dvc-with-s3-remote.md)
 
-Amends [14. Шардированные идемпотентные batch-задания](0014-sharded-batch-jobs.md)
+Amends [14. Sharded Idempotent Batch Jobs](0014-sharded-batch-jobs.md)
 
-Amended by [25. Облачные вычисления](0025-cloud-only-computing.md)
+Amended by [25. Cloud-Only Computing and Stage 1–3 Recovery](0025-cloud-only-computing.md)
 
 ## Context
 
-Разработка идёт на ноутбуке. Код и история Git публикуются в GitHub, а данные и резервные копии должны восстанавливаться из приватного Google Drive. Коннектор Drive ограничил размер файла, а Google заблокировал встроенный OAuth-клиент DVC.
+Code and Git history live on GitHub, while datasets, models, and backups must be recoverable from private Google Drive. The native DVC Drive connector hit file-size limits and Google blocked DVC's built-in OAuth client.
 
 ## Decision
 
-- В папке проекта в Google Drive хранятся DVC-объекты (`dvc`), модели (`models`), прочие рабочие данные и карты восстановления (`workspace-data`), а также резервные копии Git и указателей DVC (`backups`).
-- На Windows Google Drive для компьютера подключает папку `dvc` в потоковом режиме. DVC использует её как локальный remote `drive_desktop` с включённой проверкой хешей. Путь и выбор remote по умолчанию задаются в `.dvc/config.local`.
-- SeaweedFS обслуживает локальный Docker-стек. Облачные GPU-задания получают входы через подключённый Drive в Colab либо через механизм подготовки входов конкретного задания.
-- Локальная копия данных очищается после проверки файла в облаке. Карты восстановления сохраняют исходный путь и хеш для рабочих файлов, которые хранятся как DVC-объекты.
+- Store persistent project assets in Google Drive under `TrifactAI/`: DVC cache (`dvc`), models (`models`), working artifacts & recovery maps (`workspace-data`), and Git/DVC-pointer backups (`backups`).
+- On Windows, mount `dvc` in streaming mode via Google Drive for Desktop and configure DVC local remote `drive_desktop` (`verify=true`) in `.dvc/config.local`.
+- Keep SeaweedFS for the local Docker serving stack. Cloud jobs access inputs via mounted Drive in Colab or job-specific input bundles.
+- Clear local data copies after verifying cloud objects; preserve original paths and hashes in recovery maps.
 
 ## Consequences
 
-Для `dvc pull` на ноутбуке требуется запущенный клиент Google Drive. При переносе Windows-клиент временно кеширует файлы на системном диске до синхронизации. Локальная очистка освобождает место по мере подтверждения облачной копии.
+Local `dvc pull` requires Google Drive for Desktop running and temporarily caches synced files on the system drive; clearing verified local copies reclaims laptop disk space.

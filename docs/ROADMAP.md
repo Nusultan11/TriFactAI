@@ -1,158 +1,158 @@
-# TriFact AI — дорожная карта
+# TriFact AI — Roadmap
 
-Один этап = один рабочий шаг ([AGENTS.md §4](../AGENTS.md)). Этап закрыт только тогда, когда выполнены **все** его критерии готовности. Идентификаторы экспериментов (DOC-, NER-, RET-, GEN-, VER-) раскрыты в [архитектуре §7](architecture/docs/01-architecture.md), модели — в [models.md](research/models.md), объёмы — в [datasets.md](research/datasets.md).
+One stage = one milestone ([AGENTS.md](../AGENTS.md)). A stage closes only when **all** completion criteria are satisfied. Experiment IDs (`DOC-`, `NER-`, `RET-`, `GEN-`, `VER-`) are defined in [01-architecture.md §7](architecture/docs/01-architecture.md), model specs in [models.md](research/models.md), and target volumes in [datasets.md](research/datasets.md).
 
-| # | Этап | Главный результат |
+| # | Stage | Primary Deliverable |
 |---|---|---|
-| 0 | Фундамент проекта | Правила, документы, git, бэкапы |
-| 1 | Data Platform & Acquisition | Все источники в data lake с манифестами, DVC |
-| 2 | Data Quality & Curation | Очищенные дедуплицированные корпуса, отчёты качества, полный EDA |
-| 3 | Task Datasets: gold, silver, synthetic | Task-наборы на миллионы примеров и замороженный eval |
-| 4 | Document Processing Engine | Парсер любых документов с бенчмарком качества и скорости |
-| 5 | Extraction | Champion NER и Entity Linking на трёх языках |
-| 6 | Retrieval at Scale | Индекс ~35M чанков, champion embedder и reranker |
-| 7 | Generation | Champion LLM для grounded QA на KK/RU/EN |
-| 8 | Evidence Verification | Верификатор утверждений с откалиброванными порогами |
-| 9 | System Integration & Serving | Рабочий онлайн-пайплайн, нагрузочные тесты, ablation |
-| 10 | Product, Ops & Final Evaluation | Web, мониторинг, развёртывание, итоговый отчёт |
+| 0 | Project Foundation | Agent instructions, docs, git, backups |
+| 1 | Data Platform & Acquisition | All sources in Parquet data lake with manifests, DVC + Drive recovery |
+| 2 | Data Quality & Curation | Cleaned, deduplicated, decontaminated corpora, quality reports, full EDA |
+| 3 | Task Datasets: Gold, Silver, Synthetic | Multi-million-row task datasets and frozen eval suites |
+| 4 | Document Processing Engine | Multi-format parser & OCR router with quality/speed benchmark |
+| 5 | Extraction | Champion NER and Entity Linking across KK/RU/EN |
+| 6 | Retrieval at Scale | ~35M-chunk index, champion embedder and reranker |
+| 7 | Generation | Champion grounded QA LLM across KK/RU/EN |
+| 8 | Evidence Verification | Claim verifier with calibrated per-language thresholds |
+| 9 | System Integration & Serving | Online pipeline, load tests, prompt-injection defense, ablation |
+| 10 | Product, Ops & Final Evaluation | Web UI, monitoring, deployment, `real_docs` transfer, final report |
 
 ---
 
-## Этап 0 — Фундамент проекта
+## Stage 0 — Project Foundation
 
-1. Проектные инструкции (`AGENTS.md`, `CLAUDE.md`).
-2. Каталоги моделей и данных с проверенными фактами.
-3. Архитектура, ADR, дорожная карта под масштаб десятков миллионов записей.
-4. Журнал прогресса.
-5. Скрипт бэкапа, git на `main`, удалённый репозиторий, первый коммит и снимок.
+1. Agent instructions (`AGENTS.md`; superseded earlier `CLAUDE.md` wrapper).
+2. Verified model and dataset catalogs.
+3. Architecture, ADRs, and roadmap sized for tens of millions of records.
+4. Progress log (`docs/PROGRESS.md`).
+5. Backup script, `main` branch on remote `origin`, initial commit, and snapshot.
 
-**Готово, когда:** документы не противоречат друг другу и не дублируют друг друга, есть первый коммит, push и бэкап.
+**Done when:** Documents are consistent and non-overlapping; initial commit, push, and backup exist.
 
-## Этап 1 — Data Platform & Acquisition
+## Stage 1 — Data Platform & Acquisition
 
-1. Окружение: `uv.lock`, `ruff`, `pytest`, pre-commit. `docker compose` (Postgres, Qdrant, Redis, S3, MLflow) поднимается и проходит healthcheck.
-2. Модуль `trifact.lake`: раскладка слоёв и манифесты по ADR-0011.
-3. Загрузчик HF → Parquet-шарды: потоковый, параллельный, с докачкой после обрыва и сверкой числа строк с метаданными.
-4. Загрузка всех источников из `params.yaml: sources`.
-5. Потоковый парсинг JSON-дампа Wikidata в таблицу `entities` без загрузки дампа в RAM.
-6. Решение по лицензии каждого источника — в его манифесте.
-7. DVC: трекинг каталогов шардов, синхронизация с Google Drive и проверка восстановления в облачной среде по [ADR-0025](architecture/adr/0025-cloud-only-computing.md).
-8. Отчёт: объёмы по источникам и языкам, throughput загрузки и парсинга.
+1. Environment: `uv.lock`, `ruff`, `pytest`, pre-commit; `docker compose` (Postgres, Qdrant, Redis, S3, MLflow) starts and passes healthchecks.
+2. `trifact.lake`: layer layout and manifests per ADR-0011.
+3. Streaming, parallel, resumable HF → Parquet loader with metadata row-count verification.
+4. Acquire all sources declared in `params.yaml: sources`.
+5. Stream-parse Wikidata JSON dump into `entities` without loading the dump into RAM.
+6. Record license decision in each source manifest before use.
+7. DVC: track shard directories, sync with Google Drive, and verify clean cloud recovery per [ADR-0025](architecture/adr/0025-cloud-only-computing.md).
+8. Report volumes by source/language, download/parse throughput, and peak RSS.
 
-**Готово, когда:** каждый источник лежит в `raw` с манифестом, число строк совпадает с метаданными, `dvc status` чистый, тесты загрузчика проходят, восстановление из Drive подтверждено в независимой облачной среде.
+**Done when:** Every source resides in `raw` with a valid manifest, row counts match metadata, `dvc status` is clean, loader tests pass, and Drive recovery is verified in an independent cloud runtime.
 
-## Этап 2 — Data Quality & Curation
+## Stage 2 — Data Quality & Curation
 
-1. Нормализация текста (архитектура §5.3), векторизованная, с тестами на крайние случаи.
-2. Определение языка: сравнить lid.176 и GlotLID на ручной выборке, выбрать по F1, разметить документы и абзацы.
-3. Фильтры качества с порогами, подобранными по ручной выборке.
-4. Дедупликация: точная и MinHash-LSH, внутри источников и между ними.
-5. Деконтаминация train-корпусов против будущих eval-источников.
-6. **Полный EDA** каждого источника `raw` (включая таблицу `entities`) и curated-слоя. Считается потоково по всему объёму, а не по выборке; разрезы — источник × язык × домен × сплит. EDA `raw` делается до подбора порогов 2.3 и служит для него входом, EDA curated — после 2.5.
-   - **Схема и целостность**: типы колонок, пропуски, пустые и константные поля, битая кодировка и управляющие символы, повторы id, расхождения схемы между шардами.
-   - **Объёмы**: документы, абзацы, символы, слова, токены; доля каждого источника и языка в итоговой смеси.
-   - **Длины**: распределения в символах, словах, токенах и абзацах; квантили, хвосты, аномально короткие и длинные документы с примерами.
-   - **Язык и письменность**: доли kk/ru/en по документам и абзацам, уверенность langid, смешение языков внутри документа, кириллица против латиницы, доля специфичных казахских букв (ә ғ қ ң ө ұ ү һ і) как сигнал kk против ru, транслит.
-   - **Лексика**: частотные словари и n-граммы по языкам, закон Ципфа, доля редких слов, boilerplate (повторяющиеся строки, шаблоны сайтов, навигация, cookie-баннеры).
-   - **Сигналы качества**: распределения всех признаков фильтров 2.3 до и после отсева, их корреляции, сверка с ручной выборкой 2.3.
-   - **Дубли**: размеры кластеров точных и near-дублей, матрица пересечений источников, доля контента, общего с eval-источниками (вход для 2.5).
-   - **Домены и время**: распределения по доменам, URL и TLD, по датам публикации, где они есть.
-   - **Токенизаторы**: фертильность XLM-R / Qwen3 / Qwen3.5 по языкам и доменам, доля `<unk>` и byte fallback, длина в токенах против лимитов контекста моделей.
-   - **Чувствительное содержимое**: оценка доли PII (email, телефоны, ИИН) и токсичного текста по источникам.
-   - **`entities` (Wikidata)**: распределение типов, покрытие меток и описаний на kk/ru/en, число sitelinks и алиасов, связность графа.
-   - **raw → curated**: как изменилось каждое распределение и какие смещения внесла курация (потерянные домены, языки, длины).
-   - **Выводы**: каждая находка получает решение (новый фильтр, порог, исключение или перевзвешивание источника); решения — в PROGRESS, числа — в `params.yaml`.
-7. Data card для каждого curated-набора.
+1. Vectorized text normalization (`01-architecture.md §5.3`) with edge-case tests.
+2. Language ID: benchmark `lid.176` vs. `GlotLID` on reviewed paragraphs, select by macro-F1, tag documents and paragraphs.
+3. Quality filters with thresholds calibrated on a human-reviewed sample.
+4. Deduplication: exact hash + MinHash-LSH, within and across sources.
+5. Decontamination of train corpora against all eval sources.
+6. **Full streaming EDA** of every `raw` source (including `entities`) and `curated` layer across `source × language × domain × split` (run `raw` EDA before tuning step 2.3; `curated` EDA after 2.5):
+   - **Schema & integrity:** dtypes, nulls/empties, constants, broken encodings/control chars, duplicate IDs, cross-shard schema drift.
+   - **Volumes:** documents, paragraphs, chars, words, tokens; source and language shares.
+   - **Lengths:** char/word/token/paragraph quantiles, tails, extreme examples.
+   - **Language & script:** `kk`/`ru`/`en` doc & paragraph shares, langid confidence, intra-doc mixing, Cyrillic vs. Latin, Kazakh-letter share (`ә ғ қ ң ө ұ ү һ і`), transliteration.
+   - **Lexicon:** frequency spectra, Zipf slope, rare-word share, boilerplate (repeated lines, nav, cookie banners).
+   - **Quality signals:** filter feature distributions before/after filtering, correlations, alignment with human review.
+   - **Duplicates:** exact/near cluster sizes, cross-source overlap matrix, eval overlap (input to 2.5).
+   - **Domains & time:** domain/URL/TLD and publish-date distributions where available.
+   - **Tokenizers:** XLM-R / Qwen3 / Qwen3.5 fertility by language/domain, `<unk>` and byte fallback, token length vs. model context limits.
+   - **Sensitive content:** PII (email, phone, IIN) and toxicity rates by source.
+   - **`entities` (Wikidata):** type distribution, `kk`/`ru`/`en` label/description coverage, sitelinks, aliases, graph connectivity.
+   - **`raw → curated`:** distribution shifts and curation bias (dropped domains, languages, lengths).
+   - **Decisions:** every finding maps to a concrete action in `PROGRESS.md` and numeric values in `params.yaml`.
+7. Data card (`card.md`) for every curated dataset.
 
-**Готово, когда:** curated-слой собран, отчёт показывает долю отсева по каждой причине, ручная проверка ≥ 500 документов на язык подтверждает фильтры, EDA-отчёт `raw` и curated покрывает все пункты 2.6 по каждому источнику и языку, записан в MLflow (таблицы и графики), а каждая находка закрыта решением.
+**Done when:** Curated layer is built, drop rates per reason are reported, human review (≥500 docs/language) validates filters, full `raw` and `curated` EDA covers all 2.6 items and is logged in MLflow (tables + figures), and every finding has a recorded decision.
 
-## Этап 3 — Task Datasets: gold, silver, synthetic
+## Stage 3 — Task Datasets: Gold, Silver, Synthetic
 
-1. **NER**: gold приведён к общей схеме меток (ADR-0006); silver из ссылок Wikipedia × Wikidata (ADR-0015); шум silver оценён на gold.
-2. **Retrieval**: пары из готовых наборов и KazParC; синтетические запросы учителем с фильтром round-trip; hard negatives.
-3. **Grounded QA (SFT)**: синтетика учителем, включая межъязыковые и неотвечаемые примеры, с фильтрами ADR-0015.
-4. **NLI**: XNLI ru/en и kk-перевод с фильтрацией.
-5. **Eval**: собран по ADR-0007 и заморожен, все 9 языковых направлений, 3 500 элементов проверены человеком, хеши в манифесте. Для оценки шума silver NER человек проверил 600 предложений.
-6. Бюджет и стоимость облачной генерации фиксируются в `params.yaml` до запуска.
-7. **Полный EDA task-наборов** по каждому языку, источнику и сплиту (gold, silver, synthetic, eval):
-   - **NER**: распределение меток, длины и плотность сущностей, вложенные и пересекающиеся спаны, ошибки разметки и отклонения от схемы ADR-0006, расхождения silver с gold по типам.
-   - **QA**: длины вопросов, контекстов и ответов, позиция ответа в контексте, доля неотвечаемых, типы вопросов, лексическое пересечение вопроса с контекстом.
-   - **Retrieval**: число релевантных на запрос, длины запросов и документов, BM25-лёгкость пар, сложность hard negatives, распределение по 9 языковым направлениям.
-   - **NLI**: баланс классов, длины, артефакты гипотез (hypothesis-only baseline).
-   - **Синтетика**: распределение тем и шаблонов, разнообразие (distinct n-grams), доля отсева каждым фильтром ADR-0015.
-   - **Train против eval**: сдвиг распределений, пересечения сущностей, вопросов и документов (проверка ADR-0007).
+1. **NER:** normalize gold sets to unified schema (ADR-0006); build silver from Wikipedia links × Wikidata (ADR-0015); estimate silver noise against gold.
+2. **Retrieval:** build pairs from public sets + KazParC; generate synthetic teacher queries with round-trip filtering; mine hard negatives.
+3. **Grounded QA (SFT):** teacher synthetic QA (answerable, cross-lingual, unanswerable) with ADR-0015 filters.
+4. **NLI:** XNLI `ru`/`en` + filtered `kk` MT.
+5. **Eval:** build and freeze per ADR-0007 across all 9 language directions, 3,500 human-verified items, SHA-256 hashes in manifest; human audit of 600 silver NER sentences.
+6. Fix cloud generation budget and cost in `params.yaml` before launch.
+7. **Full task-set EDA** across `language × source × split × origin` (`gold`, `silver`, `synthetic`, `mt`, `eval`):
+   - **NER:** label distribution, span lengths/density, nested/overlapping spans, schema violations, silver vs. gold type confusion.
+   - **QA:** question/context/answer lengths, answer position, unanswerable share, question types, lexical overlap.
+   - **Retrieval:** positives per query, query/doc lengths, BM25 easiness, hard-negative difficulty, 9-direction balance.
+   - **NLI:** class balance, lengths, hypothesis-only baseline artifacts.
+   - **Synthetic:** topic/template distribution, diversity (distinct n-grams), per-filter drop rates.
+   - **Train vs. eval:** distribution shift and entity/question/doc leakage check (ADR-0007).
 
-**Готово, когда:** все task-наборы в DVC с data cards, шум оценён, eval заморожен и захеширован, целевые объёмы datasets.md §6 достигнуты или отклонение объяснено в PROGRESS, EDA task-наборов записан в MLflow, а найденные проблемы исправлены до заморозки eval.
+**Done when:** All task sets are tracked in DVC with data cards, noise is quantified, eval is frozen and hashed, target volumes ([datasets.md §6](research/datasets.md)) are met or deviations documented in `PROGRESS.md`, task EDA is logged in MLflow, and defects are resolved before freezing eval.
 
-## Этап 4 — Document Processing Engine
+## Stage 4 — Document Processing Engine
 
-1. Тестовый корпус документов с эталонным текстом: PDF (текстовые, сканы, многоколоночные, таблицы), DOCX, HTML, TXT на kk/ru/en.
-2. Эксперименты DOC-0 … DOC-3.
-3. Варианты чанкинга подготовлены; окончательный выбор делается по метрикам retrieval этапа 6.
-4. Устойчивость: битые файлы, огромные документы, смешанные языки не роняют воркер.
+1. Reference benchmark corpus: PDF (text, scans, multi-column, tables), DOCX, HTML, TXT in `kk`/`ru`/`en`.
+2. Experiments `DOC-0`…`DOC-3`.
+3. Prepare chunking variants (`chunking.variants`); final choice deferred to Stage 6 retrieval metrics.
+4. Robustness: corrupted, oversized, and mixed-language files never crash the worker.
 
-**Готово, когда:** бенчмарк записан, для каждого типа документа выбран путь обработки, тесты крайних случаев проходят.
+**Done when:** Benchmark is logged, processing path per document kind is selected, and edge-case/hostile tests pass.
 
-## Этап 5 — Extraction
+## Stage 5 — Extraction
 
-1. Общий модуль оценки: кластерный парный бутстреп и выходы по примерам (ADR-0022), вынесенные из `eval_docproc`. `eval_ner` проверяется на эталонных случаях seqeval.
-2. Эксперименты NER-0 … NER-5 с HPO и ≥ 3 сидами. Метрики: strict entity F1, unseen-F1, ошибки границ против ошибок типа.
-3. DATE-экстрактор и его оценка.
-4. Entity Linking: KB из Wikidata, кандидаты (с нормализацией казахских окончаний), ранжирование. Recall@k кандидатов и accuracy@1 на ручной выборке по языкам.
-5. Калибровка уверенности сущностей и порог `annotate_corpus` по кривой precision–coverage.
-6. Массовая разметка curated-корпуса champion-моделью (`annotate_corpus`).
+1. Extract shared evaluation module: cluster paired bootstrap and per-example outputs (ADR-0022) from `eval_docproc`; verify `eval_ner` against `seqeval` reference cases.
+2. Experiments `NER-0`…`NER-5` with HPO and ≥3 seeds: strict entity F1, unseen-F1, boundary vs. type errors.
+3. Rule-based DATE extractor and evaluation.
+4. Entity Linking: Wikidata KB, candidate generation (with Kazakh suffix stripping), ranking; report candidate `recall@k` and `accuracy@1` on human-labeled per-language sets.
+5. Calibrate entity confidence and pick `annotate_corpus` threshold on precision–coverage curve.
+6. Sharded cloud corpus annotation (`annotate_corpus`) with champion model.
 
-**Готово, когда:** entity-level F1 по каждому языку и типу превосходит baseline со значимостью, champion прошёл гейт, throughput замерен. Для linking записаны recall@k кандидатов, accuracy@1 и доля NIL по языкам.
+**Done when:** Strict entity F1 beats baseline with CI across languages/types, champion passes gate, throughput is measured, and linking reports candidate `recall@k`, `accuracy@1`, and NIL rate per language.
 
-## Этап 6 — Retrieval at Scale
+## Stage 6 — Retrieval at Scale
 
-1. Ключ кластера в eval `retrieval`: связь MT-направлений с исходным запросом (ADR-0022).
-2. Эмбеддинги корпуса и индекс Qdrant (`embed_corpus` → `index_corpus`).
-3. Эксперименты RET-0 … RET-7. Для первой стадии отдельно записывается candidate recall@100.
-4. RET-C: выбор чанкинга по метрикам retrieval.
-5. RET-S: ступени масштаба 1M → 10M → 35M. На каждой ступени recall приближённого поиска сравнивается с точным.
-6. Анализ промахов по стадиям поиска и по 9 направлениям.
+1. Add cluster key to retrieval eval linking MT directions to source query (ADR-0022).
+2. Compute corpus embeddings and build Qdrant index (`embed_corpus` → `index_corpus`).
+3. Experiments `RET-0`…`RET-7`; log first-stage `candidate recall@100` separately.
+4. `RET-C`: select chunking variant by retrieval metrics.
+5. `RET-S`: scale ladder `1M → 10M → 35M`; compare ANN recall against exact search at every step.
+6. Stage-attributed miss analysis across all 9 directions.
 
-**Готово, когда:** champion-конфигурация не хуже предыдущей ни на одном направлении, кривые масштаба и бюджет памяти записаны, потери ANN и квантизации отделены от потерь модели, решение о Serving VM принято (ADR-0013).
+**Done when:** Champion does not regress on any of 9 directions, scale curves and memory budget are recorded, ANN/quantization loss is isolated from model loss, and Serving VM decision is finalized (ADR-0013).
 
-## Этап 7 — Generation
+## Stage 7 — Generation
 
-0. **Предусловие:** утверждён облачный бюджет на GPU Ampere+ (`cloud.budget_usd`). bf16 LoRA не идёт на T4 Kaggle. Без бюджета выполняются шаги 1, 2 (только GEN-0), 4 и 5 на baseline.
-1. Проверка поддержки Qwen3.5 в transformers, PEFT, llama.cpp, vLLM (ADR-0012): фактические имена модулей LoRA, шаблон чата non-thinking, совпадение генерации GGUF и transformers.
-2. Эксперименты GEN-0 … GEN-3 (bf16 LoRA). Faithfulness считается по ADR-0022, согласие верификатора с человеком проверено на `verification.faithfulness_audit_claims` утверждениях на язык.
-3. Регрессии адаптера: ложные отказы на отвечаемых, язык ответа, формат ссылок, повторы, межъязыковые направления.
-4. GEN-Q: квантизация для сервинга с imatrix на трёхъязычных данных, KL к bf16 и метрики по языкам.
-5. Скорость: tokens/s, time-to-first-token, память локально и на GPU-сервере.
+0. **Precondition:** Approved cloud budget for Ampere+ GPU (`params.yaml: cloud.budget_usd`) — bf16 LoRA cannot run on Kaggle T4. Without paid budget, run steps 1, 2 (`GEN-0` only), 4, and 5 on baselines.
+1. Qwen3.5 compatibility check in `transformers`, `PEFT`, `llama.cpp`, `vLLM` (ADR-0012): inspect actual linear module names, non-thinking chat template, and GGUF vs. `transformers` parity.
+2. Experiments `GEN-0`…`GEN-3` (bf16 LoRA); compute faithfulness per ADR-0022 with human verifier audit on `verification.faithfulness_audit_claims` claims/language.
+3. Adapter regression suite: false refusals on answerable queries, answer language, citation format, repetition loops, cross-lingual directions.
+4. `GEN-Q`: GGUF quantization with multilingual `imatrix`, KL divergence vs. bf16, per-language metrics.
+5. Throughput: `tokens/s`, TTFT, and memory on target serving hardware.
 
-**Готово, когда:** дообученная модель обыгрывает лучший baseline по faithfulness и answer F1 на каждом языке, а регрессии шага 3 не хуже baseline. Если не обыгрывает, это фиксируется в PROGRESS и в сервинг идёт лучший baseline.
+**Done when:** Fine-tuned model beats best baseline on faithfulness and answer F1 per language without regressions in step 3; otherwise record negative result in `PROGRESS.md` and serve best baseline.
 
-## Этап 8 — Evidence Verification
+## Stage 8 — Evidence Verification
 
-1. Тест верификатора: человеческая разметка утверждений из ответов системы на kk/ru/en, включая межъязыковые пары.
-2. Разбиение ответа на утверждения: правила против LLM, сверка с человеческим разбиением.
-3. Эксперименты VER-0 … VER-2: окна посылки, сверка чисел и дат.
-4. Калибровка по языкам, пороги по кривой risk–coverage, политика отказа (ADR-0008). Стартовые пороги `promotion.verification_*` пересматриваются по разметке шага 1.
-5. Время проверки на ответ.
+1. Human-labeled claim test set from real system answers in `kk`/`ru`/`en`, including cross-lingual pairs.
+2. Claim splitting: rules vs. LLM splitter benchmarked against human splits.
+3. Experiments `VER-0`…`VER-2`: sentence windows, rule-based number/date verification.
+4. Per-language calibration, risk–coverage thresholds, refusal policy (ADR-0008); revise starter `promotion.verification_*` thresholds on step 1 human labels.
+5. Verification latency per answer.
 
-**Готово, когда:** верификатор снижает долю неподтверждённых утверждений без значимой потери полноты, а точность `contradicted` и ECE проходят гейт по каждому языку.
+**Done when:** Verifier cuts unsupported claims without significant recall loss, and `contradicted` precision + ECE pass gate per language.
 
-## Этап 9 — System Integration & Serving
+## Stage 9 — System Integration & Serving
 
-1. API, воркер, Inference Service и LLM-сервер по архитектуре §6.
-2. Схема PostgreSQL с миграциями Alembic, массовая загрузка через COPY.
-3. Батчинг, кеширование, стриминг ответа.
-4. Нагрузочные тесты: RPS, p95, деградация при параллельной загрузке документов.
-5. Защита от prompt injection и набор атак kk/ru/en в e2e eval (ADR-0023).
-6. End-to-end eval с трассами по стадиям, таблица стадий-виновников, ablation (архитектура §10).
+1. API, Ingestion Worker, Inference Service, and LLM Server per `01-architecture.md §6`.
+2. PostgreSQL schema with Alembic migrations and `COPY` bulk load.
+3. Dynamic batching, Redis caching, SSE streaming.
+4. Load tests: RPS, p95 latency, degradation under concurrent document ingestion.
+5. Prompt-injection defense and `kk`/`ru`/`en` attack suite in `eval_e2e` (ADR-0023).
+6. End-to-end eval with per-stage traces, failing-stage attribution table, and ablation (`01-architecture.md §10`).
 
-**Готово, когда:** выполнены нефункциональные цели архитектуры §1 и пороги End-to-End гейта (включая долю успешных атак), записаны ablation и доли стадий-виновников по языкам.
+**Done when:** NFR targets (`01-architecture.md §1`) and end-to-end gate thresholds (including attack success rate) pass; ablation and failing-stage shares per language are recorded.
 
-## Этап 10 — Product, Ops & Final Evaluation
+## Stage 10 — Product, Ops & Final Evaluation
 
-1. Web (Next.js): загрузка, статусы, чат, цитаты, сущности; e2e-тесты Playwright.
-2. Мониторинг по архитектуре §12: метрики, дашборды, алерты, дрейф входа с порогами из опорных окон.
-3. Развёртывание: Docker-образы, compose-профили, инструкция запуска с нуля.
-4. Набор `real_docs`: перенос обработки документов (пороги маршрутизатора, таблицы без линеек) и e2e на реальные файлы.
-5. Итоговый отчёт: все эксперименты, champion-модели, метрики по языкам, проверка загрязнения (ADR-0022), ограничения.
+1. Web UI (Next.js): upload, status, chat, citations, entities; Playwright e2e tests.
+2. Monitoring (`01-architecture.md §12`): Prometheus metrics, Grafana dashboards, reference-calibrated drift alerts.
+3. Deployment: Docker images, compose profiles, clean-start runbook.
+4. `real_docs` suite: verify document-processing transfer (router thresholds, borderless tables) and e2e quality on real files.
+5. Final report: all experiments, champion models, per-language metrics, pretraining contamination check (ADR-0022), and limitations.
 
-**Готово, когда:** система поднимается с нуля по инструкции, демо работает на реальных документах, оценка на `real_docs` записана, итоговый отчёт опубликован.
+**Done when:** Stack boots cleanly from scratch, demo works on real files, `real_docs` evaluation is logged, and final report is published.

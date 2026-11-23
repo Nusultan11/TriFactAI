@@ -1,4 +1,4 @@
-# 1. Один Python-пакет, несколько рантаймов
+# 1. Single Python Package, Multiple Runtimes
 
 Date: 2026-11-18
 
@@ -8,12 +8,12 @@ Accepted
 
 ## Context
 
-Нужны API, фоновый воркер, сервис моделей и офлайн-стадии DVC. Проект ведёт один человек, поэтому микросервисы с отдельными репозиториями и контрактами — лишняя нагрузка. При этом нагрузка у сервисов разная: модели на GPU, API на CPU.
+The platform requires an API, background ingestion worker, model inference service, and offline DVC stages. Separate microservice repositories add unnecessary overhead for a solo engineer, while services have distinct compute profiles (GPU inference vs. CPU API).
 
 ## Decision
 
-Один пакет `src/trifact` с модулями по доменам (ingestion, extraction, retrieval, generation, verification) и отдельными точками входа: `trifact.api`, `trifact.worker`, `trifact.inference`, `python -m trifact.data.*`. Каждая точка входа запускается в своём Docker-контейнере из одного образа.
+Maintain one package `src/trifact` organized by domain (`ingestion`, `extraction`, `retrieval`, `generation`, `verification`) with separate entry points (`trifact.api`, `trifact.worker`, `trifact.inference`, `python -m trifact.data.*`). Each service runs in its own Docker container built from a shared image.
 
 ## Consequences
 
-Общие схемы и код без дублирования; сервисы масштабируются и перезапускаются независимо. Границы модулей держатся дисциплиной импорта (`core` ни от чего не зависит), а не сетью.
+Shared schemas and logic avoid duplication while allowing independent scaling and restarts. Module boundaries are enforced by import discipline (`trifact.core` depends on nothing else), verified by architectural tests.

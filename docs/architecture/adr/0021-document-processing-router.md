@@ -1,4 +1,4 @@
-# 21. Обработка документов: маршрутизатор PyMuPDF → Docling, Tesseract для сканов, изоляция парсера
+# 21. Document Processing: PyMuPDF → Docling Router, Tesseract OCR, and Parser Sandboxing
 
 Date: 2026-11-20
 
@@ -8,31 +8,23 @@ Accepted
 
 ## Context
 
-Пользователь загружает PDF (текстовые, сканы, многоколоночные, с таблицами), DOCX, HTML и TXT на kk/ru/en. Для цитат нужны точные `page`, `section` и символьные смещения в тексте, который хранится и режется на чанки (архитектура §6.1). Нефункциональная цель — ≥ 2 стр/с на воркер для текстового PDF и устойчивость к битым и огромным файлам (§1).
+Users upload KK/RU/EN PDFs (text, scans, multi-column, tables), DOCX, HTML, and TXT. Citations require exact `page`, `section`, and character offsets into stored text (`01-architecture.md §6.1`), with NFR ≥ 2 pages/s on text PDFs and crash isolation against hostile files.
 
-Бенчмарк этапа 4 (`data/eval/docproc`, `reports/docproc.json`; таблицы — PROGRESS этап 4, models.md §6.3) показал:
-
-- PyMuPDF с собственной разметкой (XY-cut по блокам, заголовки по размеру шрифта, удаление колонтитулов) на текстовых и двухколоночных PDF не уступает Docling: CER 0.35–0.36 % против 0.38–0.41 %, порядок чтения 1.0 даже при перемешанном потоке. При этом он работает со скоростью 70–80 стр/с против 0.6 стр/с. Таблицы PyMuPDF читает по столбцам: CER 6 %, ячейки теряются.
-- Docling (layout + TableFormer) восстанавливает таблицы (F1 ячеек 0.99–1.0), но на CPU тратит 1.5–3.5 с на страницу. TableFormer FAST против ACCURATE: F1 ячеек 0.993 против 1.000, страницы с таблицами обрабатываются в 1.4 раза быстрее.
-- На сканах Docling + Tesseract `kaz+rus+eng` даёт CER 0.5–0.7 % по языкам. PyMuPDF + Tesseract даёт ~3 % и теряет заголовки и таблицы. EasyOCR и RapidOCR теряют казахские буквы: CER на kk 36 % и 21 %.
-- Нативные библиотеки (MuPDF, модели Docling, OCR) на враждебных файлах могут упасть, зависнуть или съесть память.
+Stage 4 benchmark (`data/eval/docproc`, `reports/docproc.json`; tables in `PROGRESS.md` Stage 4 & `models.md §6.3`) showed:
+- PyMuPDF + custom layout (XY-cut, font-size headings, header/footer stripping) matches Docling on text & multi-column PDFs (CER `0.35–0.36%` vs. `0.38–0.41%`, reading order `1.0`) at 70–80 p/s vs. 0.6 p/s, but misreads tables column-wise (CER 6%, cell F1 `0.00`).
+- Docling + TableFormer recovers tables (cell F1 `0.99–1.0`) at 1.5–3.5 s/page on CPU; `FAST` vs. `ACCURATE` gives cell F1 `0.993` vs. `1.000` at 1.4× speed.
+- On scans, Docling + Tesseract `kaz+rus+eng` achieves `0.5–0.7%` CER; PyMuPDF + Tesseract gets ~3% and loses headings/tables; EasyOCR/RapidOCR drop Kazakh letters (`kk` CER 36% / 21%).
+- Native C/C++/ML libraries can crash, hang, or OOM on hostile inputs.
 
 ## Decision
 
-- **Единый формат результата** `ParsedDoc` (`trifact.ingestion.parser`): блоки в порядке чтения нормализуются, склеиваются через пустую строку, для текста записываются интервалы страниц (покрывают текст без дыр), разделов (вложенные по уровню заголовка) и таблиц (с сеткой ячеек). Смещения указывают в сохраняемый текст. `ParsedDoc` реализует `ParsedDocument`.
-- **PDF — маршрутизатор DOC-3** (`docproc.engine: router`, `trifact.ingestion.engines`). Каждая страница анализируется PyMuPDF:
-  - нет текстового слоя или он битый (`docproc.pymupdf.min_page_chars`, `max_bad_char_share`) — Docling + Tesseract CLI (`router.scans: docling`);
-  - найдена таблица (линейки или ≥ 3 строк выровненных коротких ячеек) — Docling с TableFormer FAST (`docling.table_mode: fast`);
-  - иначе, в том числе многоколоночные страницы (`router.columns: false`), — быстрый путь PyMuPDF.
-  Смежные страницы для Docling передаются одним диапазоном.
-- **OCR — Tesseract `kaz+rus+eng`**, модели tessdata_best закреплены по sha256 (`docproc.ocr.models`). Один и тот же каталог моделей используют PyMuPDF и Docling.
-- **DOCX, HTML, TXT — нативные парсеры**: стили Word и `outlineLvl` для заголовков, страницы по разрывам, которые Word отрисовал при последнем сохранении; для HTML — отбрасывание навигации, шапки, подвала и скриптов, кодировка по BOM, `<meta charset>` и детектору; для TXT — BOM, UTF-8, детектор кодировки. Docling-бэкенды DOCX/HTML остаются конфигурацией сравнения.
-- **Изоляция**: воркер вызывает `SafeParser` (`trifact.ingestion.sandbox`). Это долгоживущий дочерний процесс с загруженными моделями, таймаутом и лимитом RSS на документ (`docproc.limits`). Падение, зависание или переполнение памяти дают `ParseError` с причиной (`documents.error`), следующий документ запускает новый процесс.
-- **Чанкинг** (`DocumentChunker`): регионы между заголовками → предложения → окна токенов. Варианты (`chunking.variants`) подготовлены, выбор — по метрикам retrieval этапа 6.
+- **Unified output `ParsedDoc`** (`trifact.ingestion.parser`, implements `ParsedDocument`): normalized blocks in reading order, gapless page intervals, nested sections, and table cell grids — all offsets into stored text.
+- **PDF `DOC-3` per-page router** (`docproc.engine: router`, `trifact.ingestion.engines`): inspect each page with PyMuPDF → route missing/broken text layers (`min_page_chars`, `max_bad_char_share`) to Docling + Tesseract CLI (`router.scans: docling`), table pages (ruled or ≥3 aligned rows) to Docling TableFormer `fast`, and all other pages (including multi-column, `router.columns: false`) to PyMuPDF fast path; batch contiguous Docling pages together.
+- **OCR:** Tesseract 5 `kaz+rus+eng` with SHA-256-pinned `tessdata_best` (`docproc.ocr.models`) shared by PyMuPDF and Docling.
+- **DOCX / HTML / TXT:** native parsers (Word styles/`outlineLvl`/rendered page breaks; HTML boilerplate stripping + explicit encoding; TXT BOM/UTF-8/detector). Keep Docling DOCX/HTML backends for comparison only.
+- **Sandboxing (`SafeParser`, `trifact.ingestion.sandbox`):** long-lived isolated child process with per-document timeout and RSS cap (`docproc.limits`); crashes/hangs/OOM return `ParseError(reason)` and respawn the child.
+- **Chunking (`DocumentChunker`):** section regions → sentences → token windows; select from `chunking.variants` in Stage 6.
 
 ## Consequences
 
-- Простые PDF обрабатываются со скоростью PyMuPDF (длинный текстовый PDF — 165 стр/с), качество таблиц и сканов — как у Docling. Модели Docling (~2 GB RAM вместе с процессом) загружаются в воркер один раз.
-- Нужен бинарник Tesseract 5 в образе воркера (`TRIFACT_TESSERACT`), traineddata скачиваются и проверяются при первом запуске.
-- PyMuPDF распространяется под AGPL-3.0: при публикации сервиса исходный код открывается или покупается коммерческая лицензия Artifex. Для исследовательского проекта это приемлемо и записано в models.md §6.3.
-- Маршрутизатор зависит от эвристик признаков страницы. Их пороги лежат в `params.yaml`, качество проверяется на `data/eval/docproc` и на реальных документах этапа 10 (`real_docs`).
+Text PDFs run at PyMuPDF speed (165 p/s on 300-page PDFs) with Docling quality on tables/scans (~2 GB RAM/worker once warmed up). Worker image requires Tesseract 5 binary (`TRIFACT_TESSERACT`). PyMuPDF is AGPL-3.0 (acceptable for research; open-source or commercial Artifex license required if hosted publicly, `models.md §6.3`). Validate router heuristics on `real_docs` in Stage 10.

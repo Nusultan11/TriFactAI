@@ -1,4 +1,4 @@
-# 6. Единая схема NER-меток с расширением для казахского
+# 6. Unified NER Label Schema with Kazakh Extension
 
 Date: 2026-11-18
 
@@ -8,12 +8,12 @@ Accepted
 
 ## Context
 
-KazNERD содержит 25 классов, WikiANN — только PER/ORG/LOC. Прямое объединение даёт противоречивую разметку. Кроме того, в WikiANN нет класса DATE, значит модель не сможет выучить даты для ru/en.
+KazNERD defines 25 classes whereas WikiANN defines only `PER`/`ORG`/`LOC` and lacks `DATE`. Merging them directly produces conflicting labels and leaves `ru`/`en` without date supervision.
 
 ## Decision
 
-Обучаемая модель распознаёт общее ядро `PER, ORG, LOC` на всех трёх языках; отображение классов KazNERD задаётся в `configs/labels.yaml`. `DATE` извлекается отдельным rule-based экстрактором (регулярные выражения + `dateparser` для kk/ru/en) и оценивается на DATE-разметке KazNERD. Полная схема KazNERD-25 — отдельный эксперимент (NER-4).
+Train the neural NER model on a unified `PER, ORG, LOC` core across KK/RU/EN (KazNERD class mapping in `configs/labels.yaml`). Extract `DATE` via a dedicated rule-based extractor (regex + `dateparser` for `kk`/`ru`/`en`), evaluated on KazNERD `DATE` spans. Treat full `KazNERD-25` as a separate experiment (`NER-4`).
 
 ## Consequences
 
-Сопоставимые метрики между языками; расширенные классы не блокируют первую версию.
+Metrics remain directly comparable across languages without blocking v1 on fine-grained taxonomies.

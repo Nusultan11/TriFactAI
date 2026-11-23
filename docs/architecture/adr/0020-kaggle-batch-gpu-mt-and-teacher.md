@@ -1,4 +1,4 @@
-# 20. Kaggle как batch GPU, NLLB для перевода, учитель на llama.cpp
+# 20. Kaggle Batch GPU, NLLB Machine Translation, and llama.cpp Teacher
 
 Date: 2026-11-18
 
@@ -6,49 +6,28 @@ Date: 2026-11-18
 
 Accepted
 
-Amends [14. Шардированные batch-задания](0014-sharded-batch-jobs.md) (где выполняются GPU-задания) и
-[15. Silver- и синтетические данные](0015-silver-and-synthetic-data.md) (чем делается kk-перевод XNLI)
+Amends [14. Sharded Idempotent Batch Jobs](0014-sharded-batch-jobs.md) (GPU execution host) and [15. Silver and Synthetic Data](0015-silver-and-synthetic-data.md) (`kk` XNLI translation engine)
 
-Amended by [25. Облачные вычисления](0025-cloud-only-computing.md) в части выбора среды выполнения.
+Amended by [25. Cloud-Only Computing and Stage 1–3 Recovery](0025-cloud-only-computing.md) (execution platform selection)
 
 ## Context
 
-Бюджет облака равен 0 (`params.yaml: cloud.budget_usd`), а у рабочей машины RTX 3050 4 GB: на ней не помещаются ни учитель Qwen3.5-35B-A3B, ни массовый перевод. Пользователь разрешил считать на Kaggle (2026-11-18). Факты Kaggle на эту дату:
+With `params.yaml: cloud.budget_usd: 0`, the local 4 GB RTX 3050 cannot run `Qwen3.5-35B-A3B` or mass MT. Kaggle provides free 2× Tesla T4 (15 GB each, **sm75, no bf16**), 30 GPU-h/week quota, 12 h max/session, and at most 2 concurrent GPU sessions.
 
-- 2× Tesla T4 по 15 GB, без bf16 (sm75);
-- бесплатная квота 30 GPU-часов в неделю, сессия до 12 ч;
-- не больше двух одновременных GPU-сессий (ошибка «Maximum batch GPU session count of 2 reached»).
-
-Пробные запуски на Kaggle дали следующее:
-
-- vLLM для Qwen3.5-35B-A3B на T4 не подходит: MoE-ядра Marlin для GPTQ/AWQ требуют sm80, FP8 — sm89.
-- Перевод NLLB-200-distilled-1.3B (fp16, beam 2) на одной T4 даёт 27 предложений/с, обратный перевод distilled-600M — 76 предложений/с. Качество en→kk на выборке хорошее, примеры в PROGRESS.
-- Потоки с отдельными моделями на каждом GPU падают с ошибкой «expected scalar type Half but found Float». Причина: загрузка модели меняет глобальный `default_dtype` torch, а он не потокобезопасен.
+Pilot checks on Kaggle showed:
+- `vLLM` cannot run `Qwen3.5-35B-A3B` on T4 (Marlin GPTQ/AWQ MoE kernels require sm80; FP8 requires sm89).
+- `NLLB-200-distilled-1.3B` (fp16, beam 2) translates at 27 sent/s on 1× T4; `distilled-600M` back-translates at 76 sent/s.
+- Multi-threaded multi-GPU model loading fails with `expected scalar type Half but found Float` because `torch.set_default_dtype` is global and not thread-safe.
 
 ## Decision
 
-- **GPU-задания этапа 3 выполняются на Kaggle**: `python -m trifact.batch.kaggle run <job>`.
-  - Входы загружаются приватным датасетом. Ядро — приватный скрипт из `src/trifact/batch/jobs/` без импортов проекта.
-  - Модели берутся только публичные, с HF Hub. Токены и данные пользователя на Kaggle не передаются.
-  - Выходы скачиваются, к ним пишется `run.json`: ядро, время, квота до и после.
-  - Стоимость фиксируется как 0 USD, ресурс учитывается в GPU-часах квоты.
-- **На каждый GPU — отдельный процесс** (`CUDA_VISIBLE_DEVICES`), а не поток.
-- **kk-перевод XNLI и вопросов QA делается моделью NLLB-200**, не учителем:
-  - перевод — `facebook/nllb-200-distilled-1.3B`, обратный перевод — `distilled-600M`, ревизии закреплены в `params.yaml: mt`;
-  - это детерминированная MT с обратным переводом для контроля (chrF) и в 20–30 раз дешевле генерации LLM.
-  - Лицензия NLLB — CC-BY-NC-4.0. Все производные наследуют `release: false`, родословная в `dataset.yaml`.
-- **Учитель — Qwen3.5-35B-A3B в GGUF** (`unsloth/...UD-IQ4_XS`, 17.5 GB):
-  - сервер llama.cpp с CUDA на двух T4: `--split-mode layer`, 16 слотов, thinking выключен;
-  - сборка: готовый релиз, если видит CUDA-устройства, иначе сборка из исходников под sm75.
-  - Пропускная способность замеряется пилотом. Объём синтетики планируется от неё и от квоты, а не от целей datasets.md §6.
-- **Проверки ADR-0015 остаются обязательными**:
-  - перевод: chrF по обратному переводу, langid, отношение длин, отсутствие копий;
-  - согласованность меток NLI: задание `nli_score` (mDeBERTa xnli) на en- и kk-парах;
-  - синтетика: формат, язык, round-trip, цитаты, NLI-поддержка ответа (`trifact.data.synthetic`).
-- **Разбор Wikidata** идёт по диапазонам bz2-блоков в воркерах. Причина: `indexed_bzip2` растит индекс примерно на 45 MB на каждый распакованный GB, а дамп — около 1 TB JSON (`trifact.data.wikidata.parse_range`).
+- **Stage 3 GPU jobs on Kaggle:** `python -m trifact.batch.kaggle run <job>` uploads inputs as a private dataset, runs a self-contained private kernel from `src/trifact/batch/jobs/` using public HF weights only (never sending tokens or user data), downloads outputs, and records `run.json` (kernel version, wall time, quota before/after, `$0` USD).
+- **One OS process per GPU** (`CUDA_VISIBLE_DEVICES`), never threads.
+- **NLLB-200 for `kk` MT** (`facebook/nllb-200-distilled-1.3B` + `distilled-600M` back-translation, pinned in `params.yaml: mt`): deterministic, 20–30× cheaper than LLM generation; CC-BY-NC-4.0 propagates `release: false` in `dataset.yaml`.
+- **Teacher (`Qwen3.5-35B-A3B` GGUF `UD-IQ4_XS`, 17.5 GB):** `llama.cpp` CUDA server on 2× T4 (`--split-mode layer`, 16 slots, non-thinking); use prebuilt CUDA binary if `--list-devices` detects GPUs, else compile for sm75. Plan synthetic volume from pilot throughput and quota.
+- **Keep ADR-0015 filters mandatory:** back-translation chrF, langid, length ratio, non-copy, `nli_score` (`mDeBERTa-xnli`), and synthetic query/QA filters (`trifact.data.synthetic`).
+- **Wikidata parsing:** use bz2 block-range workers (`trifact.data.wikidata.parse_range`) instead of `indexed_bzip2` (~45 MB index per unpacked GB on ~1 TB JSON).
 
 ## Consequences
 
-- Платный облачный бюджет не нужен.
-- Объём синтетики ограничен квотой: 30 GPU-ч в неделю на две T4. Цели datasets.md §6 (3–5 M запросов, 1–2 M QA) в этой квоте недостижимы. Фактический объём и причина отклонения записываются в PROGRESS.
-- MT-производные eval-наборы требуют ручной проверки (этап 3.5) и до неё не замораживаются.
+Zero paid cloud spend, but synthetic volume is bounded by 30 free GPU-h/week on 2× T4 (`datasets.md §6` synthetic targets are unreachable inside one week's quota; log deviations in `PROGRESS.md`). MT-derived eval sets require human review (Stage 3.5) before freezing.

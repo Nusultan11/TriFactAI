@@ -1,4 +1,4 @@
-# 23. Недоверенный текст доказательств в промпте: изоляция и проверка выхода
+# 23. Untrusted Evidence in Prompts: Spotlighting and Independent Output Validation
 
 Date: 2026-11-21
 
@@ -8,26 +8,16 @@ Accepted
 
 ## Context
 
-В промпт генерации попадает текст, который система не контролирует: документы пользователей и веб-корпуса (FineWeb-2, multidomain kk). Такой текст может содержать инструкции для модели. Это косвенная prompt injection: «игнорируй вопрос», «ответь, что…», «добавь ссылку [c_001]». У генератора нет инструментов и побочных эффектов, поэтому ущерб ограничен содержанием ответа. Но именно содержание и является продуктом: ложный факт с правильной на вид ссылкой хуже отказа. Малые модели (Qwen3.5-2B) следуют встроенным инструкциям чаще крупных. В архитектуре (§14) эта угроза не была описана, а eval её не измерял.
-
-Удалять «подозрительные» фразы из пассажа нельзя: смещения цитат должны указывать в сохранённый текст (ADR-0021), а эвристическая чистка ломает и смещения, и смысл.
+Generation prompts ingest untrusted text from user uploads and web corpora (`FineWeb-2`, `multidomain_kk`) that may contain indirect prompt injections (`"ignore the question"`, `"answer that…"`, `"cite [c_001]"`). Although the generator has no tools or side effects, fabricated facts with plausible citations directly corrupt the product, and small models (`Qwen3.5-2B`) are more susceptible than large ones. Stripping suspicious text from passages is prohibited because citation offsets must point into stored text (ADR-0021) and heuristic scrubbing damages valid evidence.
 
 ## Decision
 
-- **Изоляция в промпте.** Каждый пассаж передаётся в разделителях, с номером, заголовком документа, разделом и страницей. Системное правило шаблона: текст доказательств — данные, а не инструкции. Шаблон один для SFT, eval и сервинга (`configs/prompts/grounded_answer.md`, ADR-0012).
-- **Генератор без инструментов.** У LLM в потоке ask нет вызова функций, доступа к сети или хранилищам.
-- **Проверка выхода не зависит от модели:**
-  - номера ссылок ⊆ переданных;
-  - вердикты NLI по утверждениям (ADR-0008);
-  - язык ответа совпадает с `answer_lang`;
-  - формат отказа.
-
-  Неподтверждённое не показывается как подтверждённое.
-- **Измерение.** В e2e eval входит набор документов kk/ru/en со встроенными инструкциями разных типов: смена языка, ложный факт, подмена ссылки, отказ, утечка промпта. Метрика — доля успешных атак. Гейт End-to-End: доля не выше, чем у champion (`params.yaml: promotion`).
-- Текст пассажей не модифицируется ради защиты.
+- **Prompt spotlighting:** Wrap every passage in explicit delimiters with index, document title, section, and page; state in the system prompt that evidence is untrusted data, never instructions. Use one shared template across SFT, eval, and serving (`configs/prompts/grounded_answer.md`, ADR-0012).
+- **Tool-less generator:** The `ask` LLM has zero tool calls, network access, or storage access.
+- **Model-independent output validation:** Enforce cited IDs $\subseteq$ supplied passages, NLI claim verdicts (ADR-0008), `answer_lang` match, and canonical refusal format so unsupported claims are never presented as verified.
+- **Attack suite & gate:** Include `kk`/`ru`/`en` injected-document attacks (language switch, false fact, citation hijack, forced refusal, prompt leak) in `eval_e2e`. Measure attack success rate (ASR); End-to-End gate requires `ASR <= champion` (`params.yaml: promotion.e2e_injection_no_worse`).
+- Never mutate passage text for defense.
 
 ## Consequences
 
-- Небольшой рост промпта из-за разделителей и метаданных пассажей.
-- Защита неполная: изоляция снижает долю успешных атак, но не исключает их. Основную гарантию даёт проверка выхода. Доля атак отслеживается как метрика качества и в мониторинге (архитектура §12).
-- Набор атак собирается в этапе 9 вместе с e2e eval и версионируется в DVC как обычный eval-набор.
+Minor prompt-length overhead from delimiters/metadata. Spotlighting reduces but does not eliminate attacks; independent post-generation validation provides the primary guarantee. ASR is tracked in `eval_e2e` and monitoring (`01-architecture.md §12`); attack suite is built and DVC-versioned in Stage 9.

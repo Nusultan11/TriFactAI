@@ -1,4 +1,4 @@
-# 8. Проверка утверждений и политика отказа
+# 8. Evidence Verification and Refusal Policy
 
 Date: 2026-11-18
 
@@ -8,12 +8,12 @@ Accepted
 
 ## Context
 
-Даже с RAG модель может выдумывать факты или ссылаться не на тот фрагмент.
+Even grounded RAG models hallucinate facts or cite non-supporting passages.
 
 ## Decision
 
-LLM обучается отвечать с `[chunk_id]` и отказываться при отсутствии доказательств. После генерации ответ делится на утверждения: проверяется существование ссылки и NLI (`supported / contradicted / not_enough_info`). Утверждения `contradicted` удаляются; при высокой доле `not_enough_info` ответ помечается как частично подтверждённый.
+Train the LLM to cite `[chunk_id]` after each fact and refuse when evidence is absent. Post-generation, split answers into claims, validate citation IDs, and run NLI (`supported` / `contradicted` / `not_enough_info`). Remove `contradicted` claims; mark answers as partially verified when NEI share exceeds threshold; refuse if zero claims are supported.
 
 ## Consequences
 
-Дополнительная задержка ~0.3 c на ответ; вердикты видны пользователю и пишутся в журнал как метрика качества.
+Adds ~0.3 s latency per answer; verdicts are exposed to users and logged as online quality metrics.

@@ -1,4 +1,4 @@
-# 11. Data lake на Parquet со слоями и манифестами
+# 11. Layered Parquet Data Lake with Manifests
 
 Date: 2026-11-18
 
@@ -6,20 +6,20 @@ Date: 2026-11-18
 
 Accepted
 
-Amended by [18. Стадии курации на собственном шардированном раннере](0018-curation-stages-without-datatrove.md)
+Amended by [18. Custom Sharded Runner for Curation Stages](0018-curation-stages-without-datatrove.md)
 
 ## Context
 
-Корпуса — десятки миллионов документов (~40 GB raw parquet), задачи — миллионы примеров, а на машине 15 GB RAM. Один большой CSV/JSONL на задачу нельзя обработать в памяти. Его также нельзя частично пересобрать или проверить по хешам. Каждому источнику нужны своя лицензия, ревизия и схема.
+Corpora span tens of millions of documents (~40 GB raw Parquet) and task sets span millions of rows, exceeding 15 GB RAM. Monolithic CSV/JSONL files cannot be processed in-memory, partially rebuilt, or hash-verified per source, and each source requires independent license, revision, and schema tracking.
 
 ## Decision
 
-- Хранилище — каталог `data/` с файлами Parquet (zstd). Один шард — ~1M строк или ≤ 512 MB. Раскладка: `data/<layer>/<source>/<lang>/part-<NNNNN>.parquet`.
-- Слои: `raw` (как скачано, после загрузки не меняется) → `clean` (нормализация, язык, фильтры качества) → `curated` (дедуп и деконтаминация) → `task` (ner / retrieval / sft / nli / chunks / annotations / vectors) → `eval` (заморожен, ADR-0007).
-- У каждого источника есть манифест `data/raw/<source>/source.yaml`: HF ID, revision SHA, лицензия и решение по ней, дата загрузки, строки и байты по языкам, sha256 каждого шарда. У каждого производного набора есть `dataset.yaml`: входные манифесты, версия кода (git SHA), параметры, число строк, data card.
-- Обработка потоковая и колоночная: Polars lazy/streaming, DuckDB для join и агрегатов, PyArrow для записи, datatrove для фильтров и MinHash-дедупа. `pandas` для больших наборов не используется.
-- DVC отслеживает каталоги шардов, а не отдельные файлы.
+- Store data under `data/` as `zstd`-compressed Parquet shards (~1M rows or ≤512 MB): `data/<layer>/<source>/<lang>/part-<NNNNN>.parquet`.
+- Layers: `raw` (immutable post-acquisition) → `clean` (normalize, langid, quality filters) → `curated` (dedup, decontamination) → `task` (`ner`/`retrieval`/`sft`/`nli`/`chunks`/`annotations`/`vectors`) → `eval` (frozen, ADR-0007).
+- Every raw source carries `data/raw/<source>/source.yaml` (HF ID, revision SHA, license decision, download date, per-lang rows/bytes, shard SHA-256s). Every derived dataset carries `dataset.yaml` (input manifests, git SHA, params, row counts) and `card.md`.
+- Process via streaming columnar engines: Polars lazy/streaming, DuckDB (joins/aggregates), PyArrow (atomic shard writes); never use `pandas` on large sets. *(Original decision included `datatrove`, subsequently amended by ADR-0018.)*
+- DVC tracks shard directories rather than individual files.
 
 ## Consequences
 
-Любой слой можно пересобрать из предыдущего, частично (по источнику и языку) и с проверкой хешей. Обработка ограничена диском и CPU, а не RAM. Схемы шардов нужно держать стабильными: их изменение — это миграция с бэкапом (AGENTS §8).
+Any layer can be partially rebuilt and hash-verified by source/language, bounded by disk and CPU rather than RAM. Schema changes require a backed-up migration ([AGENTS.md §6](../../../AGENTS.md)).

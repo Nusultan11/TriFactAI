@@ -1,4 +1,4 @@
-# 22. Протокол оценки: кластерный парный бутстреп, faithfulness по утверждениям, LLM-судьи, загрязнение
+# 22. Evaluation Protocol: Cluster Paired Bootstrap, Claim Faithfulness, LLM Judges, and Contamination
 
 Date: 2026-11-21
 
@@ -6,38 +6,27 @@ Date: 2026-11-21
 
 Accepted
 
-Amends [9. Model Registry и гейт продвижения по метрикам](0009-model-registry-and-promotion-gate.md)
+Amends [9. Model Registry and Metric-Driven Promotion Gate](0009-model-registry-and-promotion-gate.md)
 
 ## Context
 
-ADR-0009 требует bootstrap CI или ≥ 3 сидов, но не говорит, как их считать. При разборе методики оценки (скилл `trifact-evaluation`) нашлись пробелы:
-
-- **Зависимые примеры.** В QA на один контекст приходится несколько вопросов. Retrieval-запрос переведён в несколько направлений. Предложения NER идут из одного документа. Бутстреп по отдельным примерам считает их независимыми и даёт слишком узкий CI, поэтому случайная разница проходит гейт.
-- **Faithfulness не определён.** Метрика стоит в гейте LLM (архитектура §10), но способ её измерения нигде не задан. Без определения сравнение GEN-0 и GEN-1 невоспроизводимо.
-- **LLM-судьи.** Они смещены по позиции, длине и в пользу собственных ответов, а на казахском слабее. Правила их использования нет.
-- **Загрязнение предобучения.** Тексты eval (Wikipedia, MIRACL, SQuAD-подобные контексты) могли быть в предобучении LLM и эмбеддеров. Деконтаминация ADR-0019 защищает только наши train-наборы.
-- **Множественные сравнения.** Решения принимаются по 9 направлениям × нескольким метрикам × 3 языкам. Без заранее заданного правила одна «значимая» ячейка из десятков ничего не доказывает.
+ADR-0009 mandated bootstrap CI or ≥3 seeds without specifying statistical methodology. Reviewing `trifact-evaluation` surfaced five gaps:
+- **Dependent examples:** QA questions share contexts, retrieval queries share translations across directions, and NER sentences share documents; item-level bootstrap yields artificially narrow CIs.
+- **Undefined `faithfulness`:** Required by the LLM gate (`01-architecture.md §10`) without a reproducible definition.
+- **Uncalibrated LLM judges:** Exhibit position/length/self-preference bias and weaker `kk` accuracy.
+- **Pretraining contamination:** Eval suites derived from Wikipedia/MIRACL/SQuAD may appear in LLM/embedder pretraining (ADR-0019 protects only TriFact train sets).
+- **Multiple comparisons:** 9 directions × multiple metrics × 3 languages inflate false positives without a pre-registered decision rule.
 
 ## Decision
 
-- **Парный бутстреп по кластерам.** Обе системы оцениваются на одних и тех же ресэмплах. Ресэмплируются кластеры зависимых примеров:
-  - исходный документ или контекст (QA, NLI-посылка);
-  - исходный запрос со всеми его переводами (retrieval);
-  - документ (NER);
-  - исходный документ (docproc).
-
-  Метрика пересчитывается на каждом ресэмпле, CI строится для разности. Число ресэмплов и уровень — `params.yaml: evaluation`. Нелинейные метрики (entity F1, nDCG) пересчитываются целиком, а не усредняются по примерам.
-- **Сиды.** У обучаемой модели ≥ 3 сидов. В каждом ресэмпле берётся случайный сид каждой системы, поэтому CI учитывает и дисперсию данных, и дисперсию обучения.
-- **Семейство проверок задано заранее.** Правило гейта компонента (`params.yaml: promotion`) и есть критерий. Любое другое утверждение по многим срезам сопровождается поправкой Холма–Бонферрони или публикацией всех CI.
-- **Faithfulness** — доля утверждений ответа (разбиение — `trifact.verification.claims`), поддержанных процитированными пассажами: вердикт `supported` верификатора, откалиброванного на человеческой разметке утверждений (этап 8). До готовности верификатора этапа 8 используется baseline VER-0 с теми же окнами. Его вердикты проверяются вручную на выборке `verification.faithfulness_audit_claims` утверждений на язык, согласие с человеком записывается рядом с метрикой. Метрика считается на ответах, а отказы учитываются отдельно (refusal P/R).
-- **LLM-судья** применяется только после калибровки на человеческой разметке того же типа и языка. Записываются κ и смещение по классам. Протокол: рубрика, эталон, парное сравнение с обменом позиций, температура 0, фиксированная версия. Там, где есть измеримая метрика (EM/F1, вердикты на человеческой разметке, точность ссылок), гейт опирается на неё, а не на судью.
-- **Проверка загрязнения.** Метрики LLM и retrieval дополнительно отчитываются на подмножестве не из Wikipedia и на `real_docs`. Выигрыш только на Wikipedia-подмножестве помечается в отчёте как возможное загрязнение и не считается переносимым.
-- **Выходы по примерам.** Каждый eval-run сохраняет выходы по примерам и для e2e — ранги по стадиям (трассы) как артефакт MLflow. Это вход анализа ошибок и повторных сравнений без перезапуска моделей.
-- **Отчёт всегда по языкам и направлениям.** Среднее показывается дополнительно, не вместо.
+- **Cluster paired bootstrap:** Evaluate both systems on identical resampled clusters: source document/context (QA, NLI premise), source query with all translations (retrieval), document (NER, `docproc`). Recompute nonlinear metrics (entity F1, nDCG) from scratch on each resample (`params.yaml: evaluation`).
+- **Multi-seed variance:** Run ≥3 seeds for trained models; draw a random seed per system inside each bootstrap resample so CIs reflect both data and training variance.
+- **Pre-registered test family:** Use the component's `params.yaml: promotion` gate rule; apply Holm–Bonferroni or publish all CIs for exploratory multi-slice claims.
+- **Faithfulness:** Fraction of answer claims (`trifact.verification.claims`) marked `supported` by the calibrated verifier (Stage 8) against cited passages. Prior to Stage 8, use `VER-0` with identical 3-sentence windows and manually audit `verification.faithfulness_audit_claims` claims/language, reporting human agreement alongside faithfulness. Track refusals separately via refusal P/R.
+- **LLM-as-a-judge:** Permitted only after per-language human calibration ($\kappa$ and class bias recorded) using rubric + reference, position-swapped pairwise prompts, `temperature=0`, and pinned model revision. Never replace measurable gate metrics with an LLM judge.
+- **Contamination check:** Report non-Wikipedia and `real_docs` slices separately for LLM and retrieval; gains confined to Wikipedia are flagged as likely pretraining contamination.
+- **Per-example traces & per-language reporting:** Log per-example outputs and e2e stage traces to MLflow; always report per language/direction (averages are supplementary).
 
 ## Consequences
 
-- CI станут шире, часть «побед» исчезнет. Это ожидаемая цена честного гейта.
-- Наборам eval нужен ключ кластера. У `qa`, `ner` и `docproc` он есть (`doc_key`, документ). У MT-направлений retrieval связь с исходным запросом проверяется на этапе 6 и при необходимости добавляется в таблицу `queries` с бэкапом (AGENTS §7).
-- Бутстреп пока живёт в `trifact.evaluation.eval_docproc`. Он выносится в общий модуль оценки вместе со вторым потребителем (этап 5), без копии кода.
-- Ручная проверка вердиктов верификатора и калибровка судей требуют человеческого времени. Эта работа планируется в ROADMAP этапов 7–9.
+CIs widen and spurious wins disappear. Eval suites require cluster keys (add source-query link to retrieval `queries` in Stage 6 with backup). Extract `bootstrap_ci` from `eval_docproc` into a shared evaluation module in Stage 5. Human verifier audits and judge calibration are scheduled in Stages 7–9.

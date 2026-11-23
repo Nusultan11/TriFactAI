@@ -1,4 +1,4 @@
-# 3. BGE-M3 как embedding-модель по умолчанию
+# 3. BGE-M3 as Default Embedding Model
 
 Date: 2026-11-18
 
@@ -8,12 +8,12 @@ Accepted
 
 ## Context
 
-Нужна мультиязычная модель с поддержкой казахского, длинного контекста и межъязыкового поиска, помещающаяся в 4 GB вместе с LLM.
+TriFact requires a multilingual embedder supporting Kazakh, long context, and cross-lingual retrieval that fits within a 4 GB local serving budget alongside the LLM.
 
 ## Decision
 
-Champion по умолчанию — `BAAI/bge-m3` (dense + sparse в одной модели, 8192 токена). Challenger — `intfloat/multilingual-e5-large`. Выбор фиксируется по Recall@10/nDCG@10 на 9 языковых направлениях (эксперименты RET-1 и RET-2).
+Adopt `BAAI/bge-m3` (dense + sparse in one model, 8,192 tokens) as default champion, with `intfloat/multilingual-e5-large` as initial challenger. Final selection is governed by `Recall@10` / `nDCG@10` across all 9 language directions (`RET-1`, `RET-2`).
 
 ## Consequences
 
-Решение пересматривается по метрикам; интерфейс `Embedder` скрывает конкретную модель.
+Model choice remains metric-driven; the `Embedder` interface decouples application code from the concrete model.

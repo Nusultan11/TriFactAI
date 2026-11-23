@@ -1,86 +1,78 @@
-# TriFact AI — архитектура
+# TriFact AI — Architecture
 
-TriFact AI — мультиязычная (KK / RU / EN) платформа. Она извлекает сущности, ищет доказательства на всех трёх языках, отвечает на вопросы со ссылками на источники и проверяет свои утверждения. Система рассчитана на **десятки миллионов** записей в корпусах и миллионы обучающих примеров.
+Multilingual (**KK / RU / EN**) document and knowledge intelligence platform: entity extraction, cross-lingual hybrid retrieval, grounded answers with citations, and claim verification, engineered for **tens of millions** of corpus records.
 
-| Артефакт | Где |
+| Artifact | Location |
 |---|---|
-| Модель C4 (источник истины для диаграмм) | [`../workspace.dsl`](../workspace.dsl) |
-| Диаграммы, экспортированные из модели | [`../diagrams/`](../diagrams/) |
-| Архитектурные решения | [`../adr/`](../adr/) |
-| Этапы и критерии готовности | [`../../ROADMAP.md`](../../ROADMAP.md) |
-| Каталоги моделей и данных | [`../../research/models.md`](../../research/models.md), [`../../research/datasets.md`](../../research/datasets.md) |
-| Инженерные методики (как делать и проверять каждый компонент) | [`../../../.agents/skills/`](../../../.agents/skills/README.md) |
+| C4 model (source of truth for diagrams) | [`../workspace.dsl`](../workspace.dsl) |
+| Exported C4 diagrams | [`../diagrams/`](../diagrams/) |
+| Architecture Decision Records | [`../adr/`](../adr/) |
+| Stages & done criteria | [`../../ROADMAP.md`](../../ROADMAP.md) |
+| Model & dataset catalogs | [`../../research/models.md`](../../research/models.md), [`../../research/datasets.md`](../../research/datasets.md) |
+| Canonical Agent Skills | [`../../../.agents/skills/`](../../../.agents/skills/README.md) |
 
-Правило: диаграммы в `diagrams/` не редактируются вручную. Сначала меняется `workspace.dsl`, затем выполняется проверка и экспорт (§15).
+Rule: Never hand-edit `diagrams/*.mmd`. Edit `workspace.dsl`, validate, and export (§15).
 
 ---
 
-## 1. Цели, масштаб, ограничения
+## 1. Goals, Scale & Constraints
 
-| | |
+| Dimension | Specification |
 |---|---|
-| **Пользователь** | Студенты и исследователи, работающие с источниками на KK/RU/EN |
-| **Тип документов** | Энциклопедические, образовательные, научно-популярные, информационные |
-| **Главная способность** | Вопрос на одном языке → ответ на выбранном языке по документам на любом из трёх языков, с цитатами и вердиктами проверки |
-| **Обучаемые направления** | Extraction (NER + Entity Linking), Retrieval (embedder + reranker), Generation (LLM + LoRA), Verification (NLI) |
-| **Вне первой версии** | Relation Extraction, Knowledge Graph, юридические, медицинские и финансовые документы |
+| **Target users** | Students and researchers working with KK/RU/EN sources |
+| **Document types** | Encyclopedic, educational, popular-science, informational |
+| **Core capability** | Question in any of KK/RU/EN → grounded answer in chosen language over sources in any language, with citations and verification verdicts |
+| **Trainable ML pillars** | Extraction (NER + Entity Linking), Retrieval (embedder + reranker), Generation (LLM + LoRA), Verification (NLI) |
+| **Out of v1 scope** | Relation Extraction, Knowledge Graph construction, legal/medical/financial domains |
 
-**Масштаб**: целевые объёмы по слоям — [datasets.md §6](../../research/datasets.md). Для архитектуры ключевые цифры такие: ~27M документов в raw и ~35M чанков в корпусном индексе.
+- **Scale:** Target volumes live in [datasets.md §6](../../research/datasets.md) (~27M raw docs, ~35M indexed chunks).
+- **Scale profiles (`params.yaml: scale.profile`):** `pilot` (150k chunks, 80k NER, 24k SFT, 10k pairs, 3k eval — end-to-end debugging) and `full` (production target). Identical code; parameters only ([AGENTS.md §6](../../../AGENTS.md)).
+- **Compute model ([ADR-0025](../adr/0025-cloud-only-computing.md)):** Local PC (RTX 3050 Laptop 4 GB, Ryzen 7 5800HS, 15.4 GB RAM) is the development, Git, CLI control, and local-serving reference host. Heavy EDA, curation, training, HPO, and batch inference run on cloud compute via Google Colab CLI (L4 preferred when available/permitted; cloud CPU for non-GPU stages) and Kaggle CLI (2× T4 fp16). Optional cloud Serving VM hosts the full 35M index (ADR-0013).
+- **Non-functional targets (starter, validated in Stage 9):**
 
-**Профили масштаба.** Все стадии параметризованы `params.yaml: scale.profile`:
-
-- `pilot` — бюджет исходной концепции: 150k чанков, 80k NER, 24k SFT, 10k пар, 3k eval. Нужен, чтобы быстро прогнать весь цикл от начала до конца и отладить пайплайн.
-- `full` — целевой масштаб из таблицы выше.
-
-Код один, меняются только параметры ([AGENTS §6.1](../../../AGENTS.md)).
-
-**Железо.** Локально: RTX 3050 Laptop 4 GB, Ryzen 7 5800HS 8C/16T, 15.4 GB RAM, SSD 663 GB. Всё, что сюда не помещается, выполняется на арендованных GPU (24–80 GB) и, при необходимости, на облачном Serving VM для полного индекса (ADR-0013).
-
-**Нефункциональные цели** (стартовые, подтверждаются в этапе 9):
-
-| Метрика | Цель |
+| Metric | Target |
 |---|---|
-| Ask p95, локально, `scope=documents` | ≤ 6 c; первый токен ≤ 1.5 c |
-| Retrieval p95 (без reranker) | ≤ 150 мс для workspace; ≤ 500 мс для корпуса 35M на Serving VM |
-| Ingestion текстового PDF | ≥ 2 стр/с на воркер локально; воркер не падает на битых файлах |
-| Пиковая RAM офлайн-стадий | ≤ 10 GB (запас под ОС и Docker) |
-| Воспроизводимость | любой run восстанавливается по git SHA + DVC-хешам + конфигу |
+| Ask p95 (local, `scope=documents`) | ≤ 6 s; TTFT ≤ 1.5 s |
+| Retrieval p95 (excluding reranker) | ≤ 150 ms (workspace); ≤ 500 ms (35M corpus on Serving VM) |
+| Text PDF ingestion | ≥ 2 pages/s per worker; hostile files never crash worker |
+| Peak RAM (offline stages) | ≤ 10 GB |
+| Reproducibility | Any run reconstructible from `git SHA + DVC hashes + config` |
 
-## 2. Архитектурные принципы
+## 2. Architectural Principles
 
-1. **Каждый компонент измеряется отдельно.** У Doc Processing, Extraction, Retrieval, Generation и Verification свои eval и метрики по языкам. Так всегда видно, на каком шаге ошибается система.
-2. **RAG не зависит от NER.** Сущности служат только мягким сигналом и пользовательским фильтром ([ADR-0004](../adr/0004-hybrid-retrieval-independent-of-ner.md)).
-3. **Ответ без доказательства — не ответ.** У каждого утверждения есть `chunk_id`. Неподтверждённое утверждение помечается или заменяется отказом ([ADR-0008](../adr/0008-evidence-verification-and-refusal.md)).
-4. **Модель продвигается только по метрикам** на замороженном тесте, с проверкой значимости ([ADR-0009](../adr/0009-model-registry-and-promotion-gate.md)).
-5. **Масштаб закладывается сразу.** Данные хранятся в шардированном Parquet и обрабатываются потоково, без загрузки набора в RAM ([ADR-0011](../adr/0011-parquet-data-lake.md)). Массовые операции выполняются идемпотентными заданиями по шардам ([ADR-0014](../adr/0014-sharded-batch-jobs.md)). Throughput и пиковая память измеряются, а не предполагаются.
-6. **Онлайн и офлайн используют один и тот же код.** Нормализация, чанкинг и модели живут в одних модулях `trifact.*`. Онлайн-воркер и офлайн-стадии их импортируют, поэтому обучение и сервинг не расходятся.
-7. **Всё воспроизводимо.** Данные версионируются в DVC, эксперименты — в MLflow, окружение — в Docker и `uv.lock`.
+1. **Per-component measurement:** Document Processing, Extraction, Retrieval, Generation, and Verification each have dedicated eval suites and per-language metrics.
+2. **Retrieval independent of NER:** Entities are a soft signal and UI filter only ([ADR-0004](../adr/0004-hybrid-retrieval-independent-of-ner.md)).
+3. **No unsupported claims:** Every claim carries a `chunk_id`; unverified claims are flagged or replaced by refusal ([ADR-0008](../adr/0008-evidence-verification-and-refusal.md)).
+4. **Metric-gated promotion:** Models advance only on frozen tests with statistical significance ([ADR-0009](../adr/0009-model-registry-and-promotion-gate.md)).
+5. **Scale-first data plane:** Sharded Parquet + streaming processing ([ADR-0011](../adr/0011-parquet-data-lake.md)), idempotent sharded batch jobs ([ADR-0014](../adr/0014-sharded-batch-jobs.md)); measure throughput and RAM, never assume.
+6. **Unified online/offline code:** Normalization, chunking, and model wrappers live in shared `trifact.*` modules to eliminate train/serve skew.
+7. **Full reproducibility:** Data in DVC, experiments in MLflow, environments in Docker and `uv.lock`.
 
 ---
 
-## 3. Контекст (C4 Level 1)
+## 3. System Context (C4 Level 1)
 
 ```mermaid
 flowchart LR
-    U([Пользователь]) -->|документы, вопросы| T[TriFact AI]
-    E([ML-инженер]) -->|данные, обучение, релизы| T
-    T -->|датасеты, базовые модели| HF[(Hugging Face Hub)]
-    T -->|JSON-дамп Wikidata| WM[(Wikimedia Dumps)]
-    T -->|обучение, массовые задания| GPU[(Cloud GPU)]
-    T -->|обмен шардами| CS[(Cloud Object Storage)]
+    U([User]) -->|documents, questions| T[TriFact AI]
+    E([ML Engineer]) -->|data, training, releases| T
+    T -->|datasets, base models| HF[(Hugging Face Hub)]
+    T -->|Wikidata JSON dump| WM[(Wikimedia Dumps)]
+    T -->|training, batch jobs| GPU[(Cloud GPU)]
+    T -->|shard exchange| CS[(Cloud Object Storage)]
 ```
 
-Полная версия — [`diagrams/SystemContext.mmd`](../diagrams/SystemContext.mmd).
+Full diagram: [`diagrams/SystemContext.mmd`](../diagrams/SystemContext.mmd).
 
-## 4. Контейнеры (C4 Level 2)
+## 4. Containers (C4 Level 2)
 
-Система состоит из трёх контуров. Они взаимодействуют только через хранилища и Model Registry.
+Three planes communicate exclusively via data stores and Model Registry.
 
 ```mermaid
 flowchart TB
     subgraph serving [Serving]
         WEB[Web App] --> API[API]
-        API --> RD[[Redis: очередь + кеш]]
+        API --> RD[[Redis: queue + cache]]
         RD --> WRK[Ingestion Worker]
         API & WRK --> INF[Inference Service]
         API --> LLM[LLM Server]
@@ -93,7 +85,7 @@ flowchart TB
         BC[Batch Compute] <--> DL
         TR[Training Jobs] --> DL
         TR & EV[Evaluation Harness] --> MLF[MLflow + Registry]
-        BC -->|новая коллекция, alias| QD
+        BC -->|new collection, alias| QD
         DP -->|kb_entities COPY| PG
     end
     MLF -. champion .-> INF
@@ -103,60 +95,59 @@ flowchart TB
     end
 ```
 
-Полная версия: [`Containers`](../diagrams/Containers.mmd), а также отдельно [`ServingContainers`](../diagrams/ServingContainers.mmd) и [`MlPlatformContainers`](../diagrams/MlPlatformContainers.mmd).
+Full diagrams: [`Containers`](../diagrams/Containers.mmd), [`ServingContainers`](../diagrams/ServingContainers.mmd), [`MlPlatformContainers`](../diagrams/MlPlatformContainers.mmd).
 
-| Контейнер | Ответственность | Технологии |
+| Container | Responsibility | Stack |
 |---|---|---|
-| **Web App** | Загрузка, статусы, чат со стримингом, цитаты, карточки сущностей | Next.js, TypeScript |
-| **API** | REST + SSE, оркестрация ответа, журнал | FastAPI, SQLAlchemy, qdrant-client |
-| **Ingestion Worker** | Парсинг → OCR → нормализация → язык → чанки → NER → linking → индексация | arq, PyMuPDF, Docling |
-| **Inference Service** | Онлайн encoder-модели: эмбеддинги, reranker, NER, NLI, с динамическим батчингом | FastAPI, PyTorch / ONNX Runtime |
-| **LLM Server** | Grounded generation, OpenAI-совместимый API | llama.cpp (GGUF) / vLLM |
-| **PostgreSQL** | Состояние приложения, журнал, база сущностей (ADR-0016) | PostgreSQL 16, Alembic |
-| **Qdrant** | `corpus_chunks` и `workspace_chunks` (ADR-0013) | Qdrant 1.20 |
-| **Redis** | Очередь задач, кеш эмбеддингов запросов и оценок reranker | Redis 7 |
-| **Object Storage** | Файлы пользователей, DVC remote `local`, артефакты MLflow, GGUF | SeaweedFS (S3 API) |
-| **Data Lake** | Слои raw → clean → curated → task → eval (ADR-0011) | Parquet zstd, DVC |
-| **Data Pipeline** | CPU-стадии DVC: загрузка, курация, task-наборы, eval, KB | Polars, DuckDB, PyArrow, numpy/scipy, fastText |
-| **Batch Compute** | Шардированные задания: эмбеддинги, массовая NER, учитель, загрузка индекса (ADR-0014) | PyTorch, vLLM, ONNX Runtime |
-| **Training Jobs** | NER, embedder, reranker, NLI, LoRA LLM; HPO; ≥ 3 сидов | Transformers, PEFT, sentence-transformers, Optuna |
-| **Evaluation Harness** | Метрики, значимость, ablation, нагрузка, гейт | seqeval, ranx, jiwer, Locust |
-| **MLflow** | Трекинг, Model Registry (`champion` / `challenger`) | MLflow 3 |
-| **Prometheus + Grafana** | Технические метрики и метрики качества, алерты | — |
+| **Web App** | Upload, status, streaming chat, citations, entity cards | Next.js, TypeScript |
+| **API** | REST + SSE, answer orchestration, audit log | FastAPI, SQLAlchemy, `qdrant-client` |
+| **Ingestion Worker** | Parse → OCR → normalize → langid → chunk → NER → link → index | `arq`, PyMuPDF, Docling |
+| **Inference Service** | Online encoders (embedder, reranker, NER, NLI) with dynamic batching | FastAPI, PyTorch / ONNX Runtime |
+| **LLM Server** | Grounded generation, OpenAI-compatible API | `llama.cpp` (GGUF) / vLLM |
+| **PostgreSQL** | App state, logs, Wikidata KB ([ADR-0016](../adr/0016-storage-responsibilities.md)) | PostgreSQL 16, Alembic |
+| **Qdrant** | `corpus_chunks` + `workspace_chunks` ([ADR-0013](../adr/0013-two-tier-qdrant-index.md)) | Qdrant 1.20 |
+| **Redis** | Job queue, query-embedding and reranker caches | Redis 7 |
+| **Object Storage** | Uploads, DVC `local` remote, MLflow artifacts, GGUF | SeaweedFS (S3 API) |
+| **Data Lake** | `raw → clean → curated → task → eval` ([ADR-0011](../adr/0011-parquet-data-lake.md)) | Parquet zstd, DVC |
+| **Data Pipeline** | CPU DVC stages (acquire, curate, task sets, eval, KB) | Polars, DuckDB, PyArrow, NumPy/SciPy, fastText |
+| **Batch Compute** | Sharded jobs: embeddings, mass NER, teacher, indexing ([ADR-0014](../adr/0014-sharded-batch-jobs.md)) | PyTorch, vLLM, ONNX Runtime, `llama.cpp` |
+| **Training Jobs** | NER, embedder, reranker, NLI, LoRA LLM; HPO; ≥3 seeds | Transformers, PEFT, sentence-transformers, Optuna |
+| **Evaluation Harness** | Metrics, cluster bootstrap, ablation, load tests, gate | `seqeval`, `ranx`, `jiwer`, Locust |
+| **MLflow** | Experiment tracking, Model Registry (`champion`/`challenger`) | MLflow 3 |
+| **Prometheus + Grafana** | Service/quality metrics and drift alerts | — |
 
 ---
 
-## 5. Платформа данных
+## 5. Data Platform
 
-### 5.1 Data lake
+### 5.1 Data Lake Layout
 
 ```
 data/
-  raw/<source>/<lang>/<table>-00000.parquet + raw/<source>/source.yaml  (не меняется; table = part, если таблица одна)
-  clean/<source>/<lang>/{part,dropped}-*  нормализация, язык, фильтры качества   + clean/<source>/dataset.yaml, card.md
-  curated/dedup/<source>/<lang>/{part,removed}-*        дедуп внутри и между источниками
-  curated/corpus/<source>/<lang>/{part,contaminated}-*  деконтаминация → итоговый корпус   + dataset.yaml, card.md
+  raw/<source>/<lang>/<table>-00000.parquet + raw/<source>/source.yaml  (immutable; table=part if single)
+  clean/<source>/<lang>/{part,dropped}-*        + clean/<source>/dataset.yaml, card.md
+  curated/dedup/<source>/<lang>/{part,removed}-*
+  curated/corpus/<source>/<lang>/{part,contaminated}-* + dataset.yaml, card.md
   task/
-    chunks/<source>/<lang>/...             чанки корпуса (тот же Chunker, что онлайн)
-    annotations/<model@ver>/<source>/...   упоминания сущностей корпуса
-    vectors/<embedder@ver>/<source>/...    dense (fp16) + sparse
+    chunks/<source>/<lang>/...                  (same Chunker as online)
+    annotations/<model@ver>/<source>/...
+    vectors/<embedder@ver>/<source>/...         (dense fp16 + sparse)
     ner/{gold,silver}/<lang>/...
     retrieval/{pairs,negatives}/...
     sft/  nli/  kb/
-  eval/<suite>/...                         заморожен, sha256 в eval/MANIFEST.yaml (ADR-0007)
+  eval/<suite>/...                              (frozen; SHA-256 in eval/MANIFEST.yaml, ADR-0007)
 ```
 
-Шард — ~1M строк или ≤ 512 MB, сжатие zstd. Партиции — по `source/lang`, внутри — по таблице. Протокол загрузки raw-слоя, колонки происхождения `_config` / `_split` и методы проверки числа строк — [ADR-0017](../adr/0017-raw-layer-acquisition-protocol.md).
+- Shards: ~1M rows or ≤512 MB, `zstd` compression, partitioned by `source/lang`. Raw acquisition protocol: [ADR-0017](../adr/0017-raw-layer-acquisition-protocol.md).
+- **`source.yaml`:** `hf_id`/`url`, pinned `revision`, `license` (`license`, `use`, `release`, `evidence`), `downloaded_at`, `code_version`, input SHA-256s, per-language rows/bytes, `shards`, `row_checks`, `stats` (wall time, throughput, peak RSS). Verify with `python -m trifact.lake verify`.
+- **`dataset.yaml` + `card.md`:** input manifests/hashes, `git_sha`, params, stage fingerprint ([ADR-0018](../adr/0018-curation-stages-without-datatrove.md)), row counts, drop reasons, stage metrics, licenses, `release` flag. Dropped/removed/contaminated rows are retained for audit.
 
-**Манифест источника** `source.yaml`: `hf_id` или `url`, `revision` (SHA коммита или дата дампа), `license` (`license`, `use`, `release`, `evidence`), `downloaded_at`, `code_version`, `inputs` (файлы источника с sha256), `rows` и `bytes` по языкам, `shards: [{path, lang, table, rows, bytes, sha256}]`, `row_checks` (метод, ожидаемое, фактическое), `stats` (время, throughput, пиковая RSS). Проверка целостности: `python -m trifact.lake verify`.
-**Карточка набора** `dataset.yaml`: входы (манифесты и их хеши), `git_sha`, параметры, отпечаток стадии ([ADR-0018](../adr/0018-curation-stages-without-datatrove.md)), строки по языкам и таблицам, отсев по каждой причине, метрики стадии, лицензии входов, флаг `release`. Рядом — человекочитаемая `card.md` (data card). Отброшенные документы не теряются: таблицы `dropped` (причина + первые `curation.dropped_text_chars` символов), `removed` (ссылка на оставленный дубль), `contaminated` (действие и eval-источники).
+### 5.2 Key Parquet Schemas
 
-### 5.2 Схемы ключевых таблиц (Parquet)
-
-| Таблица | Колонки |
+| Table | Columns |
 |---|---|
-| `entities` (raw/wikidata) | `qid, type, p31: list, p279: list, label_{kk,ru,en,mul}, description_{kk,ru,en,mul}, aliases_{kk,ru,en,mul}: list, sitelink_{kkwiki,ruwiki,enwiki}, n_sitelinks, lastrevid` |
-| `documents` (clean/curated) | `doc_id, source, domain, lang, lang_score, src_lang, para_lang: list, title, text, url, n_chars, n_words, признаки качества, minhash_cluster, dup_count, decontaminated_lines` |
+| `entities` (`raw/wikidata`) | `qid, type, p31: list, p279: list, label_{kk,ru,en,mul}, description_{kk,ru,en,mul}, aliases_{kk,ru,en,mul}: list, sitelink_{kkwiki,ruwiki,enwiki}, n_sitelinks, lastrevid` |
+| `documents` (`clean/curated`) | `doc_id, source, domain, lang, lang_score, src_lang, para_lang: list, title, text, url, n_chars, n_words, quality features, minhash_cluster, dup_count, decontaminated_lines` |
 | `chunks` | `chunk_id, doc_id, source, lang, ordinal, section, char_start, char_end, text, n_tokens` |
 | `vectors` | `chunk_id, dense: fixed_size_list<f16>, sparse_idx: list<u32>, sparse_val: list<f16>` |
 | `annotations` | `chunk_id, start, end, surface, type, score, qid, model_version` |
@@ -164,44 +155,42 @@ data/
 | `retrieval_pairs` | `query_id, query, query_lang, pos_chunk_id, neg_chunk_ids: list<str>, origin` |
 | `sft` | `ex_id, question, q_lang, answer_lang, context_chunk_ids, answer, cited_ids, answerable, origin, filters{...}` |
 | `nli` | `pair_id, lang, premise, hypothesis, label, origin` |
-| `eval/*` | как в task-наборах + `direction` (q_lang→src_lang), `verified_by_human` |
+| `eval/*` | Task schema + `direction` (`q_lang→src_lang`), `verified_by_human` |
 
-### 5.3 Конвейер данных (этапы 1–3 ROADMAP)
+### 5.3 Data Pipeline (ROADMAP Stages 1–3)
 
 ```
 acquire ──► clean ──► dedup ──► decontaminate ──► curated
    │                                   ▲
-   │                      eval-источники (gold test)
+   │                       eval sources (gold test)
    ▼
 wikidata ─────────────────────────────► build_kb ─► PostgreSQL (COPY)
 curated ─► chunk_corpus ─► task/chunks ─► [batch] embed_corpus ─► task/vectors ─► [batch] index_corpus
-gold ─► validate ─► split ─┬─► build_eval (заморожен)
-                           ├─► build_ner   (+ silver из Wikipedia-ссылок × Wikidata P31)
-                           ├─► build_pairs (+ [batch] teacher: синтетические запросы)
-                           ├─► build_sft   (+ [batch] teacher: grounded QA)
-                           └─► build_nli   (+ [batch] teacher: kk-перевод XNLI)
+gold ─► validate ─► split ─┬─► build_eval (frozen)
+                           ├─► build_ner   (+ Wikipedia links × Wikidata P31 silver)
+                           ├─► build_pairs (+ [batch] teacher synthetic queries)
+                           ├─► build_sft   (+ [batch] teacher grounded QA)
+                           └─► build_nli   (+ [batch] kk MT of XNLI)
 ```
 
-- **Раннер стадий** `trifact.data.curation` ([ADR-0018](../adr/0018-curation-stages-without-datatrove.md)): единица работы — входной шард, маркеры готовности, отпечаток параметров/кода/входов, `curation.workers` процессов с ограничением потоков Polars. Каждая стадия пишет `dataset.yaml`, `card.md` и отчёт (`reports/<стадия>.json`) с отсевом, throughput и пиковой RSS.
-- **Нормализация** (общий модуль `trifact.ingestion.normalize`): NFC, казахские буквы `ә ғ қ ң ө ұ ү һ і`, гомоглифы латиница/кириллица, мусорные символы. Векторизована на Polars.
-- **Определение языка**: fastText lid.176 и GlotLID сравнены на ручной выборке (kk vs ky/tt/ru), выбор по macro-F1 — `reports/langid.json`, модель — `curation.langid.model`. Язык определяется для документа (`lang`, `lang_score`) и для каждого абзаца (`para_lang`).
-- **Фильтры качества** (`trifact.data.quality`, выражения Polars): длина, слова, доля букв, замены `�`, повторы строк и n-грамм, средняя длина слова, маркеры списков, многоточия, стоп-слова, boilerplate-строки источника (частотные строки, найденные первым проходом). Пороги `curation.quality` разрешаются как default → язык → домен; подобраны и проверены ручной выборкой 500 документов на язык (`reports/quality_review.json`).
-- **Дедупликация** (`trifact.data.dedup`): точный хеш + MinHash-LSH 14×9 над словесными 5-граммами, связные компоненты по всем источникам сразу; оставляется документ приоритетного источника ([ADR-0019](../adr/0019-dedup-and-decontamination-policy.md)).
-- **Деконтаминация** (`trifact.data.decontaminate`): строки, содержащие 13-грамму eval-источника, удаляются; документ удаляется целиком, если грама пересекает строки или удалено > 50% символов; шаблонные грамы (> 100 документов) игнорируются; повторный скан выхода обязан дать 0 утечек ([ADR-0019](../adr/0019-dedup-and-decontamination-policy.md)).
-- **Статистика** (`trifact.data.corpus_stats`): воронка raw → clean → dedup → corpus, объёмы по источнику/языку/домену, гистограмма длин, доля документов со смешанными абзацами, фертильность токенизаторов XLM-R, Qwen3, Qwen3.5 (`reports/corpus_stats.json`).
-- **Валидация gold**: валидность BIO, допустимые метки, `answer_start` указывает на `answer_text`, баланс языков и классов.
-- **Сплиты**: по исходному документу. Тест замораживается до любого обучения ([ADR-0007](../adr/0007-leakage-safe-splits.md)).
-- **Silver и синтетика**: фильтры, бюджет и родословная лицензий — в [ADR-0015](../adr/0015-silver-and-synthetic-data.md).
+- **Stage runner (`trifact.data.curation`, [ADR-0018](../adr/0018-curation-stages-without-datatrove.md)):** input-shard units, completion markers, parameter/code/input fingerprints, `curation.workers` processes with capped Polars threads; writes `dataset.yaml`, `card.md`, `reports/<stage>.json`.
+- **Normalization (`trifact.ingestion.normalize`):** NFC, Kazakh letters (`ә ғ қ ң ө ұ ү һ і`), Latin/Cyrillic homoglyphs, control-char cleanup; vectorized in Polars.
+- **Language ID:** `lid.176` vs. `GlotLID` benchmarked (`reports/langid.json`), selected `curation.langid.model`; tags doc (`lang`, `lang_score`) and paragraphs (`para_lang`).
+- **Quality filters (`trifact.data.quality`):** Polars expressions (`default → lang → domain` thresholds calibrated on 500 reviewed docs/lang), boilerplate removal.
+- **Dedup (`trifact.data.dedup`):** exact hash + 14×9 MinHash-LSH over word 5-grams; global connected components keeping highest-priority source ([ADR-0019](../adr/0019-dedup-and-decontamination-policy.md)).
+- **Decontamination (`trifact.data.decontaminate`):** strips lines with eval 13-grams, drops doc if match crosses lines or >50% chars removed, ignores template grams (>100 docs); re-scan must yield 0 leaks ([ADR-0019](../adr/0019-dedup-and-decontamination-policy.md)).
+- **Stats (`trifact.data.corpus_stats`):** funnel `raw → clean → dedup → corpus`, length histograms, mixed-paragraph rate, XLM-R/Qwen3/Qwen3.5 fertility (`reports/corpus_stats.json`).
+- **Gold validation, splits & silver/synthetic:** BIO + `answer_start` validation; source-document splits with frozen eval ([ADR-0007](../adr/0007-leakage-safe-splits.md)); filters and license lineage per [ADR-0015](../adr/0015-silver-and-synthetic-data.md).
 
-### 5.4 Версионирование
+### 5.4 Versioning
 
-DVC отслеживает каталоги шардов. Хранилище проекта и доступ с ноутбука описаны в [ADR-0024](../adr/0024-google-drive-storage.md). Remotes SeaweedFS и облачного S3 описаны в [ADR-0014](../adr/0014-sharded-batch-jobs.md). Ревизии HF-источников фиксируются в `params.yaml: sources.*.revision` после первой загрузки.
+DVC tracks shard directories. Primary persistent store is Google Drive ([ADR-0024](../adr/0024-google-drive-storage.md)); SeaweedFS (`local`) and cloud S3 (`cloud`) are defined in [ADR-0010](../adr/0010-dvc-with-s3-remote.md) and [ADR-0014](../adr/0014-sharded-batch-jobs.md). HF source revisions are pinned by SHA in `params.yaml`.
 
 ---
 
-## 6. Онлайн-потоки
+## 6. Online Flows
 
-### 6.1 Загрузка документа
+### 6.1 Document Ingestion
 
 ```mermaid
 sequenceDiagram
@@ -215,30 +204,30 @@ sequenceDiagram
     participant Q as Qdrant
     participant P as PostgreSQL
     W->>A: POST /v1/workspaces/{ws}/documents (file)
-    A->>S: put raw file (sha256 — дедуп загрузок)
+    A->>S: put raw file (sha256 dedup)
     A->>P: document(status=queued)
     A->>R: enqueue process_document(doc_id)
     A-->>W: 202 {document_id}
     R->>K: task
     K->>S: get file
     K->>K: parse (PyMuPDF | Docling, OCR fallback) → normalize → lang → chunk
-    K->>I: NER(chunks) — батчем
-    K->>P: кандидаты из kb_aliases → linking
+    K->>I: NER(chunks) — batched
+    K->>P: candidates from kb_aliases → linking
     K->>I: embed(chunks) → dense + sparse
     K->>Q: upsert workspace_chunks (workspace_id, document_id, lang, entity_ids)
     K->>P: chunks, mentions, status=processed
 ```
 
-| Шаг | Решение | Обоснование |
+| Step | Design | Rationale |
 |---|---|---|
-| Parse | Маршрутизатор DOC-3: каждая страница PDF анализируется PyMuPDF, страницы с таблицами и сканы уходят в Docling, остальные (в том числе многоколоночные) — быстрый путь; DOCX/HTML/TXT — нативные парсеры ([ADR-0021](../adr/0021-document-processing-router.md)) | Нужны точные `page` и `section` для цитат; Docling на CPU медленнее на два порядка |
-| OCR | Только для страниц без текстового слоя или с битым слоем: Docling + Tesseract CLI `kaz+rus+eng` | EasyOCR и RapidOCR теряют казахские буквы, PyMuPDF + Tesseract теряет заголовки и таблицы (бенчмарк этапа 4) |
-| Chunk | Секции → предложения → ~350 токенов, перекрытие ~50; окончательный выбор по метрикам retrieval этапа 6 | Компромисс между точностью цитаты и полнотой контекста |
-| NER + dates | XLM-R (ONNX int8) → PER/ORG/LOC; DATE — regex + dateparser | [ADR-0006](../adr/0006-unified-ner-label-schema.md) |
-| Linking | Нормализованный алиас → кандидаты (`kb_aliases`, приор из ссылок Wikipedia) → ранжирование по типу и контексту | «Астана» / «Astana» / «Астана қаласы» → один QID |
-| Устойчивость | Парсер в изолированном процессе (`SafeParser`): таймаут, лимит RSS, лимиты размера и страниц (`docproc.limits`); повтор задачи ×3, затем `failed` с причиной (`ParseError.reason`) | Битые, зашифрованные и огромные файлы не роняют воркер |
+| Parse | `DOC-3` per-page router: PyMuPDF fast path for text/multi-column pages; Docling for tables and scans; native DOCX/HTML/TXT ([ADR-0021](../adr/0021-document-processing-router.md)) | Exact `page`/`section` offsets; Docling is ~100× slower on CPU |
+| OCR | Missing/broken text layers only: Docling + Tesseract CLI `kaz+rus+eng` | EasyOCR/RapidOCR lose Kazakh letters; PyMuPDF+Tesseract loses headings/tables |
+| Chunk | Sections → sentences → ~350 tokens, ~50 overlap (finalized in Stage 6) | Balances citation precision and context completeness |
+| NER + dates | XLM-R (ONNX int8) → `PER`/`ORG`/`LOC`; `DATE` via regex + `dateparser` | [ADR-0006](../adr/0006-unified-ner-label-schema.md) |
+| Linking | Normalized alias → `kb_aliases` B-tree + `pg_trgm` → rank by prior × type × context | Maps `Астана` / `Astana` / `Астана қаласы` → single QID |
+| Fault isolation | `SafeParser` isolated process (`docproc.limits`: timeout, RSS, size, pages); 3 retries → `failed` with `ParseError.reason` | Hostile/corrupt files never crash worker |
 
-### 6.2 Вопрос → ответ
+### 6.2 Question → Answer
 
 ```mermaid
 sequenceDiagram
@@ -250,25 +239,25 @@ sequenceDiagram
     participant L as LLM
     participant P as PostgreSQL
     W->>A: POST /v1/ask {question(kk), answer_lang=kk, scope=all}
-    A->>I: embed(question) (кеш Redis)
+    A->>I: embed(question) (Redis cache)
     par workspace
-        A->>Q: workspace_chunks: prefetch dense+sparse → RRF top-50 (filter workspace_id)
+        A->>Q: workspace_chunks: prefetch dense+sparse → RRF top-50 (workspace_id filter)
     and corpus
         A->>Q: corpus_chunks: prefetch (quantized + rescore) → RRF top-50
     end
-    A->>A: RRF двух коллекций → top-50
+    A->>A: RRF across collections → top-50
     A->>I: rerank(question, 50) → top-8
-    A->>L: grounded prompt ([chunk_id]-контекст, answer_lang) — stream
-    L-->>A: токены ответа с [chunk_id] или отказ
-    A->>A: claims split + проверка ссылок
-    A->>I: NLI(claim, cited chunk) батчем
+    A->>L: grounded prompt ([chunk_id] context, answer_lang) — stream
+    L-->>A: answer tokens with [chunk_id] or refusal
+    A->>A: claim split + citation validation
+    A->>I: NLI(claim, cited chunk) batched
     A->>P: query, answer, claims, verdicts, model_versions, latency
-    A-->>W: SSE: delta-токены → claims + citations + verdicts
+    A-->>W: SSE: delta tokens → claims + citations + verdicts
 ```
 
-`scope`: `documents` (по умолчанию — только рабочее пространство), `corpus` или `all`.
+`scope`: `documents` (default, workspace only), `corpus`, or `all`.
 
-**Контракт ответа**
+**Response contract**
 
 ```json
 {
@@ -289,301 +278,193 @@ sequenceDiagram
 }
 ```
 
-**API v1**: `POST/GET/DELETE /v1/workspaces/{ws}/documents[/{id}]`, `POST /v1/ask` (SSE), `GET /v1/entities?q=&type=&lang=`, `GET /v1/entities/{qid}`, `POST /v1/answers/{id}/feedback`, `GET /health`, `GET /metrics`. Аутентификация — API-ключ рабочего пространства. Модель угроз пет-проекта не предполагает многопользовательского SaaS.
+**API v1:** `POST/GET/DELETE /v1/workspaces/{ws}/documents[/{id}]`, `POST /v1/ask` (SSE), `GET /v1/entities?q=&type=&lang=`, `GET /v1/entities/{qid}`, `POST /v1/answers/{id}/feedback`, `GET /health`, `GET /metrics`. Workspace API-key auth (single-tenant pet-project threat model).
 
 ---
 
-## 7. ML-компоненты
+## 7. ML Components
 
-Идентификаторы экспериментов привязаны к этапам ROADMAP. Каждый run логируется в MLflow с метриками по языкам ([AGENTS §6.3](../../../AGENTS.md)).
+All experiments log per-language metrics to MLflow ([AGENTS.md §6](../../../AGENTS.md)).
 
-### 7.1 Document Processing (этап 4)
+### 7.1 Document Processing (Stage 4)
 
-| ID | Конфигурация | Метрики |
+| ID | Configuration | Metrics |
 |---|---|---|
-| DOC-0 | PyMuPDF (текстовый слой) | CER/WER, порядок чтения, страниц/с |
-| DOC-1 | Docling (layout + таблицы) | + точность заголовков и таблиц |
-| DOC-2 | DOC-1 + OCR: Docling с Tesseract CLI / EasyOCR / RapidOCR; PyMuPDF + Tesseract | CER на сканах по языкам |
-| DOC-3 | Маршрутизатор: быстрый путь → Docling по признакам сложности | качество ≈ DOC-1 при скорости ≈ DOC-0 |
-| OFFICE | DOCX/HTML: нативные парсеры vs Docling-бэкенды; TXT — нативный | те же |
+| `DOC-0` | PyMuPDF (text layer) | CER/WER, reading order, pages/s |
+| `DOC-1` | Docling (layout + tables) | + heading F1, table cell F1 |
+| `DOC-2` | `DOC-1` + OCR (Tesseract CLI / EasyOCR / RapidOCR); PyMuPDF + Tesseract | Scan CER by language |
+| `DOC-3` | Per-page router: PyMuPDF fast path → Docling on tables/scans | `DOC-1` quality at `DOC-0` speed |
+| `OFFICE` | Native DOCX/HTML/TXT vs. Docling backends | Same |
 
-Бенчмарк — `data/eval/docproc` (стадия `build_docproc`): реальные абзацы и заголовки Википедии kk/ru/en, свёрстанные в документы известной структуры, — PDF в одну и две колонки (половина — с перемешанным порядком потока), с таблицами, сканы (растр с шумом, размытием и наклоном), PDF и DOCX из Microsoft Word, HTML со служебной обвязкой, TXT в разных кодировках, смешанные kk/ru/en PDF со сканированной страницей. Плюс длинные PDF (300 стр.) и набор враждебных файлов. Метрики и сравнение — `eval_docproc`, `reports/docproc.json`, MLflow `docproc`. Выбор — [ADR-0021](../adr/0021-document-processing-router.md), конфигурация — `params.yaml: docproc`.
+Frozen benchmark `data/eval/docproc` (`build_docproc` / `eval_docproc`, `reports/docproc.json`, MLflow `docproc`). Selection: [ADR-0021](../adr/0021-document-processing-router.md), `params.yaml: docproc`.
 
-### 7.2 Extraction (этап 5)
+### 7.2 Extraction (Stage 5)
 
-- **Схема меток**: общее ядро PER/ORG/LOC на трёх языках, DATE извлекается правилами, KazNERD-25 — отдельный эксперимент ([ADR-0006](../adr/0006-unified-ner-label-schema.md), [`configs/labels.yaml`](../../../configs/labels.yaml)).
+Unified core schema `PER`/`ORG`/`LOC` + rule-based `DATE`; `KazNERD-25` is a separate experiment ([ADR-0006](../adr/0006-unified-ner-label-schema.md), `configs/labels.yaml`).
 
-| ID | Модель | Цель |
+| ID | Model | Goal |
 |---|---|---|
-| NER-0 | GLiNER multi v2.1, zero-shot | baseline без обучения |
-| NER-1 | XLM-R base на gold | основной baseline обучения |
-| NER-2 | XLM-R base: silver → gold (curriculum), HPO, ≥ 3 сидов | вклад silver-данных |
-| NER-3 | XLM-R large (облако) | потолок качества |
-| NER-4 | NER-2 + специализация kk (KazNERD-25) | единая vs специализированная модель |
-| NER-5 | champion → обрезка словаря + ONNX int8 | throughput при массовой разметке, просадка F1 ≤ 0.5 п.п. |
+| `NER-0` | GLiNER multi v2.1 (zero-shot) | Training-free baseline |
+| `NER-1` | XLM-R base on gold | Core supervised baseline |
+| `NER-2` | XLM-R base: silver → gold curriculum, HPO, ≥3 seeds | Measure silver contribution |
+| `NER-3` | XLM-R large (cloud) | Quality ceiling |
+| `NER-4` | `NER-2` + `kk` specialization (`KazNERD-25`) | Unified vs. specialized |
+| `NER-5` | Champion → vocab trim + ONNX int8 | Mass-annotation throughput (F1 drop ≤ 0.5 pp) |
 
-- **Метрики**: entity-level P/R/F1 (seqeval, строгий режим IOB2) по языку и типу. Отдельно — F1 на сущностях, невиданных в train (unseen-F1), и ошибки границ против ошибок типа (partial match). Throughput (чанков/с) на CPU и GPU.
-- **Калибровка**: температура вероятностей сущности по языкам на dev. Порог `annotate_corpus` выбирается по кривой precision–coverage, потому что `entity_ids` в Qdrant служат фильтром.
-- **Entity Linking**: KB строится из Wikidata — сущности с метками kk/ru/en, алиасы, приоры из ссылок Wikipedia (ожидается порядка 10M сущностей).
-  - Генерация кандидатов: точный поиск по нормализованному алиасу в `kb_aliases` (B-tree), для kk — со снятием падежных и притяжательных окончаний, затем fallback на триграммы (`pg_trgm`).
-  - Ранжирование: приор × совместимость типа × сходство контекста упоминания с описанием сущности (мультиязычный эмбеддер: kk-контекст против ru/en-описаний).
-  - Метрики: recall@k кандидатов (потолок системы) и accuracy@1 на ручной выборке, по языкам; доля NIL.
-- **Массовая разметка корпуса**: задание `annotate_corpus` записывает `task/annotations`. Отсюда `entity_ids` попадают в payload Qdrant.
+- **Metrics & calibration:** strict IOB2 `seqeval` P/R/F1 (`lang × type`), unseen-F1, boundary vs. type errors, CPU/GPU `chunks/s`; per-language temperature scaling and precision–coverage threshold for `annotate_corpus`.
+- **Entity Linking:** Wikidata KB (~10M+ filtered entities) → normalized alias B-tree + Kazakh suffix stripping + `pg_trgm` → rank by `prior × type × multilingual context–description similarity`. Report candidate `recall@k`, `accuracy@1`, and NIL rate per language.
 
-### 7.3 Retrieval (этап 6)
+### 7.3 Retrieval (Stage 6)
 
 ```
 query ─► embed (dense + sparse) ─► Qdrant prefetch: dense top-100 ∥ sparse top-100 ─► RRF ─► top-50
-       ─► (scope=all: RRF двух коллекций) ─► cross-encoder reranker ─► top-8 ─► LLM
+       ─► (scope=all: RRF two collections) ─► cross-encoder reranker ─► top-8 ─► LLM
 ```
 
-| ID | Конфигурация |
+| ID | Configuration |
 |---|---|
-| RET-0 | BM25 (sparse с IDF) |
-| RET-1 | Dense: mE5-large / mE5-large-instruct |
-| RET-2 | Dense: BGE-M3 (dense и dense + sparse) |
-| RET-3 | Dense: Qwen3-Embedding-0.6B (MRL 1024 / 512 / 256), 4B (облако) |
-| RET-4 | Hybrid RRF (лучший dense + лучший sparse) vs взвешенное слияние / DBSF |
-| RET-5 | RET-4 + reranker: bge-reranker-v2-m3 / Qwen3-Reranker-0.6B / 4B; top-N по кривой качества и латентности |
-| RET-6 | Дообученный embedder (пары этапа 3, hard negatives, межъязыковые пары) |
-| RET-7 | Дообученный reranker |
-| RET-C | Чанкинг: варианты `chunking.variants` × заголовок документа и раздела в тексте эмбеддинга |
-| RET-S | Масштаб: 1M → 10M → 35M × квантизация (none / int8 / binary / turbo + rescoring) × HNSW in-RAM / on-disk |
+| `RET-0` | BM25 (sparse IDF) |
+| `RET-1` | Dense: mE5-large / mE5-large-instruct |
+| `RET-2` | Dense: BGE-M3 (dense and dense+sparse) |
+| `RET-3` | Dense: Qwen3-Embedding-0.6B (MRL 1024/512/256), 4B (cloud) |
+| `RET-4` | Hybrid RRF vs. weighted fusion / DBSF |
+| `RET-5` | `RET-4` + reranker (`bge-reranker-v2-m3` / `Qwen3-Reranker-0.6B/4B`) |
+| `RET-6` | Fine-tuned embedder (Stage 3 pairs, positive-aware hard negatives, 9-dir balanced) |
+| `RET-7` | Fine-tuned reranker (first-stage serving negatives) |
+| `RET-C` | Chunking variants (`chunking.variants`) × contextual doc/section headers |
+| `RET-S` | Scale ladder `1M → 10M → 35M` × quantization (`none`/`int8`/`binary`/`turbo` + rescore) × HNSW RAM/disk |
 
-- **Эмбеддер по умолчанию** — BGE-M3 ([ADR-0003](../adr/0003-bge-m3-default-embedder.md)); challengers из RET-1/RET-3 заменяют его только через гейт.
-- **Метрики**: Recall@5/10, nDCG@10, MRR — по **9 направлениям** (язык вопроса × язык источника). Для первой стадии отдельно candidate recall@100: это потолок reranker. Для новых систем — доля оценённых документов в top-10 (пул `retrieval` закрыт). Для RET-S дополнительно: recall приближённого поиска против точного (`exact`) на подвыборке, чтобы отделить потери ANN и квантизации от потерь модели; latency p50/p95, RAM, время индексации, размер на диске.
-- **Данные дообучения (RET-6, RET-7)**: hard negatives майнятся текущей моделью из диапазона рангов, ложные негативы отсекаются оценкой cross-encoder, сэмплирование уравновешено по 9 направлениям. Негативы reranker берутся из той первой стадии, что работает в сервинге.
-- **Анализ промахов** по стадиям: нет в индексе, разрезан чанком, промах представления, потеря при слиянии, потеря ANN, понижение reranker, неоценённый релевантный. Считается по направлениям.
-- **Бюджет памяти корпуса 35M** (оценка для 1024-d):
+- Default embedder: BGE-M3 ([ADR-0003](../adr/0003-bge-m3-default-embedder.md)).
+- Metrics across **9 directions**: `Recall@5/10`, `nDCG@10`, `MRR`, first-stage `candidate recall@100`, `judged@10`; `RET-S` adds approximate vs. `exact=true` recall, p50/p95, RAM, disk, build time; plus stage miss attribution.
+- **35M corpus memory estimate (1024-d):** fp32 143 GB (unused); fp16 on-disk mmap 72 GB; scalar int8 36 GB (Serving VM); binary 4.5 GB (2.2 GB at MRL 512) in RAM; HNSW level-0 (`m=16`) ~4.5 GB; text payload ~50 GB SSD. Embedder change builds a new collection `corpus_chunks__<embedder>@<ver>` and switches alias post-gate.
 
-| Представление | Размер | Где |
-|---|---|---|
-| fp32 | 143 GB | не используется |
-| fp16 исходные векторы | 72 GB | SSD (mmap), rescoring |
-| scalar int8 | 36 GB | только Serving VM |
-| binary | 4.5 GB (2.2 GB при MRL 512) | RAM |
-| HNSW (m=16, уровень 0) | ~4.5 GB | RAM или on-disk |
-| payload (текст ~1.5 KB/чанк) | ~50 GB | SSD |
+### 7.4 Generation (Stage 7)
 
-На ноутбуке вместе с остальным стеком (~4 GB) и моделями на CPU (~2 GB) полный 35M с HNSW в RAM не помещается в 15 GB. Варианты: HNSW on-disk ценой латентности, подмножество корпуса в локальном профиле или облачный Serving VM. Выбор делается по измерениям RET-S ([ADR-0013](../adr/0013-two-tier-qdrant-index.md)).
+- **Models ([ADR-0012](../adr/0012-qwen35-lora-generation.md)):** primary `Qwen3.5-2B`, candidates `0.8B`/`4B`/`9B`, control `Qwen3-1.7B`, eval-only NC `KazLLM-8B` / `Sherkala-8B`. Prompt: `configs/prompts/grounded_answer.md`.
+- **Training:** cloud Ampere+ GPU **bf16 LoRA** on all linear layers (attention + Gated DeltaNet + MLP, non-thinking mode); never QLoRA, never Kaggle T4. Verify `qwen3_5` compatibility (`transformers`, `PEFT`, `llama.cpp`, `vLLM >= 0.17`) before training.
+- **SFT mix:** 60% answerable, 25% cross-lingual, 15% unanswerable (`kk >= 30%`).
 
-- **Смена эмбеддера** означает новую коллекцию `corpus_chunks__<embedder>@<ver>`, построенную заданиями `embed_corpus` → `index_corpus`. Alias переключается после гейта.
-
-### 7.4 Generation (этап 7)
-
-- **Модели** ([ADR-0012](../adr/0012-qwen35-lora-generation.md)): цель — Qwen3.5-2B; кандидаты — 0.8B / 4B / 9B; контрольный baseline — Qwen3-1.7B; казахские baseline только для оценки — KazLLM-8B и Sherkala-8B (лицензия NC).
-- **Вход**: вопрос, top-k фрагментов с `[chunk_id]`, язык ответа ([`configs/prompts/grounded_answer.md`](../../../configs/prompts/grounded_answer.md)).
-- **Цель SFT**: ответ на заданном языке, ссылка `[chunk_id]` после каждого факта, явный отказ, если в контексте нет ответа.
-- **Данные**: 1–2M синтетических grounded QA после фильтров (ADR-0015) плюс gold KazQAD / SberQuAD / SQuAD v2. Смесь по умолчанию: 60 % отвечаемых, 25 % межъязыковых, 15 % неотвечаемых. Из этого объёма отбирается обучающее подмножество по качеству и разнообразию.
-- **Проверка совместимости** (первый шаг этапа 7): загрузка `qwen3_5` в transformers; шаблон чата с `enable_thinking=False`; фактические имена линейных модулей, потому что у слоёв Gated DeltaNet свои проекции и `q_proj`/`k_proj` есть не во всех слоях; совпадение генерации GGUF и transformers; vLLM с LoRA.
-- **Обучение**: bf16 LoRA на всех линейных слоях, attention и MLP, включая проекции линейного внимания (параметры — `params.yaml: llm.lora`), на облачной GPU Ampere+ (T4 Kaggle не поддерживает bf16), режим non-thinking.
-- **Метрики**: answer F1/EM, faithfulness ([ADR-0022](../adr/0022-evaluation-protocol.md)), точность и полнота ссылок, refusal P/R, доля ответов на запрошенном языке. Отдельно отслеживаются регрессии: ложные отказы на отвечаемых, повторы, формат ссылок.
-
-| ID | Конфигурация |
+| ID | Configuration |
 |---|---|
-| GEN-0 | Zero-shot + RAG: Qwen3.5-0.8B / 2B / 4B / 9B, Qwen3-1.7B, KazLLM-8B, Sherkala-8B |
-| GEN-1 | Qwen3.5-2B + LoRA (полная смесь) |
-| GEN-2 | Ablation смеси: без межъязыковых / без неотвечаемых / только gold |
-| GEN-3 | Лучший размер (0.8B vs 2B vs 4B) по кривой качества и латентности |
-| GEN-Q | Квантизация для сервинга: GGUF Q4_K_M / Q5_K_M / Q8_0 с матрицей важности (imatrix) на трёхъязычных данных, AWQ; KL-дивергенция к bf16 и метрики по языкам |
+| `GEN-0` | Zero-shot + RAG across all candidates and baselines |
+| `GEN-1` | `Qwen3.5-2B` + bf16 LoRA (full mix) |
+| `GEN-2` | Mix ablations (no cross-lingual / no unanswerable / gold only) |
+| `GEN-3` | Size sweep (`0.8B` vs. `2B` vs. `4B`) on quality–latency curve |
+| `GEN-Q` | Serving quantization: GGUF `Q4_K_M`/`Q5_K_M`/`Q8_0` with multilingual `imatrix`, AWQ; KL vs. bf16 + per-lang metrics |
 
-**Ключевой эксперимент**: GEN-1 обязан обыграть лучший GEN-0 на независимом тесте по faithfulness и answer F1 на каждом языке. Если не обыграл, fine-tuning не продвигается.
+`GEN-1` must beat best `GEN-0` on faithfulness ([ADR-0022](../adr/0022-evaluation-protocol.md)) and answer F1 per language with CI, or serving uses the best baseline.
 
-### 7.5 Evidence Verification (этап 8)
+### 7.5 Evidence Verification (Stage 8)
 
-1. Ответ делится на атомарные утверждения: правила по предложениям vs LLM-сплиттер. Сплиттер сравнивается с человеческим разбиением на выборке.
-2. Проверяется, что каждая ссылка `[chunk_id]` есть среди переданных фрагментов.
-3. NLI(premise = окно из 2–3 предложений цитируемого фрагмента, hypothesis = утверждение), максимум по окнам и по цитатам → `supported / contradicted / not_enough_info`. Лучшее окно становится `quote` в ответе. Окна нужны, потому что NLI на целом фрагменте отвергал дословно подтверждённые утверждения ([ADR-0015](../adr/0015-silver-and-synthetic-data.md), реализация).
-4. Числа и даты утверждения сверяются правилами с лучшим окном, потому что NLI к ним малочувствителен. Несовпадение снимает `supported`.
-5. Политика: `contradicted` — утверждение удаляется. Если доля `not_enough_info` выше порога, ответ помечается «частично подтверждён». Если подтверждённых утверждений нет, выдаётся отказ.
+1. Split answer into atomic claims (rules vs. LLM splitter, benchmarked against human splits).
+2. Reject any `[chunk_id]` outside supplied passages.
+3. Score `NLI(premise = 2–3 sentence window, hypothesis = claim)`; take max across windows/citations (`quote` = winning window; ADR-0015).
+4. Cross-check numbers and dates via rules against winning window; mismatch revokes `supported`.
+5. Policy ([ADR-0008](../adr/0008-evidence-verification-and-refusal.md)): drop `contradicted`, flag partial if NEI share exceeds threshold, refuse if zero claims supported. Per-language temperature scaling and risk–coverage thresholds tuned on human-labeled system claims.
 
-Калибровка — температура по языкам на отложенной выборке. Пороги выбираются по кривой risk–coverage при целевой точности из `params.yaml: promotion`. Тест верификатора — человеческая разметка утверждений из ответов системы на трёх языках, включая межъязыковые пары; XNLI служит только вспомогательным тестом.
-
-| ID | Модель |
+| ID | Model |
 |---|---|
-| VER-0 | mDeBERTa-v3-base-xnli (kk в обучении нет) |
-| VER-1 | bge-m3-zeroshot-v2.0 |
-| VER-2 | Лучшая из VER-0/1, дообученная на XNLI ru/en + kk-перевод (ADR-0015) |
-
-Метрики: precision/recall вердиктов по языкам, ECE, калиброванные пороги, латентность на ответ.
+| `VER-0` | `mDeBERTa-v3-base-xnli` (no `kk` in train) |
+| `VER-1` | `bge-m3-zeroshot-v2.0` |
+| `VER-2` | Best of `VER-0`/`1` fine-tuned on XNLI `ru`/`en` + `kk` MT + RAG pairs |
 
 ---
 
-## 8. Модель хранения
+## 8. Storage Model
 
-Распределение ответственности хранилищ — в [ADR-0016](../adr/0016-storage-responsibilities.md).
+Ownership split: [ADR-0016](../adr/0016-storage-responsibilities.md).
 
-### 8.1 PostgreSQL (миграции Alembic)
-
-```
-workspaces     (id, name, api_key_hash, created_at)
-documents      (id, workspace_id, title, filename, mime, sha256, lang, pages, status, error, uploaded_at, processed_at)
-chunks         (id, document_id, ordinal, page, section, char_start, char_end, lang, text, n_tokens)
-mentions       (id, chunk_id, surface, type, char_start, char_end, score, qid NULL, model_version)
-kb_entities    (qid PK, type, label_kk, label_ru, label_en, description_*, popularity)
-kb_aliases     (alias_norm, lang, qid, prior)  -- B-tree на alias_norm, gin_trgm_ops для fallback
-queries        (id, workspace_id, question, question_lang, answer_lang, scope, created_at)
-answers        (id, query_id, text, refused, model_versions JSONB, latency_ms JSONB)
-claims         (answer_id, idx, text, verdict, nli_score)
-citations      (answer_id, claim_idx, chunk_id, collection, document_id, page)
-feedback       (answer_id, rating, comment, created_at)
-```
-
-### 8.2 Qdrant
-
-| Коллекция | Векторы | Хранение | Payload-индексы |
-|---|---|---|---|
-| `corpus_chunks__<emb>@<v>` (alias `corpus_chunks`) | `dense` (1024 или MRL) + `sparse` (IDF) | исходники on-disk fp16, квантизация в RAM, payload on-disk | `lang`, `source`, `entity_ids` |
-| `workspace_chunks__<emb>@<v>` (alias `workspace_chunks`) | то же | in-RAM | `workspace_id` (is_tenant), `document_id`, `lang`, `entity_ids` |
-
-Payload: `chunk_id, document_id, lang, page, section, text, entity_ids[], entity_types[]`.
-
-### 8.3 Object Storage
-
-Бакеты: `trifact-uploads` (исходные файлы), `trifact-dvc` (DVC remote `local`), `trifact-mlflow` (артефакты), `trifact-serving` (GGUF и адаптеры champion).
+- **PostgreSQL (Alembic):** `workspaces`, `documents`, `chunks`, `mentions`, `kb_entities`, `kb_aliases` (B-tree + `gin_trgm_ops`), `queries`, `answers`, `claims`, `citations`, `feedback`.
+- **Qdrant:** `corpus_chunks__<emb>@<v>` (alias `corpus_chunks`; dense fp16 on-disk + RAM quant + sparse IDF; payload on-disk; indexes `lang`, `source`, `entity_ids`) and `workspace_chunks__<emb>@<v>` (alias `workspace_chunks`; in-RAM; `workspace_id` with `is_tenant`).
+- **Object Storage (SeaweedFS S3):** `trifact-uploads`, `trifact-dvc` (local DVC remote), `trifact-mlflow`, `trifact-serving`.
 
 ---
 
-## 9. Офлайн-вычисления
+## 9. Offline Compute
 
-- **CPU-стадии** (Data Pipeline) — DVC-стадии в [`dvc.yaml`](../../../dvc.yaml). Стадии потоковые, пиковая RAM ≤ 10 GB.
-- **Batch-задания** (Batch Compute) — `python -m trifact.batch.<job> --shard i/N`: `embed_corpus`, `annotate_corpus`, `teacher_generate`, `index_corpus`. Задания идемпотентны, работают по шардам и пишут маркеры `_SUCCESS` ([ADR-0014](../adr/0014-sharded-batch-jobs.md)).
-- **GPU-задания этапа 3** используют общие скрипты `jobs/translate` (NLLB), `jobs/nli_score` (проверка NLI) и `jobs/teacher` (Qwen3.5 на llama.cpp). Результаты передаются импортерам `mt`, `synthetic` и `build_nli` вместе с происхождением и конфигом. Существующие импорты Kaggle закреплены в DVC как `data/external/kaggle/<run>` ([ADR-0020](../adr/0020-kaggle-batch-gpu-mt-and-teacher.md)).
-- **Обучение** — `python -m trifact.training.<model>`. HPO через Optuna (параметры — в `params.yaml`), ≥ 3 сидов для дешёвых моделей.
-- **Профили Stage 1–3** — Colab L4 для основных GPU-заданий, Kaggle 2× T4 для дополнительных и облачная VM для CPU-стадий. DVC и контрольные точки используют Google Drive. Порядок запуска и восстановления — [ADR-0025](../adr/0025-cloud-only-computing.md).
-- **Оценки пропускной способности** (проверить замерами): эмбеддинги класса XLM-R-large на RTX 3050 дают сотни чанков/с, то есть 35M займут несколько суток. На A100/H100 — часы, поэтому корпус кодируется в облаке. NER XLM-R base в ONNX int8 на CPU — порядка сотен–тысяч предложений/с, поэтому массовая разметка тоже идёт в облаке или ночными шардами.
+- **Cloud-first execution ([ADR-0025](../adr/0025-cloud-only-computing.md)):** Run CPU DVC stages (`dvc.yaml`, peak RAM ≤ 10 GB) and GPU batch/training jobs on cloud infrastructure via Google Colab CLI (NVIDIA L4 preferred when available/permitted; Colab CPU for non-GPU stages) and Kaggle CLI (2× T4 fp16, [ADR-0020](../adr/0020-kaggle-batch-gpu-mt-and-teacher.md)). Persist DVC objects, checkpoints, and MLflow snapshots on Google Drive ([ADR-0024](../adr/0024-google-drive-storage.md)).
+- **Sharded batch jobs ([ADR-0014](../adr/0014-sharded-batch-jobs.md)):** `python -m trifact.batch.<job> --shard i/N` (`embed_corpus`, `annotate_corpus`, `teacher_generate`, `index_corpus`) with `_SUCCESS` markers; Stage 3 GPU scripts `jobs/{translate,nli_score,teacher}` run via `trifact.batch.colab` or `trifact.batch.kaggle`.
+- **Training:** `python -m trifact.training.<model>` with Optuna HPO and ≥3 seeds.
 
-## 10. Оценка и продвижение
+## 10. Evaluation & Promotion Gate
 
-- **Замороженный eval** (объём — [datasets.md §6](../../research/datasets.md)): все 9 направлений, собирается в этапе 3 до любого обучения, sha256 хранится в `data/eval/MANIFEST.yaml`.
-- **Наборы**: `ner` (gold test по языкам), `retrieval` (вопрос × переводы × золотой фрагмент на исходном языке), `qa` (отвечаемые, межъязыковые, неотвечаемые), `nli`, `docproc` (документы с эталонным текстом), `real_docs` (50–100 реальных документов для оценки переноса), `e2e`.
-- **Протокол** ([ADR-0022](../adr/0022-evaluation-protocol.md)):
-  - парный бутстреп по кластерам зависимых примеров (документ, контекст, исходный запрос со всеми переводами), число ресэмплов — `params.yaml: evaluation`; ≥ 3 сидов для обучаемых моделей;
-  - faithfulness — доля утверждений, поддержанных процитированными пассажами, по верификатору с проверенным согласием с человеком;
-  - LLM-судья только после калибровки на человеческой разметке и не как единственное основание гейта;
-  - метрики LLM и retrieval дополнительно на подмножестве не из Wikipedia и на `real_docs` (проверка загрязнения предобучения);
-  - выходы по примерам и трассы e2e сохраняются в MLflow.
+- **Frozen eval:** built in Stage 3 (`data/eval/MANIFEST.yaml` SHA-256), covering `ner`, `retrieval` (9 directions), `qa`, `nli`, `docproc`, `real_docs` (50–100 real files), `e2e`.
+- **Protocol ([ADR-0022](../adr/0022-evaluation-protocol.md)):** cluster paired bootstrap (`params.yaml: evaluation`) + ≥3 seeds; verifier-based faithfulness with human audit; human-calibrated LLM judge only (never sole gate); non-Wikipedia and `real_docs` slices for pretraining contamination; per-example traces logged in MLflow.
+- **Promotion gate ([ADR-0009](../adr/0009-model-registry-and-promotion-gate.md)):** thresholds live exclusively in `params.yaml: promotion`:
 
-  Улучшение без значимости улучшением не считается.
-- **Гейт** ([ADR-0009](../adr/0009-model-registry-and-promotion-gate.md)). Числа порогов — только в `params.yaml: promotion`:
-
-| Компонент | Условие продвижения | Ключи `promotion` |
+| Component | Promotion Condition | `promotion.*` Keys |
 |---|---|---|
-| Extraction | F1 kk лучше champion на заданный прирост (CI > 0), просадка ru/en не больше допуска | `ner_kk_f1_min_gain`, `ner_other_max_drop` |
-| Retriever / reranker | nDCG@10 не хуже champion ни на одном из 9 направлений, среднее лучше (CI > 0) | `retrieval_no_direction_worse` |
-| LLM | faithfulness не ниже порога, answer F1 и faithfulness лучше champion по каждому языку | `faithfulness_min` |
-| Verification | точность `contradicted` не ниже порога, ECE не выше порога — по каждому языку | `verification_contradicted_precision_min`, `verification_ece_max` |
-| Cross-lingual | худшее направление отстаёт от среднего не больше допуска | `worst_direction_max_gap` |
-| End-to-End | p95 не выше цели (локально), корректность ссылок не ниже champion, доля успешных prompt-injection атак не выше champion ([ADR-0023](../adr/0023-untrusted-evidence-in-prompts.md)) | `e2e_p95_latency_s`, `e2e_injection_no_worse` |
+| Extraction | `kk` F1 gain > min (CI > 0), `ru`/`en` drop ≤ max | `ner_kk_f1_min_gain`, `ner_other_max_drop` |
+| Retriever / reranker | No regression on any of 9 directions, mean nDCG@10 gain (CI > 0) | `retrieval_no_direction_worse` |
+| LLM | Faithfulness ≥ min; answer F1 and faithfulness beat champion per language | `faithfulness_min` |
+| Verification | `contradicted` precision ≥ min, ECE ≤ max per language | `verification_contradicted_precision_min`, `verification_ece_max` |
+| Cross-lingual | Worst direction gap vs. mean ≤ max | `worst_direction_max_gap` |
+| End-to-End | p95 ≤ target, citation accuracy ≥ champion, prompt-injection ASR ≤ champion ([ADR-0023](../adr/0023-untrusted-evidence-in-prompts.md)) | `e2e_p95_latency_s`, `e2e_injection_no_worse` |
 
-- **Диагностика e2e**: для провальных примеров стадия-виновник определяется по трассе — факт есть в чанках → gold в кандидатах → gold после reranker → gold в промпте после бюджетной обрезки → ответ верен → ссылки верны → вердикт верен. Доли по стадиям и направлениям записываются вместе с e2e-метриками.
-
-- **Ablation** (этап 9, один и тот же тест): RAG без Extraction → + Extraction-сигналы → + дообученный Retrieval → + дообученный LLM → + Verification.
+- **E2E failure attribution & Stage 9 ablation:** trace each failure to first broken stage (`chunk → retrieval → rerank → prompt budget → answer → citation → verdict`); run ablation `RAG w/o Extraction → + Extraction → + fine-tuned Retrieval → + fine-tuned LLM → + Verification`.
 
 ## 11. MLOps
 
-- **MLflow**: по эксперименту на направление (`data`, `docproc`, `ner`, `retrieval`, `generation`, `verification`, `e2e`, `batch`). В `data` пишутся загрузки и разбор источников. В каждом run: git SHA, DVC-хеши входов, полный конфиг, метрики по языкам и направлениям, время, железо, стоимость.
-- **Registry**: модели `trifact-ner`, `trifact-embedder`, `trifact-reranker`, `trifact-nli`, `trifact-llm-adapter`; alias `champion` / `challenger`. Inference и LLM читают `champion` при старте. Откат — перенос alias. Для эмбеддера alias коллекции Qdrant и alias модели переключаются вместе.
-- **Качество кода**: проверки перед коммитом — [AGENTS §5](../../../AGENTS.md). Архитектурные тесты (`tests/test_architecture.py`) проверяют, что `trifact.core` ни от чего не зависит, что все команды `dvc.yaml` указывают на существующие модули и что все ADR упомянуты в документации.
+- **MLflow:** domain experiments (`data`, `docproc`, `ner`, `retrieval`, `generation`, `verification`, `e2e`, `batch`) recording git SHA, DVC hashes, config, per-lang metrics, wall time, hardware, and cost.
+- **Registry:** `trifact-{ner,embedder,reranker,nli,llm-adapter}` with `champion`/`challenger` aliases; rollback = alias switch (atomic with Qdrant collection alias for embedders).
+- **Fitness checks:** pre-commit checks ([AGENTS.md §6](../../../AGENTS.md)) + `tests/test_architecture.py` + `tests/test_skills.py`.
 
-## 12. Наблюдаемость
+## 12. Observability
 
-| Сигнал | Метрики |
-|---|---|
-| API | латентность по стадиям (retrieve / rerank / generate / verify), RPS, ошибки, время до первого токена |
-| Worker | длина очереди, длительность по шагам, доля `failed` и причины, страниц/с |
-| Модели | размер батча, время инференса, загрузка GPU, VRAM |
-| Qdrant | латентность поиска, RAM, сегменты, индексация |
-| Качество (из журнала ответов) | доля отказов, доля `contradicted` / `not_enough_info`, распределение языков вопросов, рейтинг фидбека |
-| Дрейф входа | распределения языка и длины вопросов, максимальной оценки поиска и reranker, причин `ParseError`, доли страниц с OCR |
+- **Signals:** API stage latency/RPS/TTFT/errors; worker queue depth/`failed` reasons/pages/s; inference batch size/GPU/VRAM; Qdrant latency/RAM/segments; answer refusal/`contradicted`/NEI/feedback rates; input drift (question language/length, max retrieval/reranker scores, `ParseError` reasons, OCR share).
+- **Drift & alerts:** PSI/JS-divergence against reference window; thresholds calibrated from reference variance; Grafana `Service` and `Quality` dashboards; JSON logs with end-to-end `request_id`. Audited feedback creates **new** versioned eval suites without mutating frozen tests.
 
-Дрейф считается PSI или JS-дивергенцией гистограмм против опорного окна. Пороги алертов задаются по разбросу опорных окон, а не заранее. Фидбек и выборочная ручная проверка пополняют новые версионированные eval-наборы, замороженный тест не меняется.
+## 13. Deployment
 
-Grafana: дашборды «Service» и «Quality», алерты на p95, рост очереди, всплеск `contradicted` и дрейф входа. Логи — JSON с `request_id`, сквозным через API → Inference → LLM.
+- **Local reference stack (`infra/docker-compose.yml`):** Qwen3.5-2B Q4_K_M (~1.4 GB VRAM + KV) + embedder/reranker fp16 (~2.2 GB VRAM, reranker falls back to ONNX int8 CPU); NER/NLI on CPU (~2 GB RAM); Postgres, Qdrant (workspace + corpus subset), Redis, SeaweedFS, MLflow, Prometheus, Grafana (~4–6 GB RAM). `docker compose up -d --wait` waits for all healthchecks; `s3-init` creates buckets.
+- **Cloud:** Colab CLI (L4/CPU) and Kaggle CLI (2× T4) for batch/training with Google Drive DVC ([ADR-0025](../adr/0025-cloud-only-computing.md)); optional Serving VM (32–64 GB RAM, 16–24 GB GPU) for full 35M corpus and vLLM.
+- Diagrams: [`DeploymentLocal`](../diagrams/DeploymentLocal.mmd), [`DeploymentCloud`](../diagrams/DeploymentCloud.mmd).
 
-## 13. Развёртывание
+## 14. Security & Licensing
 
-**Local** (`docker compose`, [`infra/docker-compose.yml`](../../../infra/docker-compose.yml)):
+- Secrets in `.env` only (never git); `HF_TOKEN` needed for gated `dvc repro`, not `dvc pull`.
+- Source license recorded in manifest before use; `release: false` propagates to derivatives (ADR-0015).
+- Strict `workspace_id` isolation across PostgreSQL, Qdrant, and S3 with cascading deletes.
+- Indirect prompt injection mitigated via spotlighting, tool-less generator, independent output checks, and `eval_e2e` attack suite ([ADR-0023](../adr/0023-untrusted-evidence-in-prompts.md)).
 
-| Сервис | Где | Память |
-|---|---|---|
-| LLM Qwen3.5-2B Q4_K_M | GPU | ~1.4 GB VRAM + KV |
-| Эмбеддер (fp16) + reranker (fp16) | GPU | ~2.2 GB VRAM; при нехватке reranker уходит на CPU (ONNX int8) |
-| NER (ONNX int8), NLI | CPU | ~2 GB RAM |
-| PostgreSQL, Qdrant (workspace + подмножество корпуса), Redis, SeaweedFS, MLflow, Prometheus, Grafana | CPU | ~4–6 GB RAM |
+## 15. Repository Layout & C4 Maintenance
 
-У каждого сервиса инфраструктуры есть healthcheck; `docker compose up -d --wait` возвращается, когда все сервисы `healthy`. Одноразовый `s3-init` создаёт бакеты §8.3. Remote `local` для DVC — бакет `trifact-dvc` (`http://localhost:9000`).
+Single package `src/trifact/{core,lake,ingestion,extraction,retrieval,generation,verification,api,worker,inference,data,batch,training,evaluation}` with multiple entry points ([ADR-0001](../adr/0001-single-package-multiple-runtimes.md)).
 
-**Cloud**: GPU-инстанс для Batch Compute и Training (24–80 GB), S3-бакет как remote `cloud`. Опционально Serving VM (32–64 GB RAM, GPU 16–24 GB) для полного корпуса 35M и vLLM.
+**Updating C4 diagrams:**
+1. Edit `docs/architecture/workspace.dsl`.
+2. Validate (0 errors): `docker run --rm -v "$PWD/docs/architecture:/usr/local/structurizr" structurizr/structurizr inspect -w /usr/local/structurizr/workspace.dsl`.
+3. Export: `python scripts/export_diagrams.py`.
+4. Add an ADR if an architectural decision changed.
 
-Диаграммы: [`DeploymentLocal`](../diagrams/DeploymentLocal.mmd), [`DeploymentCloud`](../diagrams/DeploymentCloud.mmd).
+## 16. Traceability: ROADMAP → Architecture
 
-## 14. Безопасность и лицензии
-
-- Секреты хранятся только в `.env` (не в git); `HF_TOKEN` нужен для gated-наборов KazNERD, KazQAD и KazParC.
-- Лицензия и решение по ней записываются в манифест каждого источника до использования. Флаг `release: false` наследуется производными наборами (ADR-0015).
-- Пользовательские документы изолированы по `workspace_id` в PostgreSQL, Qdrant и S3. Удаление документа каскадно удаляет его чанки и точки.
-- Текст документов в промпте — недоверенные данные (косвенная prompt injection). Пассажи изолируются разделителями, у генератора нет инструментов, выход проверяется независимо от модели (ссылки, NLI, язык), доля успешных атак меряется в e2e eval ([ADR-0023](../adr/0023-untrusted-evidence-in-prompts.md)).
-
-## 15. Репозиторий и сопровождение модели
-
-```
-src/trifact/
-  core/          схемы, конфиг, интерфейсы (ни от чего не зависит)
-  lake/          раскладка слоёв, манифесты, чтение/запись шардов
-  ingestion/     parser, engines, pdf, docling_backend, ocr, sandbox, normalize, langdetect, chunker   (онлайн + офлайн)
-  extraction/    ner, dates, linking
-  retrieval/     embedder, store (Qdrant), hybrid (RRF), reranker
-  generation/    prompt, llm_client
-  verification/  claims, citations, nli
-  api/ worker/ inference/                                      рантаймы сервинга
-  data/          CPU-стадии DVC: acquire, wikidata, clean, dedup, decontaminate, validate, split,
-                 build_eval, build_ner, build_pairs, build_sft, build_nli, chunk_corpus, build_kb, build_docproc
-  batch/         шардированные задания: embed_corpus, annotate_corpus, teacher_generate, index_corpus
-  training/      train_ner, train_retriever, train_reranker, train_nli, train_llm
-  evaluation/    eval_docproc, eval_ner, eval_retrieval, eval_generation, eval_verification, eval_e2e, gate
-configs/  infra/  web/  docs/  tests/  scripts/
-dvc.yaml  params.yaml  pyproject.toml
-```
-
-Один пакет, несколько точек входа — [ADR-0001](../adr/0001-single-package-multiple-runtimes.md).
-
-**Изменение архитектуры**:
-1. Правка `workspace.dsl`.
-2. Проверка: `docker run --rm -v "$PWD/docs/architecture:/usr/local/structurizr" structurizr/structurizr inspect -w /usr/local/structurizr/workspace.dsl` (ноль ошибок) или MCP `structurizr`.
-3. Экспорт диаграмм: `python scripts/export_diagrams.py`.
-4. ADR, если решение изменилось.
-
-Просмотр интерактивной модели C4 с документацией и ADR на http://localhost:8081: `docker run -it --rm -p 8081:8080 -v "$PWD/docs/architecture:/usr/local/structurizr" structurizr/structurizr local`.
-
-## 16. Трассировка: этапы ROADMAP → архитектура
-
-| Этап | Контейнеры / компоненты | Модули | DVC / задания | ADR |
+| Stage | Containers / Components | Modules | DVC / Jobs | ADRs |
 |---|---|---|---|---|
-| 1 Data Platform & Acquisition | Data Lake, Data Pipeline: Source Loader, Wikidata Parser | `lake`, `data.acquire`, `data.wikidata` | `acquire`, `wikidata` | 0010, 0011, 0014, 0017 |
-| 2 Data Quality & Curation | Normalizer, Quality Filters, Deduplicator, Decontaminator | `ingestion.normalize`, `data.clean/dedup/decontaminate` | `clean`, `dedup`, `decontaminate` | 0011 |
-| 3 Task Datasets | Splitter, NER/Pair/SFT/NLI/Eval Builders, Teacher Job | `data.validate/split/build_*`, `batch.teacher_generate` | `validate`, `split`, `build_*` | 0007, 0015 |
-| 4 Document Processing | Worker: Parser, OCR, Chunker; DocProc Eval | `ingestion.*`, `data.build_docproc`, `evaluation.eval_docproc` | `build_docproc`, `eval_docproc` | 0001, 0021 |
+| 1 Acquisition | Data Lake, Source Loader, Wikidata Parser | `lake`, `data.acquire`, `data.wikidata` | `acquire`, `wikidata` | 0010, 0011, 0014, 0017, 0024, 0025 |
+| 2 Curation | Normalizer, Quality Filters, Dedup, Decontam | `ingestion.normalize`, `data.{clean,dedup,decontaminate}` | `clean`, `dedup`, `decontaminate` | 0011, 0018, 0019 |
+| 3 Task Datasets | Splitter, Builders, Teacher Job | `data.{validate,split,build_*}`, `batch.{colab,kaggle}` | `validate`, `split`, `build_*` | 0007, 0015, 0020, 0025 |
+| 4 Doc Processing | Worker Parser/OCR/Chunker, DocProc Eval | `ingestion.*`, `data.build_docproc`, `evaluation.eval_docproc` | `build_docproc`, `eval_docproc` | 0001, 0021 |
 | 5 Extraction | NER/Date/Linker, KB Builder, Annotate Job | `extraction.*`, `data.build_kb`, `batch.annotate_corpus` | `train_ner`, `eval_ner`, `build_kb` | 0006, 0016 |
-| 6 Retrieval at Scale | Hybrid Retriever, Embed/Index Jobs, Qdrant | `retrieval.*`, `data.chunk_corpus`, `batch.embed_corpus/index_corpus` | `train_retriever`, `train_reranker`, `eval_retrieval` | 0002, 0003, 0004, 0013 |
+| 6 Retrieval | Hybrid Retriever, Embed/Index Jobs, Qdrant | `retrieval.*`, `data.chunk_corpus`, `batch.{embed,index}_corpus` | `train_retriever`, `train_reranker`, `eval_retrieval` | 0002, 0003, 0004, 0013 |
 | 7 Generation | LLM Server, Prompt Builder | `generation.*`, `training.train_llm` | `train_llm`, `eval_generation` | 0012 |
-| 8 Evidence Verification | Evidence Verifier, NLI Endpoint | `verification.*`, `training.train_nli` | `train_nli`, `eval_verification` | 0008 |
-| 9 System Integration | API, Worker, Inference, Redis, PostgreSQL | `api`, `worker`, `inference` | `eval_e2e`, `gate` | 0009, 0016, 0022, 0023 |
+| 8 Verification | Evidence Verifier, NLI Endpoint | `verification.*`, `training.train_nli` | `train_nli`, `eval_verification` | 0008 |
+| 9 Integration | API, Worker, Inference, Redis, PostgreSQL | `api`, `worker`, `inference` | `eval_e2e`, `gate` | 0009, 0016, 0022, 0023 |
 | 10 Product & Ops | Web, Prometheus, Grafana, Deployment | `web/`, `infra/` | — | — |
 
-## 17. Риски
+## 17. Risks & Mitigations
 
-| Риск | Митигирующее действие |
+| Risk | Mitigation |
 |---|---|
-| Слабый межъязыковой поиск для kk | Метрики по 9 направлениям с первого эксперимента; межъязыковые пары из KazParC и синтетики; hard negatives |
-| Шум silver и синтетики | Фильтры ADR-0015, ручная выборка, отсев по причинам в data card; eval не строится из синтетики |
-| Полный индекс 35M не помещается в 15 GB RAM | Квантизация, MRL, HNSW on-disk, ступени 1M/10M/35M; Serving VM |
-| Стоимость облака (эмбеддинги, учитель, LoRA) | Бюджет до запуска, сначала пилот, задания по шардам без потери работы |
-| Незрелая поддержка Qwen3.5 (vLLM ≥ 0.17, PEFT, llama.cpp) | Проверка в начале этапа 7; контрольный baseline Qwen3-1.7B |
-| Перенос с Wikipedia на реальные документы | Eval `real_docs` (50–100 документов) |
-| Неясные лицензии (WikiANN, SberQuAD, NEREL, KazParC, WikiNEuRal) | Решение в манифесте до использования; флаг `release` |
-| Утечка train/test | Сплит по документу, деконтаминация, хеш замороженного eval |
-| Нехватка VRAM 4 GB | GGUF Q4, encoder-модели на CPU (ONNX int8), обучение в облаке |
-| Нулевой облачный бюджет, а bf16 LoRA (ADR-0012) не идёт на T4 Kaggle | Бюджет этапа 7 утверждается до старта; пока его нет, GEN-0 и GEN-Q на baseline выполняются, GEN-1…3 стоят в блокерах |
-| Prompt injection через документы | Изоляция пассажей, проверка выхода, набор атак в e2e eval (ADR-0023) |
-| Смещённые оценки (зависимые примеры, LLM-судья на kk, загрязнение предобучения) | Кластерный бутстреп, калибровка судей человеком, срез не из Wikipedia и `real_docs` (ADR-0022) |
+| Weak `kk` cross-lingual retrieval | 9-direction metrics from day 1; KazParC + synthetic pairs; hard negatives |
+| Silver/synthetic noise | ADR-0015 filters, human review, data-card drop rates; no unreviewed synthetic in eval |
+| 35M index exceeds 15 GB local RAM | Quantization, MRL, on-disk HNSW, `RET-S` ladder, Serving VM |
+| Cloud cost (embeddings, teacher, LoRA) | `cloud.budget_usd` gate, pilot first, resumable sharded jobs |
+| Immature Qwen3.5 ecosystem (`vLLM`, PEFT, `llama.cpp`) | Stage 7 Step 0 check; `Qwen3-1.7B` control baseline |
+| Wikipedia → real-document domain shift | `real_docs` eval (50–100 real files) |
+| Unclear dataset licenses | Manifest decision before use; `release: false` propagation |
+| Train/test leakage | Document + context splits, decontamination, frozen eval SHA-256 |
+| 4 GB local serving VRAM | GGUF Q4, CPU ONNX int8 encoders, cloud training |
+| `$0` cloud budget blocks bf16 LoRA (T4 incompatible) | Approve Stage 7 budget first; run `GEN-0` and `GEN-Q` on baselines meanwhile |
+| Indirect prompt injection | Spotlighting, independent output validation, `eval_e2e` attack suite (ADR-0023) |
+| Biased evaluation (dependent items, `kk` judge, contamination) | Cluster bootstrap, human-calibrated judges, non-Wikipedia & `real_docs` slices (ADR-0022) |
