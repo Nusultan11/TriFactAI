@@ -5,6 +5,7 @@ from pathlib import Path
 import pyarrow as pa
 
 from trifact.data.curation import StageDir, UnitWriter, fingerprint, iter_batches
+from trifact.data.task_common import dataset_input_of
 from trifact.lake.layout import LakeConfig
 from trifact.lake.manifest import DatasetManifest, InheritedLicense, verify_dataset
 
@@ -39,6 +40,18 @@ def test_fingerprint_changes_with_params_code_inputs(tmp_path: Path) -> None:
     assert base != fingerprint("dedup", {"a": 1}, [code], [inp])
     inp.write_text("rows: 2\n")
     assert base != fingerprint("clean", {"a": 1}, [code], [inp])
+
+
+def test_dataset_input_accepts_relative_paths_from_dvc(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "data/clean/demo"
+    out.mkdir(parents=True)
+    stage = StageDir(out, "stage-fingerprint")
+    _manifest(stage, []).write(out)
+    monkeypatch.chdir(tmp_path)
+
+    dep = dataset_input_of(tmp_path / "data", Path("data/clean/demo"))
+
+    assert dep.path == "clean/demo/dataset.yaml"
 
 
 def test_stage_dir_resume_and_finish(tmp_path: Path) -> None:

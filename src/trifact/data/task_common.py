@@ -8,6 +8,7 @@ licence list is inherited (ADR-0015), metrics carry the quality checks of the st
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -182,6 +183,7 @@ def raw_input(root: Path, source: str) -> DatasetInput:
 
 
 def dataset_input_of(root: Path, out_dir: Path) -> DatasetInput:
+    out_dir = Path(os.path.abspath(out_dir))
     m = DatasetManifest.read(out_dir)
     return dataset_input(root, out_dir / DATASET_NAME, m.rows_of())
 
