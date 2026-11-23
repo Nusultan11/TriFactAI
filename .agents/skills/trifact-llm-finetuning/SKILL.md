@@ -1,118 +1,78 @@
 ---
 name: trifact-llm-finetuning
-description: LLM engineering for grounded KK/RU/EN QA with Qwen3.5 in TriFact — compatibility checks (transformers, PEFT, llama.cpp, vLLM), zero-shot baselines, chat template and non-thinking mode, SFT data mix and selection, bf16 LoRA per ADR-0012, adapter evaluation and regressions, GGUF quantization with imatrix, AWQ, serving speed (TTFT, tokens/s). Use for stage 7 work in train_llm, eval_generation, generation.llm_client, or when the model ignores evidence, invents citations or over-refuses (дообучение LLM, LoRA, SFT, квантизация).
+description: Cloud-first LLM engineering for grounded KK/RU/EN QA with Qwen3.5 in TriFact — compatibility checks (transformers, PEFT, llama.cpp, vLLM), zero-shot baselines, chat template and non-thinking mode, SFT data selection, cloud Ampere+ bf16 LoRA per ADR-0012, adapter regression evaluation, GGUF quantization with multilingual imatrix, AWQ, serving speed (TTFT, tokens/s). Use for stage 7 work in train_llm, eval_generation, generation.llm_client, or debugging ungrounded answers, bad citations, or over-refusal.
 ---
 
-# LLM: SFT, LoRA, квантизация TriFact AI
+# TriFact AI — LLM Fine-Tuning & Quantization
 
-## Когда применять
+## Scope
 
-- Эксперименты GEN-0…GEN-3 и GEN-Q, обучение `train_llm`, оценка `eval_generation`, клиент `generation.llm_client`.
-- Подготовка SFT-смеси, сервинг адаптера, замер скорости.
+- Load for GEN-0…GEN-3, GEN-Q, `train_llm`, `eval_generation`, `generation.llm_client`, SFT curation, quantization, and serving benchmarks.
+- Context & prompt design → `trifact-rag-pipeline`. General training/HPO → `trifact-training-hpo`. Synthetic teacher generation → `trifact-data-pipeline`.
+- Cloud CLI execution & Drive persistence → [cloud-compute.md](../trifact-mlops/references/cloud-compute.md).
 
-Сборка контекста и промпт — `trifact-rag-pipeline`. Общая методика обучения — `trifact-training-hpo`. Синтетика учителем — `trifact-data-pipeline`.
+## Owner Documents
 
-## Опорные документы
-
-| Тема | Владелец |
+| Topic | Owner |
 |---|---|
-| Семейство, bf16 LoRA, сервинг | [ADR-0012](../../../docs/architecture/adr/0012-qwen35-lora-generation.md) (заменил [ADR-0005](../../../docs/architecture/adr/0005-qwen3-qlora-local-gguf-serving.md)) |
-| Эксперименты, данные, гейт | архитектура [§7.4](../../../docs/architecture/docs/01-architecture.md), §10 |
-| Факты о моделях, VRAM, фертильность | [models.md §4, §6.2](../../../docs/research/models.md) |
-| Синтетика, учитель | [ADR-0015](../../../docs/architecture/adr/0015-silver-and-synthetic-data.md), [ADR-0020](../../../docs/architecture/adr/0020-kaggle-batch-gpu-mt-and-teacher.md) |
-| Параметры | `params.yaml: llm`, `sft`, `teacher` |
+| Model family, bf16 LoRA, serving | [ADR-0012](../../../docs/architecture/adr/0012-qwen35-lora-generation.md) (supersedes [ADR-0005](../../../docs/architecture/adr/0005-qwen3-qlora-local-gguf-serving.md)) |
+| Experiments, gate, model facts | [01-architecture.md §7.4, §10](../../../docs/architecture/docs/01-architecture.md), [models.md §4, §6.2](../../../docs/research/models.md) |
+| Synthetic teacher & cloud policy | [ADR-0015](../../../docs/architecture/adr/0015-silver-and-synthetic-data.md), [ADR-0020](../../../docs/architecture/adr/0020-kaggle-batch-gpu-mt-and-teacher.md), [ADR-0025](../../../docs/architecture/adr/0025-cloud-only-computing.md) |
+| Parameters | `params.yaml`: `llm`, `sft`, `teacher`, `cloud.budget_usd` |
 
-**Ограничение ADR-0012:** QLoRA для Qwen3.5 не применяется, только bf16 LoRA на GPU Ampere+. Kaggle T4 bf16 не поддерживает. Обучение LLM требует облачного бюджета (`cloud.budget_usd`), локально — только smoke-тест на 0.8B.
+## Cloud Compute Constraints (Mandatory)
 
-## Шаг 0 — совместимость (ROADMAP 7.1)
+- **bf16 LoRA only (ADR-0012):** Never use QLoRA for Qwen3.5. Requires **Ampere+ GPU** (Colab L4 24 GB preferred when available/permitted, or approved cloud A100/H100).
+- **Kaggle T4 incompatibility:** T4 (sm75) lacks native `bf16` — never run Qwen3.5 bf16 LoRA on Kaggle T4.
+- **Budget guardrail:** Verify `params.yaml: cloud.budget_usd` before launching GEN-1…GEN-3. Without approved paid budget, execute Step 0 compatibility, GEN-0 zero-shot baselines, GEN-Q quantization, and serving speed benchmarks only (ROADMAP 7.0).
+- **Persistence:** Pull only `data/task/sft` and `data/eval/qa`; save LoRA checkpoints (adapter + optimizer + step) and MLflow SQLite snapshots to Drive; stop the cloud runtime immediately after verification.
 
-1. `transformers` загружает `qwen3_5`; `apply_chat_template(..., enable_thinking=False)` даёт ожидаемый текст; токенизация round-trip без потерь.
-2. Имена модулей берутся из `model.named_modules()`, а не из памяти. В гибридной архитектуре слои Gated DeltaNet имеют свои проекции, и `q_proj`/`k_proj` есть не во всех слоях. Список `llm.lora.target_modules` сверяется с фактическим, число обучаемых параметров печатается.
-3. Слитая модель конвертируется в GGUF текущим llama.cpp, генерация совпадает с transformers на нескольких промптах (greedy).
-4. vLLM ≥ 0.17 загружает базу с LoRA-адаптером.
+## Step 0 — Compatibility Check (ROADMAP 7.1)
 
-Расхождение версий или имён фиксируется в models.md с датой и источником.
+Run on cloud GPU before any training:
+1. Verify `transformers` loads `qwen3_5`, `apply_chat_template(..., enable_thinking=False)` matches serving format, and tokenization round-trips cleanly.
+2. Inspect actual linear layer names via `model.named_modules()` (hybrid Gated DeltaNet layers differ from standard attention `q_proj`/`k_proj`). Reconcile `llm.lora.target_modules` and log trainable parameter count.
+3. Merge test adapter → GGUF with current `llama.cpp`; verify greedy generation matches `transformers` on probe prompts.
+4. Verify `vLLM >= 0.17` loads base + LoRA adapter.
+5. Record any version/module discrepancy in `models.md` with date and source.
 
-## Baseline (GEN-0)
+## Baselines (GEN-0) & SFT Curation
 
-- Все кандидаты и контрольный baseline — с одним и тем же промптом, контекстом и декодированием.
-- Метрики по языкам и направлениям на `qa` eval: answer F1, faithfulness (определение и ручная проверка вердиктов — [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md)), точность ссылок, refusal P/R, язык ответа.
-- KazLLM и Sherkala (NC) используются только для оценки.
-- Лучший GEN-0 по каждому языку — планка, которую дообучение обязано пройти (гейт).
+- Evaluate all candidates (`Qwen3.5-0.8B/2B/4B/9B`, control `Qwen3-1.7B`, eval-only NC `KazLLM-8B` / `Sherkala-8B`) with identical prompt, context, and decoding on frozen `data/eval/qa`.
+- Track per language & direction: answer F1/EM (+ chrF for `kk`), faithfulness ([ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md), with human audit of `verification.faithfulness_audit_claims`), citation P/R, refusal P/R, answer language accuracy. Best GEN-0 per language is the bar LoRA must beat.
+- **SFT data:** Exact serving prompt + assistant response; compute loss **only on assistant tokens**. Enforce `sft.mix` and `scale.min_kk_share`. Use topically close distractors for unanswerable examples (prevents topic-mismatch shortcuts). Filter by NLI support, valid citations, question MinHash dedup, embedding-cluster quotas for diversity, and `llm.max_seq_len`. Exclude frozen eval questions (`build_sft`).
 
-## SFT-данные
+## LoRA Configuration
 
-- Формат примера — ровно промпт сервинга плюс ответ ассистента. Loss считается только на токенах ответа.
-- Смесь `sft.mix`, доля kk не ниже `scale.min_kk_share`.
-- Неотвечаемые примеры с тематически близкими дистракторами, а не со случайными контекстами: иначе модель учится отказывать по несвязности темы.
-- Отбор по качеству важнее объёма (LIMA):
-  - NLI-фильтр утверждений;
-  - валидность ссылок;
-  - MinHash-дедуп вопросов;
-  - кластеризация вопросов эмбеддингами и квоты на кластер против перекоса тем;
-  - длина в пределах `llm.max_seq_len` (по EDA).
-- Вопросы замороженного eval исключены (`build_sft`). Отдельный dev SFT нужен для loss и генеративной оценки по ходу обучения.
-
-## Настройка LoRA
-
-| Решение | Обоснование |
+| Choice | Rule |
 |---|---|
-| LoRA на всех линейных слоях, включая MLP | attention-only LoRA заметно хуже даже при равном числе параметров (Thinking Machines, 2025; Biderman et al., 2024) |
-| LR ≈ 10× LR полного fine-tune; почти не зависит от ранга при `α/r`-масштабировании | там же; стартовое значение — `llm.lr`, уточняется коротким LR-sweep на dev |
-| Ранг: малые ранги быстро упираются в ёмкость на больших SFT | для 0.3–2M примеров ранг проверяется sweep, rsLoRA (`α/√r`) — опция |
-| 1–3 эпохи, ранняя остановка по генеративной dev-метрике | loss падает и при росте галлюцинаций |
-| Packing с корректными масками (без внимания через границу примеров) | padding-free или `position_ids` в TRL; иначе примеры смешиваются |
-| Gradient checkpointing, bf16 | VRAM по models.md §4 |
+| Target modules | All linear layers (attention, Gated DeltaNet projections, MLP) — attention-only underperforms |
+| Learning rate | ~10× full fine-tune LR (`llm.lr` start, refine with short dev sweep); largely rank-invariant under $\alpha/r$ scaling |
+| Rank | Sweep rank for 0.3–2M SFT scale (small ranks saturate); `rsLoRA` ($\alpha/\sqrt{r}$) optional |
+| Epochs & early stop | 1–3 epochs; stop by **generative dev metric**, never validation loss |
+| Packing | Use padding-free / explicit `position_ids` masks so examples never cross-attend |
+| Memory | `bf16` + gradient checkpointing; choose PEFT+TRL vs. Unsloth by Step 0 compatibility and speed |
 
-PEFT + TRL или Unsloth выбираются по итогам шага 0: поддержка `qwen3_5`, память и скорость на целевой GPU.
+## Adapter Evaluation & Regressions
 
-## Оценка адаптера
+- Compare generatively against GEN-0 on identical test and decoding.
+- Check regressions explicitly: over-refusal on answerable queries, wrong answer language, malformed/hallucinated citation IDs, repetition loops (especially `kk`), cross-lingual degradation, and general multilingual forgetting (small context-free probe set).
+- **Gate (ADR-0009):** `faithfulness >= promotion.faithfulness_min`, and both `answer F1` and `faithfulness` beat best baseline per language with CI. If not, keep baseline for serving and log negative result in `PROGRESS.md`.
 
-- Генеративная, на том же тесте и декодировании, что GEN-0. Loss для сравнения не используется.
-- Регрессии, которые проверяются всегда:
-  - доля отказов на отвечаемых (over-refusal);
-  - язык ответа;
-  - валидность формата ссылок;
-  - длина и повторы (особенно в kk);
-  - межъязыковые направления отдельно.
-- Забывание: небольшой набор общих мультиязычных вопросов без контекста до и после. LoRA забывает меньше полного FT, но не ноль.
-- Гейт ADR-0009: faithfulness ≥ `promotion.faithfulness_min`, answer F1 и faithfulness лучше лучшего baseline по каждому языку с CI. Если нет — в сервинг идёт baseline, результат пишется в PROGRESS.
+## Quantization (GEN-Q) & Serving
 
-## Квантизация (GEN-Q)
+1. Merge adapter in `bf16` → convert to GGUF.
+2. Build `llama-imatrix` on in-domain **multilingual (`kk` + `ru` + `en`)** SFT dev prompts/answers (omitting `kk` degrades `kk` disproportionately at low bit widths).
+3. Benchmark `Q4_K_M`, `Q5_K_M`, `Q8_0` (llama.cpp) and `AWQ` (vLLM): measure KL divergence to `bf16` (`llama-perplexity --kl-divergence`) and per-language task metrics.
+4. Serving checks: match training chat template; pass `-kvu` (unified KV cache) for parallel slots on hybrid Qwen3.5 in `llama.cpp`; log TTFT, prefill vs. decode `tokens/s` (1 slot and N slots), and peak VRAM/RAM. Test speculative decoding (`0.8B` draft) on `kk` separately.
 
-1. Слить адаптер в bf16, конвертировать в GGUF.
-2. Матрица важности `llama-imatrix` на in-domain тексте **со всеми тремя языками** (промпты и ответы SFT dev). Без kk в калибровке низкие кванты сильнее портят kk.
-3. Кандидаты `Q4_K_M` / `Q5_K_M` / `Q8_0` (llama.cpp) и AWQ (vLLM).
-4. Каждый квант мерится KL-дивергенцией к bf16 (`llama-perplexity --kl-divergence`) и задачными метриками по языкам. Выбор — по кривой «качество против памяти и скорости» (`llm.serve_quant`).
+## Done Criteria
 
-## Сервинг и скорость
+- Step 0 verified and logged; GEN-0 candidates logged in MLflow `generation`.
+- Adapter passes promotion gate or negative result recorded in `PROGRESS.md`.
+- Selected quant has KL vs. `bf16`, per-language metrics, TTFT, and `tokens/s` logged; cloud runtime stopped.
 
-- Шаблон чата при сервинге совпадает с обучением.
-- Для гибридных моделей llama.cpp нужен унифицированный KV-кэш при параллельных слотах (`-kvu`; замер этапа 3 в `params.yaml: teacher.serve`).
-- Метрики — TTFT, tokens/s на один поток и суммарно при N слотах, пик VRAM и RAM, отдельно префилл и декод. Цели — НФТ архитектуры §1, раскладка памяти — §13.
-- Спекулятивное декодирование с Qwen3.5-0.8B как драфтом — опция; выигрыш меряется на kk, где приёмка драфта может быть ниже.
+## Sources
 
-## Типичные проблемы
-
-| Симптом | Вероятная причина | Что делать |
-|---|---|---|
-| Ответ из «памяти», а не из контекста | мало примеров, где контекст противоречит общеизвестному | контрфактические и межъязыковые примеры в SFT, проверка faithfulness |
-| Ссылки на несуществующие id | длинные id, слабый формат | нумерация пассажей, проверка формата в фильтре SFT |
-| Ответ не на том языке | мало межъязыковых примеров, язык не задан явно | доля `cross_lingual`, явный язык в промпте, langid-метрика |
-| Отказывает слишком часто | доля неотвечаемых велика или дистракторы слишком похожи | ablation смеси (GEN-2), порог отказа по dev |
-| Зацикливание и повторы на kk | токенизация, низкая температура | repetition penalty, проверка шаблона и EOS |
-| После квантизации kk просел сильнее ru/en | калибровка без kk | imatrix с kk, более высокий квант |
-
-## Критерии готовности
-
-- Шаг 0 пройден и записан. GEN-0 по всем кандидатам записан в MLflow `generation`.
-- Адаптер прошёл гейт или отрицательный результат записан в PROGRESS.
-- Для выбранного кванта есть KL к bf16, метрики по языкам, TTFT и tokens/s на целевом железе.
-
-## Источники
-
-- Hu et al., *LoRA*, arXiv:2106.09685; Kalajdzievski, *rsLoRA*, arXiv:2312.03732.
-- Biderman et al., *LoRA Learns Less and Forgets Less*, arXiv:2405.09673; Thinking Machines Lab, *LoRA Without Regret* (2025-09-29), thinkingmachines.ai/blog/lora.
-- Dettmers et al., *QLoRA*, arXiv:2305.14314 (контекст решения ADR-0012); Unsloth docs по Qwen3.5 — models.md §4.
-- Zhou et al., *LIMA*, arXiv:2305.11206.
-- Lin et al., *AWQ*, arXiv:2306.00978; llama.cpp `tools/imatrix`, `tools/perplexity` — github.com/ggml-org/llama.cpp.
+- Hu et al., *LoRA* (arXiv:2106.09685); Kalajdzievski, *rsLoRA* (arXiv:2312.03732); Biderman et al. (arXiv:2405.09673).
+- Thinking Machines Lab, *LoRA Without Regret* (2025); Zhou et al., *LIMA* (arXiv:2305.11206); Lin et al., *AWQ* (arXiv:2306.00978); `ggml-org/llama.cpp`.

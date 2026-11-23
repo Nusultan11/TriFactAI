@@ -1,109 +1,88 @@
 ---
 name: trifact-training-hpo
-description: Training methodology and hyperparameter optimization for TriFact models (NER, embedders, rerankers, NLI, LoRA) — baselines, validation discipline, losses, AdamW and LR schedules, regularization, precision per GPU (RTX 3050, Kaggle T4 without bf16, cloud), checkpoint selection, seeds, learning curves, Optuna samplers and pruners, ablations, cost logging. Use when implementing or running trifact.training jobs, choosing hyperparameters, planning HPO, or when a model diverges, overfits or misses its baseline (обучение, гиперпараметры, Optuna, абляции).
+description: Cloud-first training methodology and Optuna HPO for TriFact models (NER, embedders, rerankers, NLI, LoRA) — experiment design, validation discipline, cloud GPU precision (Colab L4 bf16, Kaggle 2x T4 fp16), checkpoints and resumability on Drive, seeds, learning curves, Optuna samplers/pruners, ablations, cost and quota logging. Use when implementing or running trifact.training jobs, tuning hyperparameters, planning HPO, or debugging divergence, overfitting, or baseline misses.
 ---
 
-# Обучение и HPO TriFact AI
+# TriFact AI — Cloud Training & HPO
 
-Задачно-специфичные рецепты лежат в профильных скиллах: `trifact-ner-linking`, `trifact-retrieval`, `trifact-verification`, `trifact-llm-finetuning`. Здесь общая методика.
+Domain recipes live in `trifact-ner-linking`, `trifact-retrieval`, `trifact-verification`, and `trifact-llm-finetuning`. This skill defines shared cloud training and HPO discipline.
 
-## Опорные документы
+## Owner Documents
 
-- Цикл эксперимента и запись — [AGENTS §4, §6.3](../../../AGENTS.md); состав run — архитектура [§11](../../../docs/architecture/docs/01-architecture.md).
-- Значимость и гейт — архитектура §10, [ADR-0009](../../../docs/architecture/adr/0009-model-registry-and-promotion-gate.md), `params.yaml: evaluation`, `promotion`.
-- Где считать: архитектура §1 (железо), §9; [ADR-0014](../../../docs/architecture/adr/0014-sharded-batch-jobs.md), [ADR-0020](../../../docs/architecture/adr/0020-kaggle-batch-gpu-mt-and-teacher.md); бюджет `cloud.budget_usd`.
-- Стартовые гиперпараметры проекта — `params.yaml: ner`, `llm`, `retrieval`.
+- Cloud CLI, Drive checkpoints & MLflow snapshots → [cloud-compute.md](../trifact-mlops/references/cloud-compute.md)
+- Cloud compute & budget policy → [AGENTS.md §3](../../../AGENTS.md), [ADR-0020](../../../docs/architecture/adr/0020-kaggle-batch-gpu-mt-and-teacher.md), [ADR-0025](../../../docs/architecture/adr/0025-cloud-only-computing.md), `params.yaml: cloud.budget_usd`
+- Gate & significance → [01-architecture.md §10–§11](../../../docs/architecture/docs/01-architecture.md), [ADR-0009](../../../docs/architecture/adr/0009-model-registry-and-promotion-gate.md), [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md)
+- Starting hyperparameters → `params.yaml` (`ner`, `retrieval`, `llm`, `verification`)
 
-## Дизайн эксперимента до кода
+## Pre-Training Design Checklist
 
-1. Гипотеза и ожидаемый эффект на целевой метрике конкретного языка или направления.
-2. Baseline сильный и дешёвый: zero-shot модель, предыдущий champion, простое правило. Без baseline результат не интерпретируется.
-3. Одна переменная на сравнение. Абляция меняет ровно один компонент.
-4. Отбор только на validation. Замороженный test открывается один раз, для гейта. Early stopping и HPO на test запрещены.
-5. Бюджет: GPU-часы, деньги (`cloud.budget_usd`), квота Kaggle. Пилот (`scale.profile: pilot`) до полного прогона.
+1. State hypothesis and target metric/language/direction.
+2. Establish a strong, cheap baseline (zero-shot, prior champion, or rule) before training.
+3. Change one variable per comparison; ablations are strictly leave-one-out.
+4. Select hyperparameters and checkpoints **only on validation**. Open frozen test once for the promotion gate.
+5. Verify budget (`cloud.budget_usd`), GPU quota, and runtime limits. Run `scale.profile: pilot` before full training.
 
-## Железо и точность
+## Cloud Compute & Precision Matrix
 
-| Где | Точность | Ограничения и приёмы |
+| Environment | Precision | Role & Guardrails |
 |---|---|---|
-| RTX 3050 Laptop 4 GB (sm 8.6) | bf16 доступен | smoke-тесты, малые encoder-модели; gradient checkpointing, малый батч + accumulation, 8-bit AdamW (bitsandbytes) |
-| Kaggle 2× T4 (sm 7.5) | **только fp16**, bf16 нет | fp16 AMP с loss scaling для encoder-моделей; процесс на GPU (ADR-0020). bf16 LoRA Qwen3.5 по ADR-0012 здесь невозможна |
-| Облако Ampere+ (A10/L4/A100/H100) | bf16 | LoRA LLM, large-модели, массовые эмбеддинги; только при утверждённом бюджете |
+| **Local PC** | CPU / unit only | Code, tests, tiny collator/shape checks. **Never** run ML training or HPO locally. |
+| **Colab L4 (24 GB, sm89)** *(preferred)* | `bf16` | Primary training, HPO, bf16 LoRA (ADR-0012), large encoders. Persist checkpoints to Drive; stop session when done. |
+| **Kaggle 2× T4 (15 GB × 2, sm75)** *(secondary)* | **`fp16` only** (no `bf16`) | Encoder fine-tuning & HPO within 30 GPU-h/week free quota (12 h/session). Use `fp16` AMP + GradScaler and 1 process/GPU. Never run bf16 LoRA here. |
+| **Approved Cloud GPU (A100/H100)** | `bf16` | Full-scale LLM/embedder runs only when `cloud.budget_usd > 0` is explicitly approved. |
 
-Перед полным запуском обязательны три проверки:
+### Mandatory Pre-Run Sanity Checks (Before Full Cloud Run)
 
-- модель переобучается на 64–100 примерах (иначе данные или метки сломаны);
-- батч после коллатора декодирован глазами;
-- скрипт оценки на известной модели даёт ожидаемое число.
+1. Overfit a 64–100 example batch to near-zero loss (catches broken labels/masks).
+2. Decode one collated batch visually to verify tokenization, special tokens, and `-100` masks.
+3. Run the evaluation script on a known baseline and verify expected score.
 
-## Стартовые рецепты (диапазоны для поиска)
+## Starting Search Ranges
 
-| Модель | Оптимизация | Стартовая зона |
+| Architecture | Optimizer & Schedule | Starting Zone |
 |---|---|---|
-| Encoder fine-tune (NER, NLI, cross-encoder) | AdamW, linear decay, warmup 6–10 % шагов, weight decay 0.01 | lr 1e-5…5e-5 (base), 5e-6…2e-5 (large), 3–5 эпох; layer-wise LR decay — опция |
-| Bi-encoder (эмбеддер) | InfoNCE / MultipleNegativesRankingLoss, in-batch + hard negatives | большой эффективный батч через CachedMNRL/GradCache, lr 1e-5…3e-5, 1–2 эпохи |
-| LoRA LLM | см. `trifact-llm-finetuning` | LR LoRA ≈ 10× LR полного fine-tune |
+| Encoder fine-tune (NER, NLI, cross-encoder) | AdamW, linear decay, 6–10% warmup, wd 0.01 | `lr` `1e-5…5e-5` (base), `5e-6…2e-5` (large), 3–5 epochs; optional layer-wise LR decay |
+| Bi-encoder (embedder) | InfoNCE / MNRL with in-batch + hard negatives | Large effective batch via `CachedMNRL`/GradCache, `lr` `1e-5…3e-5`, 1–2 epochs |
+| LoRA LLM | See `trifact-llm-finetuning` | `lr` ≈ 10× full fine-tune LR |
 
-Нестабильность fine-tuning BERT-подобных моделей лечится меньшим LR с warmup, большим числом шагов и коррекцией смещения Adam, а не перебором сидов до удачного.
+Fix BERT/XLM-R instability with lower LR, warmup, more steps, and Adam bias correction — never by cherry-picking lucky seeds.
 
-## Сиды и дисперсия
+## Seeds, Checkpoints & Cloud Recovery
 
-- Минимум 3 сида (`ner.seeds`). Отчёт — среднее, std и CI. Сравнение с baseline — по парному бутстрепу на примерах в связке с сидами (`trifact-evaluation`).
-- Дисперсия между сидами сопоставима с типичными улучшениями. Один удачный сид — не результат.
-- Порядок данных, инициализация головы и dropout — отдельные источники дисперсии. Сид фиксируется для всех трёх и для сэмплера HPO.
+- **Seeds:** Minimum 3 seeds (`ner.seeds`). Fix Python, NumPy, PyTorch, DataLoader shuffle, and Optuna sampler seeds. Report mean ± std and paired cluster bootstrap CI (`trifact-evaluation`).
+- **Checkpointing:** Save `(model, optimizer, scheduler, step, best_metric, rng_state)` to `/content/drive/MyDrive/TrifactAI/workspace-data/checkpoints/<exp>/<run>/` at regular intervals. Keep `best` (by target dev metric, not loss) and `last`.
+- **Resumability:** Training scripts must support `--resume <checkpoint_dir>` so preempted Colab/Kaggle sessions continue without losing work.
+- **MLflow:** Log `samples/s` or `tokens/s`, peak VRAM (`torch.cuda.max_memory_allocated`), peak RAM, GPU model, wall time, GPU-hours, and USD cost. Snapshot SQLite DB to Drive after each run.
 
-## Диагностика
+## Optuna HPO Protocol
 
-| Симптом | Проверка | Действие |
+- **Search priority:** Tune `lr` (log scale) first, then warmup, epochs, batch size, and regularization. Keep architectural/data changes as separate ablations.
+- **Samplers:**
+  - Default (100–1000 trials): `TPESampler(multivariate=True, seed=...)`
+  - Small budget (10–40 trials, continuous): `GPSampler`
+  - Multi-objective (quality vs. latency/VRAM): `NSGAIISampler` / Pareto front under NFR constraints
+- **Pruners:** `MedianPruner` or `HyperbandPruner` on intermediate dev metric (ensure total trials > `n_startup_trials × brackets`); `WilcoxonPruner` when evaluating across example/direction slices.
+- **Persistence:** Store Optuna studies in Drive-backed `JournalStorage` or SQLite RDB with fixed `study_name` so interrupted cloud sessions resume seamlessly. Log each trial as a nested MLflow run.
+- **Promotion from HPO:** Run HPO on pilot/dev slice → retrain top-3 configs on full data with ≥3 seeds → pick winner by mean + CI. Note: LR transfers across data scales; epoch count does not.
+
+## Failure Diagnostics
+
+| Symptom | Check | Action |
 |---|---|---|
-| Loss = NaN в fp16 | рост grad norm, переполнение | loss scaling, меньше LR, gradient clipping 1.0, bf16 там, где есть |
-| Метрика на уровне случайной | выравнивание меток, перемешанные лейблы, маски | тест переобучения на малом наборе |
-| Dev растёт, test нет | утечка, переобучение на dev при отборе | проверка утечек, меньше итераций HPO, новый dev-срез |
-| Большой разрыв train/dev | переобучение | weight decay, dropout, меньше эпох, больше данных (кривая обучения) |
-| kk отстаёт от ru/en | мало kk, фертильность, обрезка | доля kk в смеси, `max_length`, kk-специфичные данные |
-| OOM | батч, длина, активации | checkpointing, accumulation, сортировка по длине, 8-bit оптимизатор |
+| `NaN` loss in `fp16` | Grad norm spike, overflow | Enable GradScaler, clip grad norm 1.0, lower LR, or switch to Colab L4 `bf16` |
+| Random-level metric | Label alignment, masks, shuffled IDs | Run 64-example overfit test |
+| Dev improves, test flat | Leakage or dev overfitting | Audit leakage, reduce HPO iterations |
+| Large train/dev gap | Overfitting | Weight decay, dropout, fewer epochs, check learning curve (10/30/100% data) |
+| `kk` lags `ru`/`en` | Low `kk` share, fertility truncation | Raise `kk` mix share, check token length distribution |
+| CUDA OOM | Batch, sequence length, activations | Gradient checkpointing, accumulation, length bucketing, 8-bit AdamW |
 
-**Кривая обучения** (10 / 30 / 100 % данных) показывает, поможет ли увеличение данных. Если метрика ещё растёт линейно по логарифму объёма, данные ценнее HPO.
+## Done Criteria
 
-## Выбор чекпоинта
+- Baseline present, ≥3 seeds run, CI computed; config selected on dev, test touched once.
+- Optuna study resumable and reproducible (storage, seed, `study_name`); trials logged in MLflow.
+- Compute profile, GPU-hours, and cost logged; checkpoints persisted on Drive; runtime stopped; negative results recorded in `PROGRESS.md`.
 
-- По dev-метрике, совпадающей с целевой (entity F1, nDCG@10, faithfulness), а не по loss.
-- Хранить лучший и последний чекпоинты. Усреднение чекпоинтов или EMA — опция с замером.
-- В MLflow записываются шаг, метрика и путь выбранного чекпоинта.
+## Sources
 
-## HPO в Optuna
-
-- **Что тюнить:** сначала LR (лог-шкала), затем warmup, эпохи, батч, регуляризацию. Архитектурные и данные-параметры — отдельными абляциями, не в одной study.
-- **Сэмплер:**
-
-  | Ситуация | Сэмплер |
-  |---|---|
-  | По умолчанию, 100–1000 trials | `TPESampler(multivariate=True, seed=...)` |
-  | Малый бюджет (десятки trials), непрерывные параметры | `GPSampler` |
-  | Неясно, что выбрать | `AutoSampler` (OptunaHub) |
-  | Качество против латентности или памяти | multi-objective: `NSGAIISampler` или TPE, выбор по Парето с ограничением |
-
-- **Pruning** по промежуточной dev-метрике: `MedianPruner` или `HyperbandPruner`. Для Hyperband нужно больше trials, чем `n_startup_trials` TPE × число брекетов. `WilcoxonPruner` подходит, когда trial оценивается по набору примеров или задач.
-- **Возобновляемость:** storage RDB (SQLite/PostgreSQL) или `JournalStorage`, фиксированный `study_name`. Каждый trial — вложенный run MLflow с параметрами и метрикой.
-- **Протокол:** HPO на dev-срезе или пилоте → топ-3 конфигурации переобучаются на полном объёме с 3 сидами → выбор по среднему с CI. LR обычно переносится с малого объёма на большой, число эпох — нет.
-
-## Абляции и стоимость
-
-- Абляция удаляет один компонент из champion-конфигурации (leave-one-out). Отчёт — дельта с CI, включая отрицательные.
-- В каждом run: samples/s или tokens/s, пиковая VRAM (`torch.cuda.max_memory_allocated`), пиковая RAM, GPU-часы, тип GPU, стоимость.
-
-## Критерии готовности
-
-- Есть baseline, ≥ 3 сидов, CI; конфигурация выбрана на dev, test использован один раз.
-- HPO-study воспроизводима (storage, seed, `study_name`), trials лежат в MLflow.
-- Ресурсы и стоимость записаны. Отрицательный результат записан в PROGRESS.
-
-## Источники
-
-- Akiba et al., *Optuna*, arXiv:1907.10902; документация Optuna: samplers, `GPSampler`, `HyperbandPruner` (optuna.readthedocs.io, проверено 2026-11-21).
-- Li et al., *Hyperband*, arXiv:1603.06560; Li et al., *ASHA*, arXiv:1810.05934.
-- Google Research, *Deep Learning Tuning Playbook* — github.com/google-research/tuning_playbook.
-- Mosbach et al., *On the Stability of Fine-tuning BERT*, arXiv:2006.04884; Dodge et al., *Fine-Tuning Pretrained Language Models: Weight Initializations, Data Orders, and Early Stopping*, arXiv:2002.06305.
-- Bouthillier et al., *Accounting for Variance in Machine Learning Benchmarks*, arXiv:2103.03098.
-- Sun et al., *How to Fine-Tune BERT for Text Classification?*, arXiv:1905.05583.
-- Gao et al., *GradCache*, arXiv:2101.06983.
+- Akiba et al., *Optuna* (arXiv:1907.10902); Li et al., *Hyperband* (arXiv:1603.06560), *ASHA* (arXiv:1810.05934).
+- Google Research, *Deep Learning Tuning Playbook*; Mosbach et al. (arXiv:2006.04884); Dodge et al. (arXiv:2002.06305); Bouthillier et al. (arXiv:2103.03098); Gao et al., *GradCache* (arXiv:2101.06983).

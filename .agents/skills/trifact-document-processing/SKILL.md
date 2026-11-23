@@ -1,110 +1,90 @@
 ---
 name: trifact-document-processing
-description: Document intelligence for TriFact — parsing PDF (text, scans, columns, tables), DOCX, HTML, TXT into ParsedDoc with exact page/section/table offsets; Tesseract kaz+rus+eng and VLM OCR, layout and reading order, tables, headings, encodings, per-page engine routing, sandboxing, error detection and benchmarks (CER/WER, reading order, heading F1, cell F1/TEDS, pages/s). Use when changing trifact.ingestion, adding a format or engine, debugging garbled text or lost Kazakh letters, or evaluating parsing (парсинг документов, OCR, сканы, таблицы).
+description: Cloud-ready document intelligence for TriFact — parsing PDF (text, scans, columns, tables), DOCX, HTML, TXT into ParsedDoc with exact page/section/table offsets; Tesseract kaz+rus+eng and cloud GPU VLM-OCR, layout and reading order, tables, headings, encodings, per-page routing, sandboxing, error detection and benchmarks (CER/WER, reading order, heading F1, cell F1/TEDS, pages/s). Use when changing trifact.ingestion, adding a format/engine, debugging garbled text or lost Kazakh letters, or running large-scale/cloud OCR and parsing evaluation.
 ---
 
-# Document processing TriFact AI
+# TriFact AI — Document Processing
 
-## Когда применять
+## Scope
 
-- Правка `trifact.ingestion` (`parser`, `pdf`, `engines`, `docling_backend`, `ocr`, `sandbox`, `normalize`, `chunker`).
-- Новый формат, новый движок или новая модель OCR/layout.
-- Плохой текст на конкретных документах, потерянные казахские буквы, таблицы, заголовки.
-- Оценка переноса на реальные документы (`real_docs`, этап 10).
+- Load when editing `trifact.ingestion` (`parser`, `pdf`, `engines`, `docling_backend`, `ocr`, `sandbox`, `normalize`, `chunker`), adding formats/engines, debugging Kazakh OCR/table/layout failures, or evaluating `real_docs` (Stage 10).
+- Retrieval-driven chunking choice → `trifact-retrieval`.
+- Cloud CLI execution & DVC/MLflow persistence → [cloud-compute.md](../trifact-mlops/references/cloud-compute.md).
 
-Выбор варианта чанкинга по качеству поиска — `trifact-retrieval`.
+## Owner Documents
 
-## Опорные документы
-
-| Тема | Владелец |
+| Topic | Owner |
 |---|---|
-| Решение и маршрутизация | [ADR-0021](../../../docs/architecture/adr/0021-document-processing-router.md), архитектура [§6.1, §7.1](../../../docs/architecture/docs/01-architecture.md) |
-| Замеры движков, OCR по языкам | [models.md §6.3](../../../docs/research/models.md), [PROGRESS, этап 4](../../../docs/PROGRESS.md) |
-| Пороги, лимиты, модели OCR | `params.yaml: docproc`, `chunking` |
-| Бенчмарк | `trifact.data.build_docproc`, `trifact.evaluation.eval_docproc`, `reports/docproc.json` |
+| Router & architecture | [ADR-0021](../../../docs/architecture/adr/0021-document-processing-router.md), [01-architecture.md §6.1, §7.1](../../../docs/architecture/docs/01-architecture.md) |
+| Engine/OCR measurements | [models.md §6.3–6.4](../../../docs/research/models.md), [PROGRESS Stage 4](../../../docs/PROGRESS.md) |
+| Limits, thresholds, OCR models | `params.yaml`: `docproc`, `chunking` |
+| Benchmark | `trifact.data.build_docproc`, `trifact.evaluation.eval_docproc`, `reports/docproc.json` |
 
-## Инварианты (ломать нельзя)
+## Non-Negotiable Invariants
 
-1. Все смещения указывают в `ParsedDoc.text`, тот текст, который хранится и режется на чанки. Интервалы страниц покрывают текст без дыр.
-2. Нормализация блоков общая с офлайн-корпусом (`trifact.ingestion.normalize`).
-3. Любой сбой разбора даёт `ParseError(reason)`, воркер не падает: нативные библиотеки работают только через `SafeParser`.
-4. Формат определяется по содержимому (`sniff`), а не по расширению.
-5. Новый движок или эвристика попадают в сервинг только после бенчмарка по виду × языку с CI.
+1. Every span offset points into `ParsedDoc.text`; page intervals cover the text without gaps.
+2. Text normalization uses `trifact.ingestion.normalize` identically online and offline.
+3. Native parsers run strictly inside `SafeParser` (isolated process, timeout, RSS cap); failures return `ParseError(reason)` without crashing the worker.
+4. Detect file format by content (`sniff`), never by file extension.
+5. Promote a new engine or routing threshold only after benchmark improvement by `kind × lang` with bootstrap CI.
 
-## Лестница стоимости и маршрутизация
+## Escalation Ladder & Cloud Execution
 
-Страница поднимается по лестнице, только если дешёвый путь не справился:
+Escalate each page only when the cheaper path fails:
+1. **PyMuPDF text layer** (XY-cut columns, font-ratio headings, header/footer removal).
+2. **Docling layout + TableFormer** for table pages.
+3. **Docling + Tesseract CLI (`kaz+rus+eng`)** for scans or broken text layers.
+4. **VLM-OCR on cloud GPU (Colab L4)** only as a gated experiment for page classes where 1–3 measurably fail (phone photos, handwriting, formulas).
 
-1. Текстовый слой PyMuPDF с собственной разметкой (XY-cut, заголовки по шрифту, колонтитулы).
-2. Docling layout + TableFormer — для страниц с таблицами.
-3. OCR Tesseract `kaz+rus+eng` через Docling — для страниц без слоя или с битым слоем.
-4. VLM-OCR на GPU — только как эксперимент для классов страниц, где 1–3 измеримо плохи (фото, рукопись, формулы).
+- **Cloud batch execution (`[REMOTE]`):** Run large-scale `eval_docproc`, `real_docs` sweeps, or VLM-OCR benchmarks on Colab CPU (Docling/Tesseract) or Colab L4 (VLM-OCR). On Linux cloud VMs, install `tesseract-ocr`, set `TRIFACT_TESSERACT`, and restore `tessdata_best` (`kaz`, `rus`, `eng`, `osd`).
+- **Process isolation:** Measure speed and peak RSS in a dedicated process per engine after warmup; never mix engine models in one RSS reading.
+- Engine matrix & VLM-OCR criteria → [references/engines.md](references/engines.md).
 
-Признаки маршрута считаются по странице. Порог меняется только по замеру на `data/eval/docproc` и `real_docs`. Сравнение движков, кандидаты VLM-OCR 2026 года и критерии выбора — [references/engines.md](references/engines.md).
+## Online Reference-Free Error Signals
 
-## Обнаружение ошибок без эталона (онлайн)
+Use for page re-routing and production drift monitoring:
+- Share of `U+FFFD`, private-use, and non-letter chars (`docproc.pymupdf.max_bad_char_share`).
+- Kazakh-letter share in `kk` pages (sharp drop signals lost `ә ң ұ һ` or `ru` misread).
+- Page langid confidence and OOV rate against curated-corpus frequency lists.
+- Mean Tesseract word confidence (TSV) on OCR pages.
+- Page char count vs. neighboring pages (blank page amid text pages = missing layer).
+- Broken sentence boundaries at column edges or small-LM perplexity spikes across block joins.
+- Leaked running headers/footers in top/bottom bands.
 
-Используется для повторного маршрута страницы и для мониторинга:
+## Debugging Procedure
 
-- доля U+FFFD, private-use и не-буквенных символов (`docproc.pymupdf.max_bad_char_share`);
-- доля казахских букв в kk-тексте: если она резко ниже корпусной нормы, вероятна потеря `ә ң ұ һ` или чтение kk как ru;
-- уверенность langid по странице и доля слов вне частотного словаря языка (словарь — из curated-корпуса);
-- средняя уверенность слов Tesseract (TSV), если страница прошла OCR;
-- символов на страницу против соседних страниц: пустая страница среди текстовых — потерянный слой;
-- признаки неверного порядка: предложения обрываются на границе колонки, всплески перплексии малой LM на стыках блоков;
-- повторяющиеся строки сверху и снизу страниц, которые остались в тексте (колонтитулы).
+1. Reproduce on a single file with each engine in an isolated process (`eval_docproc.isolated`).
+2. Dump `(type, page, bbox, text)` blocks and align to reference (`rapidfuzz` partial ratio).
+3. Classify defect: `missing_text`, `reading_order`, `merge_split`, `columnar_table`, `heading`, `encoding`, `ocr_substitution` (e.g., `қ→к`), `furniture_leak`.
+4. Verify fix across the full `eval_docproc` benchmark, not just the failing file; add regression fixture to `tests/ingestion/` or hostile set.
 
-## Метод отладки документа
+## Evaluation Protocol
 
-1. Воспроизвести на одном файле, каждый движок в отдельном процессе (`eval_docproc.isolated`).
-2. Выгрузить блоки (тип, страница, bbox, текст) каждого движка и выровнять с эталоном (`rapidfuzz` partial ratio, как в `_locate`).
-3. Классифицировать ошибку:
-   - пропуск текста;
-   - порядок чтения;
-   - склейка или разрыв блоков;
-   - таблица прочитана по столбцам;
-   - заголовок не найден или ложный (жирная шапка таблицы);
-   - кодировка;
-   - замена символов OCR (матрица `қ→к`);
-   - колонтитулы в тексте.
-4. Исправление проверяется на всём бенчмарке, не только на этом документе. Документ добавляется в тесты (`tests/ingestion/`) или во враждебный набор.
+- Metrics: canonicalized CER/WER, reading-order pairwise accuracy, block recall, page accuracy, heading P/R/F1 + level accuracy, table detection + cell F1 (add TEDS/GriTS when topology matters), `s/page`, peak RSS.
+- Aggregate by `kind × lang` with bootstrap CI; track tail quality (`p90 CER`), not just mean.
+- Validate real-world transfer on `real_docs` (`evaluation.real_docs_min`), especially router thresholds and borderless tables.
 
-## Оценка
+## Common Failures
 
-- Метрики `eval_docproc`:
-  - CER/WER после канонизации (NFC, схлопывание пробелов, без разделителей таблиц);
-  - порядок чтения (доля правильно упорядоченных пар найденных блоков);
-  - полнота блоков и точность страниц;
-  - P/R/F1 и точность уровней заголовков;
-  - обнаружение таблиц и F1 ячеек;
-  - с/стр и пик RSS.
-- CER не видит перестановку абзацев, поэтому порядок чтения меряется отдельно. Для таблиц F1 ячеек дополняется структурной метрикой (TEDS или GriTS), если важна топология.
-- Агрегация — по виду × языку с bootstrap CI. Хвост по документам (p90 CER) важнее среднего.
-- Синтетический бенчмарк проверяет вёрстку на реальном тексте. Перенос на настоящие файлы проверяется только на `real_docs` (`evaluation.real_docs_min`).
-- Скорость и память меряются в отдельном процессе на конфигурацию, с прогревом моделей, иначе пик RSS включает чужие модели.
-
-## Типичные ошибки
-
-| Симптом | Вероятная причина | Что проверить |
+| Symptom | Likely Cause | Check |
 |---|---|---|
-| kk CER сильно выше ru/en на сканах | OCR-модель без казахских букв | матрица замен, модель `kaz` в tessdata, не EasyOCR/RapidOCR |
-| Таблица превратилась в столбец чисел | страница не ушла в Docling | признак таблицы (`docproc.router.table_min_rows`), таблицы без линеек |
-| Текст колонок перемешан | XY-cut не нашёл межстолбцовый промежуток | ширина промежутка, полосы с общим межстолбцом |
-| Порядок чтения низкий на повторах | поиск блока находит более ранний повтор | поиск после предыдущего найденного блока |
-| UTF-8 HTML прочитан как latin-1 | нет `<meta charset>` | явное определение кодировки |
-| Docling Tesseract падает с `KeyError: 'text'` | нет `configs/tsv` в своём tessdata | `tessdata_dir` создаёт конфиг |
-| Воркер съел память на одном файле | огромный или враждебный файл | `docproc.limits`, `SafeParser` |
+| `kk` CER >> `ru`/`en` on scans | OCR model lacks Kazakh glyphs | Confusion matrix, `kaz.traineddata` in tessdata (not EasyOCR/RapidOCR) |
+| Table collapses into single column | Page missed Docling route | `docproc.router.table_min_rows`, borderless table heuristic |
+| Multi-column text interleaved | XY-cut missed gutter | Gutter width, multi-band shared gutter |
+| Low reading-order on repeated text | Alignment matched earlier occurrence | Search strictly after previous matched block |
+| UTF-8 HTML decoded as latin-1 | Missing `<meta charset>` | Explicit encoding detection |
+| Docling Tesseract `KeyError: 'text'` | Missing `configs/tsv` in custom tessdata | Ensure `tessdata_dir` writes TSV config |
+| Worker OOM on single file | Hostile/oversized file | Enforce `docproc.limits` in `SafeParser` |
 
-## Критерии готовности
+## Done Criteria
 
-- По каждому виду × языку CER и структура не хуже champion (CI), скорость и RSS в рамках НФТ архитектуры §1.
-- Враждебный набор даёт ожидаемые исходы, воркер живёт после каждого случая.
-- Смещения валидны: 0 нарушений на бенчмарке, тесты `tests/ingestion/` проходят.
-- Результат записан в MLflow `docproc` и `reports/docproc.json`. Изменённое решение оформлено новым ADR.
+- CER and structure ≥ champion across every `kind × lang` (CI); speed and RSS within NFRs (`01-architecture.md §1`).
+- Hostile suite produces expected `ParseError` outcomes; worker survives all cases.
+- Zero offset-invariant violations; `tests/ingestion/` passes.
+- Logged to MLflow `docproc` and `reports/docproc.json`; decision changes recorded in a new ADR.
 
-## Источники
+## Sources
 
-- Auer et al., *Docling Technical Report*, arXiv:2408.09869; Nassar et al., *TableFormer*, arXiv:2203.01017.
-- Zhong et al., *PubTabNet / TEDS*, arXiv:1911.10683; Smock et al., *GriTS*, arXiv:2203.12555.
-- Ouyang et al., *OmniDocBench*, arXiv:2412.07626; Poznanski et al., *olmOCR*, arXiv:2502.18443.
-- Tesseract tessdata_best: github.com/tesseract-ocr/tessdata_best.
+- Auer et al., *Docling* (arXiv:2408.09869); Nassar et al., *TableFormer* (arXiv:2203.01017).
+- Zhong et al., *PubTabNet/TEDS* (arXiv:1911.10683); Smock et al., *GriTS* (arXiv:2203.12555).
+- Ouyang et al., *OmniDocBench* (arXiv:2412.07626); Poznanski et al., *olmOCR* (arXiv:2502.18443); `tesseract-ocr/tessdata_best`.

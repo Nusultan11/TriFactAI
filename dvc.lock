@@ -1301,8 +1301,8 @@ stages:
       size: 7760
     - path: src/trifact/ingestion/langdetect.py
       hash: md5
-      md5: 0da9bee4b9c394a423e85d396f63a02a
-      size: 8685
+      md5: 985f50e29388de5201a4ebdcb8b37916
+      size: 8957
     - path: src/trifact/ingestion/normalize.py
       hash: md5
       md5: c6301e9b093d2a1989bcda08f70d4284
@@ -1391,10 +1391,22 @@ stages:
               min_chars: 40
               min_words: 5
               min_stopword_ratio: 0.0
+              languages: &id001
+                ru:
+                  min_lang_conf: 0.65
+                en:
+                  min_lang_conf: 0.65
             leipzig:
               min_chars: 40
               min_words: 5
               min_stopword_ratio: 0.0
+              languages: *id001
+            news:
+              languages: *id001
+            oscar:
+              languages: *id001
+            books:
+              languages: *id001
         curation.sources:
         - wikipedia
         - fineweb2_kk
@@ -1417,21 +1429,21 @@ stages:
     outs:
     - path: data/clean
       hash: md5
-      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
-      size: 25278751250
-      nfiles: 375
+      md5: b9496b5ef7c4263c48dc1394b231d03a.dir
+      size: 25256178185
+      nfiles: 368
     - path: reports/clean.json
       hash: md5
-      md5: 7f32af032295966c55cc2483f888fe3a
-      size: 8339
+      md5: d51e1ff9acba6216e585d41a19a77d48
+      size: 8478
   dedup:
     cmd: python -m trifact.data.dedup
     deps:
     - path: data/clean
       hash: md5
-      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
-      size: 25278751250
-      nfiles: 375
+      md5: b9496b5ef7c4263c48dc1394b231d03a.dir
+      size: 25256178185
+      nfiles: 368
     - path: src/trifact/data/curation.py
       hash: md5
       md5: 3d53f5b851eb2ef36fb54eda03914ed1
@@ -1479,21 +1491,21 @@ stages:
     outs:
     - path: data/curated/dedup
       hash: md5
-      md5: c2dee6882f55a0db80f1a8a26a75e499.dir
-      size: 24018899849
-      nfiles: 423
+      md5: 0d0667e582103b5fe7da6584abe8c437.dir
+      size: 23988129206
+      nfiles: 410
     - path: reports/dedup.json
       hash: md5
-      md5: dee4ddf4bbb0da662a9f14428e572162
-      size: 22161
+      md5: 030cdcc3844ef93397398839b0e4a713
+      size: 20265
   decontaminate:
     cmd: python -m trifact.data.decontaminate
     deps:
     - path: data/curated/dedup
       hash: md5
-      md5: c2dee6882f55a0db80f1a8a26a75e499.dir
-      size: 24018899849
-      nfiles: 423
+      md5: 0d0667e582103b5fe7da6584abe8c437.dir
+      size: 23988129206
+      nfiles: 410
     - path: data/raw/kaznerd
       hash: md5
       md5: d5bea7015f3b198e4f0784b39fec07b8.dir
@@ -1617,25 +1629,25 @@ stages:
     outs:
     - path: data/curated/corpus
       hash: md5
-      md5: 4fbf82117cb68cea0ac5dd6ce3fa3f06.dir
-      size: 23676049031
-      nfiles: 408
+      md5: 5335965b90ed4aa2ab981b88548348be.dir
+      size: 23646068825
+      nfiles: 398
     - path: reports/decontamination.json
       hash: md5
-      md5: 5d45d6366e295d5ad0a75c1215a5302a
-      size: 4704
+      md5: 6d72a3bc712271d65545b923df59ca64
+      size: 4706
   corpus_stats:
     cmd: python -m trifact.data.corpus_stats
     deps:
     - path: data/curated/corpus
       hash: md5
-      md5: 4fbf82117cb68cea0ac5dd6ce3fa3f06.dir
-      size: 23676049031
-      nfiles: 408
+      md5: 5335965b90ed4aa2ab981b88548348be.dir
+      size: 23646068825
+      nfiles: 398
     - path: src/trifact/data/corpus_stats.py
       hash: md5
-      md5: 6df1a0cf9b7dde0fad1a11c85793a99d
-      size: 9171
+      md5: 72e5e29b18cbcd3706538ddffca7c168
+      size: 11455
     params:
       params.yaml:
         curation.stats:
@@ -1664,12 +1676,18 @@ stages:
               hf_id: Qwen/Qwen3.5-2B
               revision: 15852e8c16360a2fea060d615a32b45270f8a8fc
               file: tokenizer.json
+          toxicity:
+            hf_id: textdetox/bert-multilingual-toxicity-classifier
+            revision: 8fe5526e9c6b69cf1a615104a2ad037fb266c670
+            toxic_label: 1
+            max_tokens: 256
+            threshold: 0.5
         seed: 42
     outs:
     - path: reports/corpus_stats.json
       hash: md5
-      md5: 4b0749e1dda7fac15ea40b3861f6acb7
-      size: 18557
+      md5: febb253185ed92b20c214fc8c7a2351b
+      size: 33101
   eda@raw:
     cmd: python -m trifact.data.eda raw
     deps:

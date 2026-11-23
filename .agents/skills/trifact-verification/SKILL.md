@@ -1,84 +1,76 @@
 ---
 name: trifact-verification
-description: Evidence verification for TriFact answers in KK/RU/EN — atomic claims and citations, NLI entailment over sentence windows, cross-lingual pairs, number and date checks, MiniCheck-style and LLM-judge alternatives, training data with perturbations, calibration (temperature scaling, ECE, Brier), risk-coverage thresholds and the ADR-0008 refusal policy. Use for stage 8 work in trifact.verification, train_nli, eval_verification, NLI filters for synthetic data, or tuning refusal thresholds (проверка утверждений, NLI, калибровка, галлюцинации).
+description: Cloud-first evidence verification for TriFact answers in KK/RU/EN — atomic claims and citations, sentence-window NLI entailment, cross-lingual pairs, rule-based number and date checks, MiniCheck-style and LLM-judge alternatives, perturbed RAG training pairs, per-language temperature calibration (ECE, Brier), risk-coverage thresholds, ADR-0008 refusal policy, cloud NLI training and batch scoring. Use for stage 8 work in trifact.verification, train_nli, eval_verification, synthetic NLI filters, or refusal threshold tuning.
 ---
 
-# Evidence verification TriFact AI
+# TriFact AI — Evidence Verification
 
-## Когда применять
+## Scope
 
-- Эксперименты VER-0…VER-2, разбиение на утверждения, калибровка и пороги.
-- NLI-фильтр синтетики (`teacher.filters.min_nli_entail`) и проверка согласованности меток.
-- Пользователь видит «подтверждено» у неверного утверждения или много ложных `not_enough_info`.
+- Load for VER-0…VER-2, claim splitting, NLI training/scoring, probability calibration, refusal policy tuning, and synthetic QA NLI filtering (`teacher.filters.min_nli_entail`).
+- End-to-end RAG metrics → `trifact-evaluation`. RAG prompt/flow → `trifact-rag-pipeline`.
+- Cloud CLI execution & persistence → [cloud-compute.md](../trifact-mlops/references/cloud-compute.md).
 
-## Опорные документы
+## Owner Documents
 
-| Тема | Владелец |
+| Topic | Owner |
 |---|---|
-| Политика: удалить `contradicted`, пометить при доле NEI, отказ без подтверждённых | [ADR-0008](../../../docs/architecture/adr/0008-evidence-verification-and-refusal.md), архитектура [§7.5](../../../docs/architecture/docs/01-architecture.md) |
-| Faithfulness генерации считается этим верификатором | [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md) (`verification.faithfulness_audit_claims`) |
-| NLI по окнам в фильтре синтетики | [ADR-0015](../../../docs/architecture/adr/0015-silver-and-synthetic-data.md), раздел «Реализация» |
-| Модели и пробел по kk | [models.md §5](../../../docs/research/models.md) |
-| Оговорки: модель-судья обучена на XNLI, hypothesis-only baseline | [PROGRESS «Что учесть дальше»](../../../docs/PROGRESS.md) |
-| Параметры | `params.yaml: verification`, `nli`, `teacher.filters`, `promotion` |
+| Verdict & refusal policy | [ADR-0008](../../../docs/architecture/adr/0008-evidence-verification-and-refusal.md), [01-architecture.md §7.5](../../../docs/architecture/docs/01-architecture.md) |
+| Faithfulness audit protocol | [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md), `params.yaml: verification.faithfulness_audit_claims` |
+| Windowed NLI synthetic filter | [ADR-0015](../../../docs/architecture/adr/0015-silver-and-synthetic-data.md) |
+| Models, params, XNLI caveats | [models.md §5](../../../docs/research/models.md), [PROGRESS](../../../docs/PROGRESS.md), `params.yaml` (`verification`, `nli`, `promotion`) |
 
-## Конвейер проверки
+## Cloud Execution
 
-1. **Утверждения.** Baseline — правила: предложение с группой ссылок = утверждение. Альтернатива — LLM-декомпозиция на атомарные факты (FActScore) с деконтекстуализацией местоимений. Гранулярность меняет все метрики, поэтому сплиттер сравнивается с человеческим разбиением на выборке по языкам.
-2. **Ссылки.** Каждый id ⊆ переданных пассажей. Иначе утверждение не подтверждено независимо от NLI.
-3. **Посылка — окна, а не весь пассаж.** NLI-модели ошибаются на длинных посылках: дословно подтверждённое утверждение получает низкий entailment (замер этапа 3). Пассаж режется на окна по 2–3 предложения, берётся максимум по окнам, как в SummaC-ZS. Лучшее окно становится `quote` в контракте ответа.
-4. **Несколько ссылок.** Утверждение `supported`, если его поддерживает хотя бы одна процитированная посылка (max). `contradicted` — если есть сильное противоречие и нет поддержки.
-5. **Числа и даты.** NLI слабо различает «1991» и «1992». Числа и даты из утверждения сверяются правилами с лучшим окном (`trifact.extraction.dates`); несовпадение снимает `supported`.
-6. **Межъязыковые пары.** Утверждение на kk против доказательства на ru/en — штатный случай. Межъязыковые пары входят в оценку верификатора отдельной группой.
+- **Training (`train_nli`, VER-2):** Run on **Colab L4 (bf16)** preferred, or **Kaggle 2× T4 (fp16 AMP, 1 process/GPU)** as secondary option. Pull only `data/task/nli` and `data/eval/nli`. Persist checkpoints and MLflow snapshots to Drive.
+- **Batch NLI scoring (`nli_score`):** Run sharded on Colab L4 (`trifact.batch.colab nli_score`) or Kaggle 2× T4 (`trifact.batch.kaggle run nli_score`). Verify quota/budget first and stop session on completion.
 
-## Выбор модели
+## Verification Pipeline
 
-| Вариант | Плюсы | Минусы | Когда |
+1. **Claim splitting:** Baseline = sentence + citation group. Alternative = LLM atomic decomposition (FActScore) with pronoun decontextualization. Benchmark splitter granularity against human decomposition per language.
+2. **Citation check:** Every cited ID must belong to supplied passages; invalid citations are automatically unverified regardless of NLI.
+3. **Sentence-window premise (mandatory):** NLI fails on long full passages (Stage 3 measurement). Slice each cited passage into 2–3 sentence windows and take the max entailment score across windows (SummaC-ZS); return the winning window as `quote`.
+4. **Multiple citations:** `supported` if any cited window supports the claim (`max`); `contradicted` if strongly contradicted with no supporting citation.
+5. **Number & date rule check:** NLI is insensitive to numeric swaps (`1991` vs. `1992`). Cross-check numbers and dates (`trifact.extraction.dates`) between claim and winning window; mismatch revokes `supported`.
+6. **Cross-lingual pairs:** Evaluate `kk` claims against `ru`/`en` evidence as a dedicated slice.
+
+## Model Options & VER-2 Data
+
+| Option | Pros | Cons | Role |
 |---|---|---|---|
-| mDeBERTa-v3 xnli (VER-0) | быстрый, 3 класса | kk нет в обучении, контекст 512 | baseline |
-| bge-m3-zeroshot (VER-1) | контекст 8192, мультиязычный | бинарная постановка, медленнее | длинные посылки |
-| Дообученный VER-2 (XNLI ru/en + kk-MT + RAG-пары) | целевые языки и домен | шум MT, артефакты XNLI | основной кандидат |
-| Классификатор claim–document в стиле MiniCheck | обучен на ошибках LLM-текстов | обучен на английском | идея для данных, внешняя проверка |
-| LLM-судья (Qwen3.5) | гибкий, объясняет | дорог по латентности, калибровка хуже | офлайн-разметка, спорные случаи |
+| `mDeBERTa-v3-base-xnli` (VER-0) | Fast, 3-class | No `kk` in train, 512 ctx | Baseline |
+| `bge-m3-zeroshot-v2.0` (VER-1) | 8192 ctx, multilingual | Binary, slower | Long-premise challenger |
+| Fine-tuned VER-2 (XNLI `ru`/`en` + `kk`-MT + RAG pairs) | Target languages & domain | MT noise, XNLI artifacts | Primary candidate |
+| MiniCheck-style claim–doc classifier | Trained on LLM error types | English-trained | Data-perturbation blueprint |
+| LLM judge (Qwen3.5) | Flexible, explanatory | High latency, weaker calibration | Offline labeling / edge audits |
 
-Решение принимается по точности на человеческой kk/ru/en-разметке утверждений из реальных ответов системы, по латентности на ответ и по ECE.
+- **VER-2 training data:** XNLI `ru`/`en` + filtered `kk` MT (evaluate separately on the hard subset where hypothesis-only baseline fails) + RAG `(window, claim)` pairs with structural perturbations (entity/number/date swaps, negation, role reversal).
+- **Honest domain test:** Human-labeled 300–500 claims/language from real system answers. Use LLM-AggreFact only as an external English check (license forbids training).
 
-## Данные для VER-2
+## Calibration & Thresholds
 
-- XNLI ru/en и kk-перевод (ADR-0015). Оценка — с учётом hypothesis-only baseline: отдельно на подмножестве, где hypothesis-only ошибается.
-- RAG-специфичные пары. Сдвиг домена от коротких посылок XNLI к окнам чанков закрывается парами (окно, утверждение) из ответов SFT и синтетики. Негативы создаются структурными возмущениями: замена сущности, числа или даты, отрицание, перестановка ролей — как синтетика MiniCheck.
-- Человеческая разметка 300–500 утверждений на язык из ответов системы. Это единственный честный тест домена. LLM-AggreFact — только внешняя проверка на английском: его лицензия запрещает обучение.
+- Fit **per-language temperature scaling** on held-out dev (`kk` shifts most). Report equal-mass ECE, reliability diagram, and Brier score (never accept ECE without a diagram).
+- Pick decision thresholds on the **risk–coverage curve** to satisfy `promotion.verification_contradicted_precision_min` and `promotion.verification_ece_max` while maximizing coverage (revise starter thresholds on Stage 8 human labels).
+- Evaluate answer-level policy (`verification.nei_ratio_threshold`) by: unverified claim rate before/after, false-removal rate of true claims, and answers converted to refusal.
 
-## Калибровка и пороги
+## Common Failures
 
-- Temperature scaling на отложенной выборке **по языкам**: kk сдвинут сильнее. Отчёт: ECE с equal-mass бинами, reliability diagram, Brier. ECE зависит от числа бинов, поэтому одно число без диаграммы не принимается.
-- Порог выбирается по кривой risk–coverage (selective prediction). Задаётся целевая точность `contradicted` и `supported`, и при ней максимизируется доля утверждений с решением. Пороги гейта — `promotion.verification_contradicted_precision_min` и `promotion.verification_ece_max`; это стартовые значения, они пересматриваются по человеческой разметке этапа 8.
-- Политика уровня ответа (`verification.nei_ratio_threshold`) оценивается на уровне ответов:
-  - доля неподтверждённых утверждений до и после;
-  - доля ошибочно удалённых верных утверждений;
-  - доля ответов, превращённых в отказ.
-
-## Типичные проблемы
-
-| Симптом | Причина | Действие |
+| Symptom | Cause | Fix |
 |---|---|---|
-| Подтверждённое дословно утверждение получает NEI | длинная посылка | окна, максимум по окнам |
-| «Supported» при неверном числе | NLI не чувствителен к числам | сверка чисел и дат правилами |
-| kk-утверждения чаще NEI | нет kk в обучении, сдвиг калибровки | VER-2 с kk, температура по языку |
-| Высокая точность на XNLI, низкая на ответах | доменный сдвиг, артефакты | RAG-пары, человеческий тест |
-| Составное утверждение частично верно | крупная гранулярность | атомарная декомпозиция |
+| Verbatim-supported claim gets NEI | Full-passage premise | Slice into 2–3 sentence windows, take max |
+| `supported` despite wrong year/number | NLI numeric blindness | Rule-based number/date check |
+| `kk` claims over-classified as NEI | Missing `kk` train + calibration shift | Fine-tune VER-2 with `kk`, per-language temperature |
+| High XNLI score, low answer score | Domain shift + hypothesis artifacts | Add perturbed RAG pairs, test on human answer labels |
+| Compound claim half-true | Coarse sentence split | Atomic claim decomposition |
 
-## Критерии готовности
+## Done Criteria
 
-- Верификатор снижает долю неподтверждённых утверждений без значимой потери полноты (ROADMAP этап 8).
-- Точность `contradicted` и ECE в пределах порогов гейта по каждому языку, на человеческой разметке.
-- Латентность проверки на ответ записана, батч NLI по утверждениям × окнам.
+- Verifier reduces unsupported claims without significant recall loss (ROADMAP Stage 8).
+- `contradicted` precision and ECE pass gate per language on human-labeled system claims.
+- Batched NLI latency per answer (`claims × windows`) logged to MLflow `verification`.
 
-## Источники
+## Sources
 
-- Laban et al., *SummaC*, arXiv:2111.09525 — NLI по предложениям против длинной посылки.
-- Tang et al., *MiniCheck* и LLM-AggreFact, arXiv:2404.10774; лидерборд llm-aggrefact.github.io (проверено 2026-11-21).
-- Zha et al., *AlignScore*, arXiv:2305.16739; Min et al., *FActScore*, arXiv:2305.14251; Choi et al., *Decontextualization*, arXiv:2102.05169.
-- Guo et al., *On Calibration of Modern Neural Networks*, arXiv:1706.04599; Nixon et al., *Measuring Calibration in Deep Learning*, arXiv:1904.01685.
-- Geifman, El-Yaniv, *Selective Classification for Deep Neural Networks*, arXiv:1705.08500.
-- Poliak et al., *Hypothesis Only Baselines*, arXiv:1805.01042.
+- Laban et al., *SummaC* (arXiv:2111.09525); Tang et al., *MiniCheck / LLM-AggreFact* (arXiv:2404.10774).
+- Zha et al., *AlignScore* (arXiv:2305.16739); Min et al., *FActScore* (arXiv:2305.14251); Choi et al. (arXiv:2102.05169).
+- Guo et al. (arXiv:1706.04599); Nixon et al. (arXiv:1904.10685); Geifman & El-Yaniv (arXiv:1705.08500); Poliak et al. (arXiv:1805.01042).

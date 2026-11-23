@@ -14,7 +14,7 @@ built for corpora of tens of millions of records.
 | Architecture, repository layout | [docs/architecture/docs/01-architecture.md](docs/architecture/docs/01-architecture.md) |
 | Decisions | [docs/architecture/adr/](docs/architecture/adr/) |
 | Model and data catalogs | [docs/research/](docs/research/) |
-| Agent Skills (Codex, Claude Code) | [.agents/skills/](.agents/skills/README.md) |
+| Agent Skills | [.agents/skills/](.agents/skills/README.md) |
 
 ## Quick start
 

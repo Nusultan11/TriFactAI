@@ -1,97 +1,76 @@
 ---
 name: trifact-ner-linking
-description: NER and entity linking for KK/RU/EN in TriFact — PER/ORG/LOC schema with rule-based DATE, subword alignment, XLM-R gold/silver curriculum, GLiNER baseline, partial-annotation noise, Kazakh case suffixes, unseen entities, strict and partial span metrics, calibration, ONNX int8 and vocabulary trimming, Wikidata candidate generation, ranking, NIL and accuracy@1. Use for stage 5 work in trifact.extraction, train_ner, eval_ner, build_kb, annotate_corpus (NER, извлечение сущностей, связывание сущностей).
+description: Cloud-first NER and entity linking for KK/RU/EN in TriFact — PER/ORG/LOC schema with rule-based DATE, subword alignment, XLM-R gold/silver curriculum, GLiNER baseline, partial-annotation noise, Kazakh case suffixes, unseen-entity F1, strict/partial span metrics, calibration, ONNX int8 and vocab trimming, Wikidata KB linking, sharded cloud annotate_corpus. Use for stage 5 work in trifact.extraction, train_ner, eval_ner, build_kb, or annotate_corpus.
 ---
 
-# NER и Entity Linking TriFact AI
+# TriFact AI — NER & Entity Linking
 
-## Когда применять
+## Scope
 
-- Обучение, оценка, ускорение NER (эксперименты NER-0…NER-5) и DATE-экстрактора.
-- KB, генерация кандидатов и ранжирование для linking.
-- Массовая разметка корпуса `annotate_corpus`.
+- Load for NER training/eval/optimization (NER-0…NER-5), DATE extraction, Wikidata KB + Entity Linking, and sharded `annotate_corpus`.
+- General cloud training/HPO/seeds → `trifact-training-hpo`. Statistics & gate → `trifact-evaluation`.
+- Cloud CLI execution & persistence → [cloud-compute.md](../trifact-mlops/references/cloud-compute.md).
 
-Общая методика обучения, сиды и HPO — `trifact-training-hpo`. Статистика и гейт — `trifact-evaluation`.
+## Owner Documents
 
-## Опорные документы
-
-| Тема | Владелец |
+| Topic | Owner |
 |---|---|
-| Схема меток, DATE правилами | [ADR-0006](../../../docs/architecture/adr/0006-unified-ner-label-schema.md), `configs/labels.yaml` |
-| NER не участвует в отборе документов для поиска | [ADR-0004](../../../docs/architecture/adr/0004-hybrid-retrieval-independent-of-ner.md) |
-| Silver, curriculum | [ADR-0015](../../../docs/architecture/adr/0015-silver-and-synthetic-data.md) |
-| Эксперименты, KB, метрики | архитектура [§7.2](../../../docs/architecture/docs/01-architecture.md); гейт §10 и `params.yaml: promotion` |
-| Модели | [models.md §1](../../../docs/research/models.md) |
-| Шум silver, покрытие kk-меток Wikidata | [PROGRESS, этап 3 и «Что учесть дальше»](../../../docs/PROGRESS.md) |
-| Параметры | `params.yaml: ner`, `linking` |
+| Label schema & rule-based DATE | [ADR-0006](../../../docs/architecture/adr/0006-unified-ner-label-schema.md), `configs/labels.yaml` |
+| NER as soft signal only | [ADR-0004](../../../docs/architecture/adr/0004-hybrid-retrieval-independent-of-ner.md) |
+| Silver data & curriculum | [ADR-0015](../../../docs/architecture/adr/0015-silver-and-synthetic-data.md) |
+| Experiments, KB, gate | [01-architecture.md §7.2, §10](../../../docs/architecture/docs/01-architecture.md), `params.yaml` (`ner`, `linking`, `promotion`) |
+| Models & silver noise notes | [models.md §1](../../../docs/research/models.md), [PROGRESS](../../../docs/PROGRESS.md) |
 
-## Данные и выравнивание
+## Cloud Execution
 
-- Метка ставится на первый субтокен слова, остальным `-100`. Эвристика «метка на все субтокены» завышает вклад длинных слов: в kk слова длиннее в токенах (фертильность — models.md §6.2).
-- Предложения длиннее `ner.max_length` режутся окнами с перекрытием, а не обрезаются. Долю обрезаемых даёт EDA.
-- Казахские падежные окончания входят в токен («Астанада» = B-LOC). Для NER это не проблема, но для linking и газеттиров поверхность нормализуется: снимаются окончания (-да/-де/-та/-те, -ның/-нің/-дың/-дің/-тың/-тің, -ға/-ге/-қа/-ке, -ны/-ні/-ды/-ді/-ты/-ті, притяжательные). Recall кандидатов меряется до и после.
+- **Training (`train_ner`):** Run NER-1…NER-4 on **Colab L4 (bf16)** preferred, or **Kaggle 2× T4 (fp16 AMP, 1 process/GPU)** as secondary option. Pull only `data/task/ner` and `data/eval/ner`. Persist best/last checkpoints and MLflow SQLite snapshots to Drive.
+- **Corpus annotation (`annotate_corpus`):** Run as a sharded, idempotent batch job (`--shard i/N`, `_SUCCESS` markers) on cloud GPU (fp16) or cloud CPU (ONNX int8) over `data/task/chunks`. Push `data/task/annotations` shards to Drive/DVC incrementally.
 
-## Обучение (что реально работает)
+## Data & Alignment
 
-- **Baseline:** GLiNER multi zero-shot (NER-0) и XLM-R base на gold (NER-1). Без них улучшение не доказать.
-- **Curriculum silver → gold** (NER-2): сначала эпоха или две на silver, затем gold с меньшим LR. Альтернатива — смесь с пониженным весом silver. Выбирается по dev F1 kk.
-- **Шум silver — в основном пропуски.** Сущность без ссылки размечена `O`. Варианты по возрастанию стоимости:
-  1. фильтр предложений с неразмеченными заглавными словами (уже есть);
-  2. не учить `O` на неразмеченных заглавных токенах (`-100`), то есть частичная разметка;
-  3. self-training: модель NER-1 доразмечает silver с порогом уверенности.
-- **Дисбаланс.** Для token classification на трансформере взвешивание классов обычно не нужно. Сначала проверить per-type recall, потом решать.
-- **CRF-голова** даёт на трансформерах небольшой и непостоянный прирост. Добавлять только как эксперимент с ≥ 3 сидами.
-- Гиперпараметры, сиды, чекпоинты — `trifact-training-hpo`. Модель выбирается по entity F1 на dev, не по loss.
+- Assign the entity label to the **first subword** of each word and `-100` to continuation subwords (labeling all subwords overweights agglutinative `kk` tokens).
+- Split sentences exceeding `ner.max_length` into overlapping windows instead of truncating.
+- Kazakh case/possessive suffixes attach to the surface token (`Астанада` = `B-LOC`). Strip suffixes (`-да/-де/-та/-те`, `-ның/-нің/-дың/-дің/-тың/-тің`, `-ға/-ге/-қа/-ке`, `-ны/-ні/-ды/-ді/-ты/-ті`, possessives) during linking candidate generation and measure candidate recall before/after.
 
-## Оценка
+## Training Protocol
 
-- seqeval в **строгом** режиме (`mode="strict"`, `scheme=IOB2`) — основная метрика. В режиме по умолчанию seqeval засчитывает спаны, начатые с `I-`. Метрики по языку × типу, бутстреп по предложениям, парный для сравнения моделей.
-- Разделение ошибок границ и типа: `nervaluate` (strict / exact / partial / ent_type). Ошибки границ лечатся данными и нормализацией, ошибки типа — контекстом и схемой.
-- **Unseen-F1:** F1 на сущностях, чьей поверхности нет в train. Это главный показатель обобщения, особенно для kk.
-- Таксономия ошибок, которую стоит считать:
-  - метонимия ORG↔LOC («Қазақстан келісімге қол қойды»);
-  - вложенность (LOC внутри ORG: «Алматы университеті»);
-  - инициалы и титулы в PER;
-  - заглавное первое слово предложения как ложный PER;
-  - транслитерация (Абай / Abai);
-  - смешанный язык в предложении.
+- **Baselines:** GLiNER multi v2.1 zero-shot (NER-0) and XLM-R base on gold (NER-1).
+- **Curriculum (NER-2):** 1–2 epochs on silver → gold at lower LR (or down-weighted mix); select by dev `kk` strict F1.
+- **Handling silver false-`O` noise** (cheapest → strongest):
+  1. `ner.silver.capital_filter` (existing).
+  2. Partial annotation: mask unlabeled capitalized tokens with `-100`.
+  3. Self-training: label silver with NER-1 above confidence threshold.
+- **Class weights / CRF:** Skip class weights unless per-type recall shows imbalance. Treat CRF head as an optional ≥3-seed experiment.
+- Select checkpoints by dev strict entity F1 (never loss); run ≥3 seeds (`ner.seeds`).
 
-## Калибровка и пороги
+## Evaluation & Error Taxonomy
 
-- Оценка сущности — среднее или минимум вероятностей её токенов. Температура подбирается на dev по каждому языку.
-- Проверка: reliability diagram и ECE (equal-mass бины). Порог для `annotate_corpus` выбирается по кривой precision–coverage: в payload Qdrant лучше меньше, но точнее, потому что сущности служат фильтром.
+- Primary metric: `seqeval` **strict IOB2** (`mode="strict"`, `scheme=IOB2`) per `lang × type`, paired cluster bootstrap by document.
+- Separate boundary vs. type errors with `nervaluate` (`strict`/`exact`/`partial`/`ent_type`).
+- Track **unseen-F1** (surfaces absent from train), especially for `kk`.
+- Track error categories: ORG↔LOC metonymy, nested spans (`Алматы университеті`), initials/titles in PER, sentence-initial capitalized false PER, transliteration (`Абай`/`Abai`), mixed-language sentences.
 
-## Ускорение (NER-5)
+## Calibration & Speedup (NER-5)
 
-1. Экспорт в ONNX (optimum), динамическая int8-квантизация для CPU, fp16 на GPU.
-2. Обрезка словаря XLM-R до токенов kk/ru/en-корпуса: у base ~192M из 279M параметров приходится на эмбеддинги (models.md §1).
-3. Сортировка по длине и батчинг.
-4. Каждое ускорение сравнивается с исходной моделью на том же тесте: просадка F1 ≤ лимита NER-5. Throughput меряется в чанках/с на целевом железе.
+- Score entities by mean or min token probability; fit per-language temperature scaling on dev; verify with equal-mass ECE and reliability diagram.
+- Pick `annotate_corpus` threshold on the precision–coverage curve (prefer higher precision for Qdrant payload filters).
+- Optimize: ONNX export (`optimum`), dynamic int8 (CPU) / fp16 (GPU), XLM-R vocabulary trimming to `kk`/`ru`/`en` corpus tokens (~192M/279M params are embeddings), length-sorted batching. Verify F1 drop ≤ NER-5 tolerance and log `chunks/s`.
 
 ## Entity Linking
 
-1. **KB.** Сущности Wikidata с метками kk/ru/en/mul, алиасы, редиректы, якорные тексты ссылок Wikipedia с частотами → приор `p(e | m)`.
-2. **Кандидаты.** Точный поиск по нормализованному алиасу, затем триграммы (`pg_trgm`) и снятие окончаний. Метрика стадии — recall@k кандидатов: это потолок всей системы, считается отдельно.
-3. **Ранжирование:** приор × совместимость типа NER с типом KB × сходство контекста упоминания с описанием сущности. Сходство считает мультиязычный эмбеддер: kk-контекст против ru/en-описания, потому что kk-описаний мало.
-4. **NIL.** Порог на итоговую оценку подбирается на dev; доля NIL меряется отдельно.
-5. **Оценка.** accuracy@1 на ручной выборке по языкам, отдельно recall@k кандидатов и accuracy на редких сущностях (мало sitelinks), где приор смещает к популярным.
+1. **KB (`build_kb`):** Wikidata entities with `kk`/`ru`/`en`/`mul` labels, aliases, redirects, and Wikipedia anchor frequencies → prior $p(e \mid m)$.
+2. **Candidates:** Exact normalized alias (`kb_aliases` B-tree) + Kazakh suffix stripping + `pg_trgm` fallback. Measure **candidate recall@k** separately (system ceiling).
+3. **Ranking:** `prior × NER/KB type compatibility × multilingual context–description similarity` (critical for `kk`, where Wikidata `kk` label coverage is <1% and descriptions are `ru`/`en`).
+4. **NIL & eval:** Tune NIL threshold on dev; evaluate `accuracy@1`, candidate `recall@k`, NIL rate, and low-sitelink (tail entity) accuracy on human-labeled per-language sets. Escalate to BLINK / mGENRE / ReFinED only if candidate recall is high and ranking bottlenecks.
 
-Альтернативы для следующих экспериментов — bi-encoder + cross-encoder (BLINK), генеративный mGENRE, ReFinED. Брать их, если ранжирование «приор × тип × контекст» упирается в потолок при высоком recall кандидатов.
+## Done Criteria
 
-## Критерии готовности
+- Strict entity F1 exceeds baseline with CI across languages/types and passes `promotion.ner_*` gate (≥3 seeds, mean ± CI).
+- Unseen-F1, error taxonomy, and CPU/GPU throughput logged in MLflow `ner`.
+- Linking reports candidate `recall@k`, `accuracy@1`, and NIL rate per language.
 
-- Entity F1 (strict) по каждому языку и типу выше baseline со значимостью, условие гейта (`promotion.ner_*`) выполнено.
-- Unseen-F1 и таксономия ошибок записаны в MLflow `ner` вместе с throughput на CPU и GPU.
-- Для linking записаны recall@k кандидатов, accuracy@1 и доля NIL по языкам.
-- ≥ 3 сидов, отчёт — среднее ± CI.
+## Sources
 
-## Источники
-
-- Conneau et al., *XLM-R*, arXiv:1911.02116; Zaratiana et al., *GLiNER*, arXiv:2311.08526.
-- Yeshpanov et al., *KazNERD*, arXiv:2111.13419.
-- Augenstein et al., *Generalisation in Named Entity Recognition*, arXiv:1701.02877.
-- Mayhew et al., *Named Entity Recognition with Partially Annotated Training Data*, CoNLL 2019.
-- Abdaoui et al., *Load What You Need: Smaller Versions of Multilingual BERT*, arXiv:2010.05609.
-- seqeval — github.com/chakki-works/seqeval; nervaluate — github.com/MantisAI/nervaluate.
-- Wu et al., *BLINK*, arXiv:1911.03814; De Cao et al., *mGENRE*, arXiv:2103.12528; Ayoola et al., *ReFinED*, arXiv:2207.04108.
-- Guo et al., *On Calibration of Modern Neural Networks*, arXiv:1706.04599.
+- Conneau et al., *XLM-R* (arXiv:1911.02116); Zaratiana et al., *GLiNER* (arXiv:2311.08526); Yeshpanov et al., *KazNERD* (arXiv:2111.13419).
+- Augenstein et al. (arXiv:1701.02877); Mayhew et al. (CoNLL 2019); Abdaoui et al. (arXiv:2010.05609); Guo et al. (arXiv:1706.04599).
+- Wu et al., *BLINK* (arXiv:1911.03814); De Cao et al., *mGENRE* (arXiv:2103.12528); Ayoola et al., *ReFinED* (arXiv:2207.04108); `seqeval`; `nervaluate`.

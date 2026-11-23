@@ -1,38 +1,35 @@
-# Qdrant на масштабе 1M → 10M → 35M+
+# Qdrant at Scale (1M → 10M → 35M+)
 
-Решения проекта — [ADR-0013](../../../../docs/architecture/adr/0013-two-tier-qdrant-index.md), бюджет памяти — архитектура [§7.3](../../../../docs/architecture/docs/01-architecture.md), параметры — `params.yaml: retrieval.corpus_index`. Проверка API перед кодом — через context7 (`/qdrant/qdrant`), версия сервера — `infra/docker-compose.yml`.
+Project decisions: [ADR-0013](../../../../docs/architecture/adr/0013-two-tier-qdrant-index.md), [01-architecture.md §7.3](../../../../docs/architecture/docs/01-architecture.md), `params.yaml: retrieval.corpus_index`. Server version: `infra/docker-compose.yml`.
 
-## Порядок сборки коллекции корпуса
+## Bulk Collection Build Order
 
-1. Создать коллекцию `corpus_chunks__<embedder>@<ver>`: named vectors `dense` (datatype float16, `on_disk: true`) и `sparse` (IDF-модификатор для BM25). Payload хранится на диске.
-2. Сразу создать payload-индексы (`lang`, `source`, `entity_ids`). Индексы, созданные после загрузки, перестраиваются дольше.
-3. Bulk-загрузка с отключённым построением HNSW (`indexing_threshold: 0` или `m: 0`), батчами, параллельно по шардам `task/vectors`. Задание идемпотентно по маркерам (ADR-0014).
-4. Включить HNSW (`m`, `ef_construct` из params) и квантизацию, дождаться статуса `green`.
-5. Проверить число точек, выборочные запросы и recall против точного поиска.
-6. Переключить alias `corpus_chunks` только после гейта. Старая коллекция остаётся до подтверждения, откат — обратное переключение.
+1. Create `corpus_chunks__<embedder>@<ver>` with named vectors `dense` (`float16`, `on_disk: true`) and `sparse` (IDF modifier for BM25); store payload on disk.
+2. Create payload indexes (`lang`, `source`, `entity_ids`) **before** bulk upload to avoid expensive post-hoc rebuilds.
+3. Bulk-upload `task/vectors` shards with HNSW disabled (`indexing_threshold: 0` or `m: 0`) via idempotent sharded jobs (`_SUCCESS` markers, ADR-0014).
+4. Enable HNSW (`m`, `ef_construct` from `params.yaml`) and quantization; wait for collection status `green`.
+5. Verify point count, sample queries, and approximate vs. exact (`exact=true`) recall.
+6. Switch alias `corpus_chunks` only after passing the promotion gate; retain old collection until verified for instant rollback.
 
-## Квантизация
+## Quantization Trade-offs
 
-| Тип | Память | Когда | Риск |
+| Type | Memory vs. fp32 | When to Use | Risk |
 |---|---|---|---|
-| scalar int8 | ×4 меньше fp32 | Serving VM с запасом RAM | малая потеря recall |
-| binary (1 бит) | ×32 меньше | RAM ноутбука, высокоразмерные модели | заметная потеря без rescoring; зависит от модели |
-| binary 1.5/2 бита, asymmetric query encoding | между binary и int8 | компромисс точности и памяти | проверять на своём eval |
-| turbo (1–4 бита, по params) | настраиваемо | кандидат RET-S | новая функция, мерить |
-| product | ×16…×64 | крайняя экономия | сильная потеря, медленный rescoring |
+| `scalar` (int8) | 4× smaller | Serving VM with RAM headroom | Minimal recall loss |
+| `binary` (1-bit) | 32× smaller | Tight RAM, high-dim models | Large loss without rescoring; model-dependent |
+| 1.5/2-bit / asymmetric | Between binary & int8 | Recall/RAM middle ground | Benchmark on TriFact eval |
+| `turbo` (1–4 bit) | Configurable | RET-S candidate | Measure recall and latency |
+| `product` | 16–64× smaller | Extreme RAM constraint | High recall loss, slow rescoring |
 
-- Поиск с `rescore: true` и `oversampling` > 1 (`retrieval.corpus_index.oversampling`). Rescoring читает исходные векторы fp16 с диска, поэтому его латентность зависит от SSD.
-- Пригодность к бинаризации зависит от модели. Для каждого эмбеддера кривая recall против `oversampling` снимается отдельно.
-- MRL (Qwen3-Embedding 256/512) и бинаризация складываются, но потери тоже складываются. Варианты меряются по сетке на одной подвыборке.
+- Always pair aggressive quantization with `rescore: true` and `oversampling > 1` (`retrieval.corpus_index.oversampling`). Rescoring reads fp16 vectors from disk, so latency depends on NVMe/SSD speed.
+- Measure recall vs. `oversampling` separately per embedder. MRL truncation (256/512) + binary quantization compound losses — test on a grid.
 
-## HNSW
+## HNSW Tuning
 
-- `m` и `ef_construct` задают качество графа и память (уровень 0 ≈ `N × m × 2 × 4` байт ссылок). `hnsw_ef` при поиске — главный рычаг recall против латентности, подбирается под целевой recall@100 против точного поиска.
-- `on_disk: true` для графа экономит RAM ценой случайного чтения. Меряется p95 на холодном и тёплом кеше.
-- Фильтры по payload с малой селективностью могут обходить HNSW. Нужны payload-индексы, для `workspace_id` — `is_tenant`.
+- Level-0 graph RAM ≈ $N \times m \times 2 \times 4$ bytes of links. Tune query-time `hnsw_ef` to meet target recall@100 vs. `exact=true`.
+- `on_disk: true` saves RAM at the cost of random disk I/O; measure p95 on both cold and warm OS page cache.
+- Low-selectivity payload filters can bypass HNSW; index filter fields and set `is_tenant: true` on `workspace_id`.
 
-## Что мерить на каждой ступени
+## Measurements per Scale Step
 
-Recall@k приближённого поиска против точного (на 1–5k запросах), nDCG@10 на eval, p50/p95 при целевой конкурентности, RAM процесса Qdrant, размер на диске, время загрузки и построения индекса.
-
-Если на ступени 35M p95 или RAM не укладываются в НФТ архитектуры §1, полный индекс уходит на Serving VM, а локальный профиль работает с подмножеством (ADR-0013).
+Record at 1M, 10M, and 35M: approximate vs. exact Recall@k (1–5k queries), eval nDCG@10, p50/p95 latency under target concurrency, Qdrant RAM, disk footprint, upload time, and HNSW build time. If 35M exceeds local/target NFRs, deploy full corpus to a Serving VM and keep a subset in local dev (ADR-0013).

@@ -1,95 +1,69 @@
 ---
 name: trifact-evaluation
-description: Evaluation, statistics and error analysis for TriFact components and the end-to-end system — metric choice and pitfalls (CER, entity F1, nDCG, answer F1, faithfulness, citations, refusal, ECE, latency, cost), frozen-test hygiene and contamination, paired and cluster bootstrap, seeds, multiple comparisons, power, LLM-as-a-judge limits, slicing, root-cause analysis, champion selection via the gate. Use when comparing models, claiming an improvement, building a benchmark, writing eval_* or gate code, or explaining a low metric (оценка, метрики, значимость, анализ ошибок).
+description: Evaluation, statistical significance, and error analysis for TriFact components and end-to-end runs — metric selection and pitfalls (CER, entity F1, nDCG, answer F1, faithfulness, citations, refusal, ECE, latency, cost), frozen-test hygiene and pretraining contamination, paired/cluster bootstrap, multi-seed variance, multiple comparisons, power, LLM-as-a-judge calibration, slicing, root-cause analysis, and promotion gate decisions. Use when comparing models, claiming gains, building benchmarks, writing eval_* or gate code, or explaining low metrics.
 ---
 
-# Evaluation TriFact AI
+# TriFact AI — Evaluation & Error Analysis
 
-## Когда применять
+## Scope
 
-- Любое утверждение «стало лучше», выбор champion, гейт.
-- Новый бенчмарк или метрика, код `trifact.evaluation.*`.
-- Метрика низкая или упала, и нужна первопричина.
+- Load whenever claiming a model improvement, writing `trifact.evaluation.*` or `gate`, building benchmarks, or diagnosing low metrics.
+- Cloud CLI execution for heavy eval runs & MLflow persistence → [cloud-compute.md](../trifact-mlops/references/cloud-compute.md).
 
-## Опорные документы
+## Owner Documents
 
-- Наборы, значимость, гейт, ablation — архитектура [§10](../../../docs/architecture/docs/01-architecture.md); [ADR-0007](../../../docs/architecture/adr/0007-leakage-safe-splits.md), [ADR-0009](../../../docs/architecture/adr/0009-model-registry-and-promotion-gate.md).
-- Протокол оценки проекта (кластерный бутстреп, определение faithfulness, LLM-судьи, загрязнение, выходы по примерам) — [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md). Скилл объясняет методы, ADR фиксирует решение.
-- Числа: `params.yaml: evaluation` (бутстреп, уровень CI, ручная проверка), `promotion` (пороги гейта).
-- Рабочий пример бутстрепа и агрегации по виду × языку — `trifact.evaluation.eval_docproc` (`bootstrap_ci`, `aggregate`).
-- Правило: проверка ИИ не заменяет человеческую (`build_eval`, PROGRESS блокеры).
+- Suites, significance, gate, ablation → [01-architecture.md §10](../../../docs/architecture/docs/01-architecture.md), [ADR-0007](../../../docs/architecture/adr/0007-leakage-safe-splits.md), [ADR-0009](../../../docs/architecture/adr/0009-model-registry-and-promotion-gate.md), [ADR-0022](../../../docs/architecture/adr/0022-evaluation-protocol.md).
+- Parameters → `params.yaml`: `evaluation`, `promotion`. Reference bootstrap code → `trifact.evaluation.eval_docproc` (`bootstrap_ci`, `aggregate`).
+- Rule: AI/LLM checks never substitute for mandatory human review (`build_eval`, `PROGRESS.md` blockers).
 
-## Выбор метрики
+## Metric Matrix
 
-| Компонент | Основная | Ловушки |
+| Component | Primary Metrics | Pitfalls |
 |---|---|---|
-| Документы | CER/WER, порядок чтения, F1 заголовков, F1 ячеек / TEDS | канонизация текста одинакова для всех систем; CER не видит перестановку |
-| NER | entity P/R/F1, seqeval strict IOB2, по языку × типу; unseen-F1 | режим seqeval по умолчанию мягче strict; micro прячет редкие типы — показывать и macro |
-| Entity Linking | accuracy@1; recall@k кандидатов | без recall кандидатов не видно потолок |
-| Retrieval | Recall@5/10, nDCG@10, MRR по 9 направлениям; candidate recall@100 | MRR учитывает только первый релевантный; закрытый пул завышает новые системы |
-| Генерация | answer EM/F1, faithfulness, точность и полнота ссылок, refusal P/R, язык ответа | нормализация EM/F1 по языку (NFC, регистр, пунктуация); F1 по токенам несправедлив к kk-морфологии — дублировать символьной метрикой (chrF) |
-| Verification | P/R вердиктов, ECE, Brier, risk-coverage | ECE зависит от бинов |
-| Система | p50/p95 латентности по стадиям, RPS, пиковая RAM/VRAM, стоимость | p95 под нагрузкой, а не на одиночных запросах |
+| Documents | CER/WER, reading order, heading F1, cell F1 / TEDS | Canonicalize identically; CER misses paragraph swaps |
+| NER | `seqeval` strict IOB2 entity P/R/F1 (`lang × type`), unseen-F1 | Default `seqeval` is lenient; always report macro alongside micro |
+| Entity Linking | `accuracy@1`, candidate `recall@k`, NIL rate | Candidate recall is the ceiling — never omit |
+| Retrieval | `Recall@5/10`, `nDCG@10`, `MRR` (9 directions), candidate `recall@100` | MRR sees only rank-1; closed pools bias novel systems (`judged@10`) |
+| Generation | Answer EM/F1 (+ chrF for `kk`), faithfulness, citation P/R, refusal P/R, language | Normalize per language (NFC/case/punct); token F1 penalizes `kk` morphology |
+| Verification | Verdict P/R, equal-mass ECE, Brier, risk–coverage | ECE depends on binning — pair with reliability diagram |
+| System | Stage p50/p95 latency, RPS, peak RAM/VRAM, GPU-h / USD cost | Measure p95 under target concurrency, not single requests |
 
-Метрика считается по каждому языку и направлению, а среднее — дополнительно, не вместо.
+Always report per language and direction; macro averages are supplementary, never replacements.
 
-## Гигиена теста
+## Frozen-Test Hygiene & Contamination
 
-- Тест заморожен (sha256 в манифесте), на нём не тюнят и по нему не выбирают чекпоинт. Отбор идёт на validation.
-- Утечки train ↔ eval проверяются по документу, контексту и нормализованному тексту, включая переводы (ADR-0007).
-- **Загрязнение предобучения.** Eval из Wikipedia мог быть в предобучении LLM и эмбеддеров. Если система выигрывает только на Wikipedia-подмножестве и не выигрывает на `real_docs` или на подмножестве не из Wikipedia, это сигнал загрязнения.
-- Сравнение — на одних и тех же примерах, с одним декодированием и одной версией кода метрики.
+- Never tune hyperparameters or select checkpoints on frozen test sets (`data/eval/*/MANIFEST.yaml` SHA-256). Use validation only.
+- Verify zero train ↔ eval leakage by document, context, and normalized text across translations (ADR-0007).
+- **Pretraining contamination check:** Report non-Wikipedia subset and `real_docs` separately; gains restricted to Wikipedia indicate pretraining leakage (ADR-0022).
+- Compare systems on identical example IDs, decoding settings, and metric code revision.
 
-## Статистика
+## Statistical Significance
 
-Улучшение без значимости улучшением не считается ([AGENTS §6.3](../../../AGENTS.md)). Методы, формулы и выбор — [references/statistics.md](references/statistics.md). Ключевое:
+An improvement without statistical significance is not an improvement ([AGENTS.md §6](../../../AGENTS.md)). Formulas and sample-size planning → [references/statistics.md](references/statistics.md).
 
-- **парный** бутстреп по примерам: одни и те же индексы для обеих систем, CI разности;
-- **кластерный** бутстреп, если примеры зависимы (несколько вопросов на документ, переводы одного запроса);
-- ≥ 3 сидов для обучаемых моделей; дисперсия сида и данных учитывается вместе;
-- поправка на множественные сравнения при решении по многим направлениям, если правило гейта не задаёт иное;
-- мощность: на малых kk-наборах CI широкие, нужный объём планируется заранее.
+- **Paired bootstrap** on identical resampled indices → 95% CI of $\Delta = M(B) - M(A)$.
+- **Cluster bootstrap** whenever examples are dependent (multiple QA per context, translations of one query, sentences in one NER doc).
+- **Multi-seed variance:** ≥3 seeds for trained models; sample seed jointly with clusters inside bootstrap.
+- **Multiple comparisons:** Apply the pre-registered gate rule or Holm–Bonferroni; publish all CIs, not only winners.
 
-## LLM-as-a-judge
+## LLM-as-a-Judge & Human Evaluation
 
-- Известные смещения: позиция, длина ответа, предпочтение собственных ответов. На казахском судья слабее.
-- Протокол:
-  - рубрика и эталонный ответ;
-  - парное сравнение с обменом позиций;
-  - температура 0;
-  - фиксированная версия судьи.
-- Перед использованием судья калибруется на человеческой разметке того же типа и языка: согласие (κ) и смещение по классам записываются. Без этого его оценка — диагностика, а не основание для гейта.
-- Где есть измеримая метрика (EM/F1, NLI на человеческой разметке, точность ссылок), гейт опирается на неё.
+- LLM judges exhibit position, verbosity, and self-preference bias and are weaker on `kk`.
+- Mandatory protocol: rubric + reference answer, position-swapped pairwise comparison, `temperature=0`, pinned model revision, and **prior calibration against human labels** ($\kappa$ and class bias per language). Uncalibrated LLM judges are diagnostic only — never gate criteria.
+- Human eval: stratified by language/direction, written guidelines with examples, double-annotated subset ($\kappa$ or $\alpha$), adjudicated disagreements, sample size planned for target CI half-width.
 
-## Ручная оценка
+## Slicing, Error Analysis & Champion Selection
 
-Стратифицированная выборка по языкам и направлениям, инструкция с примерами, двойная разметка подмножества (κ или α), разбор расхождений. Размер выбирается по требуемой ширине CI (references/statistics.md).
+- **Mandatory slices:** language, direction, source, origin (`human`/`mt`/`synthetic`), length, document kind, question type, answerability, entity frequency. Rank slices by `size × gap`; report worst slice explicitly.
+- **Error analysis workflow** (traces → stratified failure sample → open coding → taxonomy with CI → falsifiable root-cause hypothesis → gated intervention → regression test) → [references/error-analysis.md](references/error-analysis.md).
+- **Champion selection:** Check component gate (`params.yaml: promotion`). For quality vs. latency/memory trade-offs, pick on the Pareto front within NFRs. Non-significant gain → keep champion and record negative result in `PROGRESS.md`.
 
-## Slicing
+## Done Criteria
 
-Обязательные разрезы: язык, направление, источник, origin (human/mt/synthetic), длина, тип документа, тип вопроса, отвечаемость, частотность сущностей. Для поиска новых проблемных срезов метрика считается по комбинациям признаков, а срезы ранжируются по «размер × отставание». Худший срез отчитывается отдельно (гейт cross-lingual).
+- Per-language/direction metrics with paired cluster bootstrap CI; test set untouched during selection.
+- Per-example outputs/traces and error-analysis taxonomy with next-step hypothesis logged to MLflow.
 
-## Анализ ошибок
+## Sources
 
-Пошаговая методика от выборки провалов до проверяемой гипотезы и повторного замера — [references/error-analysis.md](references/error-analysis.md). Сквозная атрибуция ошибки RAG по стадиям — `trifact-rag-pipeline`.
-
-## Выбор champion
-
-1. Кандидаты сравниваются с champion на замороженном тесте по правилу гейта компонента (`promotion`).
-2. При компромиссе качество против латентности или памяти строится фронт Парето, решение принимается по ограничениям НФТ.
-3. Победа без значимости не продвигает модель: champion остаётся, результат записывается как отрицательный (AGENTS §7).
-
-## Критерии готовности
-
-- Метрики по языкам и направлениям с CI, тест не использовался для отбора.
-- Сравнение парное, на одних примерах, с поправкой на зависимость примеров.
-- Анализ ошибок с долями категорий и гипотезой следующего шага записан в MLflow.
-
-## Источники
-
-- Koehn, *Statistical Significance Tests for Machine Translation Evaluation*, EMNLP 2004; Berg-Kirkpatrick et al., *An Empirical Investigation of Statistical Significance in NLP*, EMNLP 2012.
-- Dror et al., *The Hitchhiker's Guide to Testing Statistical Significance in NLP*, ACL 2018.
-- Card et al., *With Little Power Comes Great Responsibility*, arXiv:2010.06595.
-- Bouthillier et al., *Accounting for Variance in ML Benchmarks*, arXiv:2103.03098.
-- Zheng et al., *Judging LLM-as-a-Judge*, arXiv:2306.05685.
-- Ribeiro et al., *CheckList*, arXiv:2005.04118.
+- Koehn (EMNLP 2004); Berg-Kirkpatrick et al. (EMNLP 2012); Dror et al. (ACL 2018); Card et al. (arXiv:2010.06595).
+- Bouthillier et al. (arXiv:2103.03098); Zheng et al. (arXiv:2306.05685); Ribeiro et al., *CheckList* (arXiv:2005.04118).

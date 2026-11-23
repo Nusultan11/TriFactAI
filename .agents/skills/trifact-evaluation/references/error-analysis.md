@@ -1,40 +1,36 @@
-# Анализ ошибок: от провалов к проверяемому улучшению
+# Error Analysis: From Failures to Verified Fixes
 
-Цель — найти причину, которая объясняет наибольшую долю потерь целевой метрики, и проверить исправление замером, а не впечатлением.
+Goal: isolate the single root cause explaining the largest share of metric loss, then verify the fix by measurement.
 
-## Шаги
+## Procedure
 
-1. **Трассы.** Для каждого примера eval сохраняются вход, промежуточные выходы стадий, итог, эталон, метаданные срезов (язык, направление, источник, длина, тип). Без промежуточных выходов атрибуция невозможна.
-2. **Выборка провалов.** Стратифицированно по срезам: 50–100 на срез, больше на худшем. Случайно внутри среза, а не первые по порядку.
-3. **Открытое кодирование.** Каждому провалу — короткая метка причины своими словами. Через 30–50 примеров метки сводятся в таксономию из 5–12 категорий, взаимоисключающих настолько, насколько возможно.
-4. **Подсчёт.** Вся выборка размечается по таксономии, доля категории — с CI (биномиальный). Доля переводится в потенциальный прирост метрики: сколько примеров стало бы верными при полном исправлении категории.
-5. **Гипотеза первопричины.** Причина формулируется проверяемо: «kk-запросы с падежными окончаниями не находят алиас → recall кандидатов kk ниже ru на X п.п.». Проверка — контрольный срез или синтетический тест.
-6. **Вмешательство и прогноз.** Записать ожидаемый эффект до запуска, затем замерить на validation, затем на тесте через гейт.
-7. **Регрессионный набор.** Исправленные случаи попадают в challenge-набор компонента. Повторный провал на нём ловится тестами (`trifact-mlops`).
+1. **Save traces:** Record input, intermediate stage outputs, final output, reference, and slice metadata (`lang`, `direction`, `source`, `length`, `kind`) for every eval item.
+2. **Sample failures:** Draw 50–100 random failures per slice (heavier on the worst slice) — never take the first $N$ rows in file order.
+3. **Open coding:** Label each failure with a short plain-language cause; after 30–50 items, consolidate into 5–12 mutually exclusive taxonomy categories.
+4. **Quantify:** Tag the full sample, compute category shares with binomial CIs, and convert each share into potential metric headroom.
+5. **Formulate hypothesis:** Write a falsifiable statement (e.g., *"Kazakh inflected mentions miss exact alias lookup → `kk` candidate recall trails `ru` by X pp"*) and confirm on a targeted slice or synthetic probe.
+6. **Intervene & verify:** State expected effect before running; validate on dev, then confirm on frozen test via the promotion gate.
+7. **Lock in regression:** Add fixed cases to the component's challenge/behavioral test suite (`trifact-mlops`).
 
-## Таксономии-заготовки по компонентам
+## Starter Taxonomies
 
-| Компонент | Категории для старта |
+| Component | Starter Categories |
 |---|---|
-| Документы | пропуск текста, порядок, склейка/разрыв, таблица по столбцам, заголовок, кодировка, замены OCR, колонтитулы |
-| NER | граница, тип (метонимия), пропуск редкой, ложное срабатывание на заглавном слове, вложенность, транслит, ошибка разметки |
-| Linking | нет в KB, нет кандидата (алиас, окончание), неверное ранжирование (приор), NIL-ошибка |
-| Retrieval | нет в индексе, разрез чанком, промах представления, потеря слияния, ANN, понижение reranker, неоценённый релевантный |
-| Генерация | не использовал доказательство, неверная ссылка, не тот язык, ложный отказ, пропущенный отказ, неполный ответ, лишние факты |
-| Verification | длинная посылка, числа и даты, межъязыковая пара, составное утверждение, ошибка эталона |
+| Documents | missing text, reading order, merge/split, columnar table, heading, encoding, OCR substitution, header/footer leak |
+| NER | boundary, type (metonymy), rare-entity miss, sentence-initial false positive, nesting, transliteration, gold label error |
+| Linking | absent from KB, candidate miss (alias/suffix), ranker error (prior bias), NIL threshold error |
+| Retrieval | missing from index, chunk split, representation miss, fusion loss, ANN loss, reranker demotion, unjudged relevant |
+| Generation | ignored evidence, wrong citation, wrong language, false refusal, missed refusal, incomplete answer, unsupported claim |
+| Verification | long premise, number/date error, cross-lingual pair, compound claim, reference error |
 
-## Систематические проблемы
+## Systematic Bias & CheckList Probes
 
-Перекос категории по срезу — главный сигнал систематической ошибки (например «не тот язык» только в kk → ru). Таблица категория × срез со счётчиками показывает, где сосредоточен ущерб.
+- Cross-tabulate `category × slice`: skewed counts expose systematic defects (e.g., wrong language concentrated in `kk → ru`).
+- Run cheap behavioral tests:
+  - **Invariance:** transliteration/casing of names, passage reordering, query paraphrase.
+  - **Directional:** adding a contradicting passage triggers caveat; removing sole evidence triggers refusal.
+  - **Minimum functionality:** simple template facts in `kk`/`ru`/`en`.
 
-## Поведенческие тесты (CheckList)
+## Required Record
 
-- **Инвариантность:** транслит и регистр имён, перестановка пассажей в контексте, синонимичная перефразировка вопроса — ответ не должен меняться.
-- **Направленные:** добавление противоречащего пассажа должно вызвать оговорку; удаление единственного доказательства — отказ.
-- **Минимальная функциональность:** простые факты по шаблону на трёх языках.
-
-Тесты дешёвые и быстро находят класс ошибок, который на случайной выборке встречается редко.
-
-## Что записать
-
-Таксономия, доли с CI по срезам, примеры, гипотеза, результат вмешательства (включая отрицательный) — в MLflow-run анализа и в PROGRESS.
+Log taxonomy, category shares + CIs per slice, example IDs, root-cause hypothesis, and intervention outcome (including negative results) in MLflow and `PROGRESS.md`.

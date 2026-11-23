@@ -1,108 +1,80 @@
 ---
 name: trifact-mlops
-description: MLOps for TriFact — reproducible DVC stages and pinned revisions, MLflow runs and metric naming, Model Registry aliases champion/challenger and rollback with Qdrant aliases, ML test pyramid (data, regression, behavioral, performance), profiling RSS/VRAM and throughput, resumable sharded jobs, serving batching, ONNX and caches, quality and drift monitoring with Prometheus and Grafana. Use when making a stage reproducible, adding data or model tests, registering or promoting a model, profiling, hardening jobs, or designing alerts (MLOps, MLflow, мониторинг, дрейф).
+description: Cloud-first MLOps for TriFact — Google Colab CLI and Kaggle CLI workflows, reproducible DVC stages with Google Drive persistence, MLflow tracking/snapshots and Model Registry aliases (champion/challenger) with Qdrant rollback, ML test pyramid, RAM/VRAM/throughput profiling, resumable sharded jobs, serving optimization, and drift monitoring. Use when orchestrating cloud compute, making stages reproducible, recovering artifacts, registering/promoting models, adding ML tests, profiling, or designing alerts.
 ---
 
-# MLOps TriFact AI
+# TriFact AI — MLOps & Cloud Operations
 
-Процедура этапа, проверки перед коммитом, git и бэкапы — [AGENTS.md §5–§8](../../../AGENTS.md); здесь их нет. Скилл о том, как сделать ML-часть воспроизводимой, проверяемой и наблюдаемой.
+Global git, autonomy, and commit rules live in [AGENTS.md](../../../AGENTS.md). This skill owns cloud compute execution, reproducibility, ML testing, profiling, and observability.
 
-## Опорные документы
+## Owner Documents
 
-| Тема | Владелец |
+| Topic | Owner |
 |---|---|
-| Офлайн-вычисления, MLOps, наблюдаемость, развёртывание | архитектура [§9, §11–§13](../../../docs/architecture/docs/01-architecture.md) |
-| Registry и гейт | [ADR-0009](../../../docs/architecture/adr/0009-model-registry-and-promotion-gate.md) |
-| DVC, remotes, batch-задания | [ADR-0010](../../../docs/architecture/adr/0010-dvc-with-s3-remote.md), [ADR-0014](../../../docs/architecture/adr/0014-sharded-batch-jobs.md) |
-| Ответственность хранилищ | [ADR-0016](../../../docs/architecture/adr/0016-storage-responsibilities.md) |
-| Раннер стадий, отпечатки | [ADR-0018](../../../docs/architecture/adr/0018-curation-stages-without-datatrove.md) |
-| Замеры и MLflow-хелперы | `trifact.lake.stats` (`ResourceMonitor`, `git_sha`, `log_mlflow`) |
+| Cloud CLI (Colab, Kaggle), Drive, DVC, MLflow recovery | [references/cloud-compute.md](references/cloud-compute.md) |
+| Cloud compute & Drive storage decisions | [ADR-0020](../../../docs/architecture/adr/0020-kaggle-batch-gpu-mt-and-teacher.md), [ADR-0024](../../../docs/architecture/adr/0024-google-drive-storage.md), [ADR-0025](../../../docs/architecture/adr/0025-cloud-only-computing.md) |
+| Offline compute, MLOps, observability, deployment | [01-architecture.md §9, §11–§13](../../../docs/architecture/docs/01-architecture.md) |
+| Registry & promotion gate | [ADR-0009](../../../docs/architecture/adr/0009-model-registry-and-promotion-gate.md) |
+| DVC remotes, sharded batch jobs, stage fingerprints | [ADR-0010](../../../docs/architecture/adr/0010-dvc-with-s3-remote.md), [ADR-0014](../../../docs/architecture/adr/0014-sharded-batch-jobs.md), [ADR-0016](../../../docs/architecture/adr/0016-storage-responsibilities.md), [ADR-0018](../../../docs/architecture/adr/0018-curation-stages-without-datatrove.md) |
+| Profiling & MLflow helpers | `trifact.lake.stats` (`ResourceMonitor`, `git_sha`, `log_mlflow`) |
 
-## Воспроизводимость run
+## Cloud Execution & Artifact Persistence
 
-Run восстанавливается по git SHA + DVC-хешам + конфигу (НФТ архитектуры §1). Для этого:
+Follow [references/cloud-compute.md](references/cloud-compute.md) for exact `[LOCAL]` and `[REMOTE]` commands:
+- **Primary:** Official Google Colab CLI (`colab new/drivemount/exec/run/log/stop`, NVIDIA L4 when available/permitted, Colab CPU for non-GPU stages).
+- **Secondary:** Kaggle CLI (`kaggle kernels push/status/output`, `python -m trifact.batch.kaggle`, 2× T4 fp16 within free weekly quota).
+- **Pre-flight:** Verify CLI auth, runtime/GPU type, RAM/disk, quota, and `params.yaml: cloud.budget_usd`. Never start unapproved paid runs.
+- **Storage:** Pull only required DVC targets from Drive (`verify=true`), push outputs immediately, snapshot ephemeral MLflow SQLite DBs to Drive, and stop cloud runtimes immediately on completion.
 
-- код закоммичен до полного прогона (`git_sha` без `-dirty`);
-- стадия в `dvc.yaml` объявляет все `deps` (код модуля, входы), `params` (ключи `params.yaml`) и `outs`, а `dvc.lock` закоммичен;
-- модели и токенизаторы закреплены ревизией HF (SHA), а не веткой;
-- сиды Python, numpy и torch фиксированы. Для GPU — `torch.use_deterministic_algorithms` там, где это не ломает скорость; остаточная недетерминированность учитывается сидами;
-- окружение задано `uv.lock` и образом Docker; версия CUDA и драйвера пишется в run.
+## Reproducibility Checklist
 
-## MLflow
+Every run must be reconstructible from `git SHA + DVC hashes + config` (`01-architecture.md §1`):
+- Commit code before full runs (`git_sha` without `-dirty`).
+- Declare all `deps`, `params`, and `outs` in `dvc.yaml`; commit `dvc.lock` with LF line endings.
+- Pin Hugging Face models and tokenizers by commit SHA (`params.yaml`), never mutable branch names.
+- Fix Python, NumPy, and PyTorch seeds; record CUDA/driver version and `uv.lock` / Docker image.
 
-- Эксперимент на направление (архитектура §11), run на прогон, вложенные runs для trials HPO и конфигураций бенчмарка.
-- В run пишутся:
-  - параметры плоским списком с полным конфигом как артефакт;
-  - метрики по языкам и направлениям с именами `<metric>/<lang>` или `<metric>/<q>-<d>`, очищенными от недопустимых символов (`lake.stats._mlflow_name`);
-  - теги `stage` и `status=final|superseded`;
-  - артефакты: отчёты JSON, графики, выходы по примерам и трассы e2e (ADR-0022), матрицы ошибок;
-  - ресурсы: время, throughput, пик RSS/VRAM, тип GPU, стоимость.
-- Модель логируется с сигнатурой и примером входа, затем регистрируется как новая версия с alias `challenger`. `champion` переносит только гейт (ADR-0009). Сервисы грузят `models:/<name>@champion` при старте.
-- Откат — перенос alias. Для эмбеддера alias модели и alias коллекции Qdrant переключаются вместе (архитектура §11).
-- Перед логированием — быстрая проверка `/health` сервера, чтобы недоступный MLflow не подвешивал задание (решение этапа 1).
+## MLflow & Model Registry
 
-## Пирамида тестов ML
+- One experiment per domain (`01-architecture.md §11`); nested runs for HPO trials and benchmark configs.
+- Every run logs: flattened params + full config artifact, per-language/direction metrics (`<metric>/<lang>` or `<metric>/<q>-<d>` sanitized via `lake.stats._mlflow_name`), tags (`stage`, `status=final|superseded`), JSON reports/plots/per-example traces (ADR-0022), wall time, throughput, peak RSS/VRAM, GPU model, and USD/quota cost.
+- Check `/health` before logging to an HTTP MLflow server so unreachable servers never stall jobs.
+- Log models with signature + input example → register as `challenger`. Only the promotion gate moves `champion` (ADR-0009). Services load `models:/<name>@champion`.
+- Rollback = alias reassignment. For embedders, switch model alias and Qdrant collection alias atomically (`01-architecture.md §11`).
 
-| Уровень | Что проверяет | Пример в TriFact |
+## ML Test Pyramid
+
+| Level | Checks | TriFact Examples |
 |---|---|---|
-| Unit | чистые функции на ручных случаях | нормализация, смещения чанков, BIO-конвертация, метрики против эталонных библиотек (seqeval, ranx) на игрушечных данных |
-| Данные и схемы | схема и инварианты шардов | pandera-схемы; смещения в пределах текста; BIO валиден; утечка eval = 0 |
-| Интеграция | стадия на крошечной фикстуре целиком | `--limit`, `--root <tmp>`, манифест помечен `partial` |
-| Регрессия модели | метрика на фиксированном golden-наборе в допуске | NER F1 и nDCG на малом наборе против записанного значения ± допуск |
-| Поведенческие | инвариантность и направленные тесты | транслит имён, перестановка пассажей, удаление доказательства → отказ |
-| Производительность | нижняя граница throughput, верхняя — RAM | стр/с парсера, чанков/с NER на CPU |
-| E2E | API и web на фикстурах | `eval_e2e`, Playwright (этап 10) |
+| Unit | Pure logic on synthetic cases | Normalization, chunk offsets, BIO conversion, metrics vs. `seqeval`/`ranx` |
+| Data & schema | Shard invariants | Pandera schemas, offset bounds, valid BIO, zero eval leakage |
+| Integration | End-to-end stage on tiny fixture | `--limit`, `--root <tmp>`, manifest marked `partial` |
+| Model regression | Metric on golden set within tolerance | NER F1 / nDCG vs. recorded baseline ± margin |
+| Behavioral | Invariance & directional checks | Name transliteration, passage reorder, evidence removal → refusal |
+| Performance | Throughput floor, RAM ceiling | Parser `pages/s`, CPU NER `chunks/s` |
+| E2E | API & Web on fixtures | `eval_e2e`, Playwright (Stage 10) |
 
-- Тесты с сетью и большими моделями помечаются отдельным маркером и не идут в `pytest -q` по умолчанию: pre-commit должен оставаться быстрым.
-- Тесты зеркалят `src/` ([AGENTS §6.5](../../../AGENTS.md)). Архитектурные тесты (`tests/test_architecture.py`) расширяются, когда появляется новое структурное правило.
+Mark network/large-model tests so default `pytest -q` and pre-commit stay fast. Extend `tests/test_architecture.py` whenever adding a structural invariant.
 
-## Профилирование
+## Profiling & Job Resilience
 
-| Что | Инструмент |
-|---|---|
-| RAM всего дерева процессов | `lake.stats.ResourceMonitor` |
-| Горячие места CPU в Python | py-spy (sampling, без правки кода) |
-| Аллокации Python | memray |
-| Планы запросов | Polars `explain()`, DuckDB `EXPLAIN ANALYZE` |
-| GPU | `torch.cuda.max_memory_allocated`, `torch.profiler`, nvidia-smi |
-| Масштабирование по воркерам | throughput и пик RSS при 1/2/4/8 воркерах — найти перегиб, а не брать максимум |
+- **Profiling:** `lake.stats.ResourceMonitor` (full process-tree RSS), `py-spy` (CPU hotspots), `memray` (Python allocations), Polars `explain()`, DuckDB `EXPLAIN ANALYZE`, `torch.cuda.max_memory_allocated` / `torch.profiler` / `nvidia-smi`. Benchmark `1/2/4/8` workers to find the throughput/RAM knee.
+- **Resilience:** Idempotent shards with atomic writes and `_SUCCESS` markers; exponential backoff + timeouts on network calls; pre-run quota/budget checks; periodic Drive checkpoints (weights + optimizer + scheduler + step) for preemptible GPUs.
 
-## Устойчивость заданий
+## Serving Optimization & Drift Monitoring
 
-- Единица работы — шард; атомарная запись; маркеры готовности; повтор без пересчёта готового (ADR-0014, ADR-0018).
-- Сетевые операции: повтор с экспоненциальной задержкой и таймауты.
-- Квота и бюджет проверяются до запуска, задание останавливается при превышении (`cloud.budget_usd`, квота Kaggle).
-- Обучение сохраняет чекпоинт с состоянием оптимизатора и шагом, чтобы прерванная GPU продолжила работу.
+- **Serving:** Dynamic batching with max-wait cap and length sorting in Inference Service; ONNX Runtime int8 (CPU) / fp16 (GPU) warmed up before `ready` healthcheck; include `model_version` in Redis cache keys for query embeddings and reranker scores.
+- **Drift:** Monitor question language/length, max retrieval/reranker scores, refusal/`contradicted`/`not_enough_info` rates, `ParseError` reasons, and OCR page share via PSI/JS-divergence (histograms), KS test (continuous), and centroid distance / two-sample classifier (embeddings). Derive alert thresholds from reference-window variance and link every alert to a runbook. Feed audited production samples into **new** versioned eval suites; never mutate frozen tests.
 
-## Производительность сервинга
+## Done Criteria
 
-- Динамический батчинг в Inference Service с ограничением ожидания; сортировка по длине.
-- ONNX Runtime int8 для encoder-моделей на CPU, fp16 на GPU. Прогрев моделей при старте до healthcheck `ready`.
-- Кеши Redis: эмбеддинг запроса, оценки reranker по ключу (запрос, chunk_id, версия модели). Версия в ключе обязательна, иначе после смены champion кеш вернёт старые оценки.
+- Clean Git SHA, clean `dvc status --cloud`, pinned model revisions, and complete MLflow run persisted to Drive.
+- Unit, data, regression, and performance tests pass.
+- Registered model promoted only via gate with verified rollback; cloud runtime stopped.
+- Production service has Prometheus metrics, Grafana dashboard, and reference-calibrated alerts.
 
-## Мониторинг и дрейф
+## Sources
 
-- Технические и качественные сигналы перечислены в архитектуре §12.
-- Признаки дрейфа:
-  - распределение языков вопросов и длины запросов;
-  - распределения максимальной оценки поиска и reranker;
-  - доли отказов, `contradicted`, `not_enough_info`;
-  - причины `ParseError` и доля страниц с OCR.
-- Методы: PSI или JS-дивергенция гистограмм против опорного окна; KS-тест для непрерывных; для эмбеддингов — расстояние центроидов или классификаторный тест двух выборок на выборках.
-- Пороги алертов берутся из разброса опорных окон, а не из головы. Алерт ведёт в runbook: что проверить первым.
-- Обратная связь: фидбек и выборочная ручная проверка пополняют **новые** версионированные eval-наборы. Замороженный тест не меняется.
-
-## Критерии готовности
-
-- Любой run восстанавливается: SHA чистый, `dvc status` чистый, конфиг и ревизии моделей в run.
-- Для нового компонента есть unit- и data-тесты, регрессионный тест метрики и тест производительности.
-- Модель зарегистрирована, alias переносит только гейт, откат проверен.
-- Для сервиса есть метрики, дашборд и алерт с порогом из опорного окна.
-
-## Источники
-
-- Breck et al., *The ML Test Score: A Rubric for ML Production Readiness*, IEEE Big Data 2017.
-- Sculley et al., *Hidden Technical Debt in Machine Learning Systems*, NeurIPS 2015.
-- Rabanser et al., *Failing Loudly: An Empirical Study of Methods for Detecting Dataset Shift*, arXiv:1810.11953.
-- Ribeiro et al., *CheckList*, arXiv:2005.04118.
-- MLflow Model Registry: aliases (mlflow.org/docs); pandera — pandera.readthedocs.io; DVC — dvc.org/doc.
+- Breck et al., *The ML Test Score* (IEEE Big Data 2017); Sculley et al., *Hidden Technical Debt* (NeurIPS 2015).
+- Rabanser et al. (arXiv:1810.11953); Ribeiro et al., *CheckList* (arXiv:2005.04118).
+- Official docs: `googlecolab/google-colab-cli`, `Kaggle/kaggle-cli`, `mlflow.org/docs`, `dvc.org/doc`, `pandera.readthedocs.io`.

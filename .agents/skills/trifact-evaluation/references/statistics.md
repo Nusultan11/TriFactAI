@@ -1,50 +1,46 @@
-# Статистика сравнения моделей
+# Statistical Comparison of Models
 
-Число ресэмплов и уровень CI — `params.yaml: evaluation`. Бутстреп-реализация для образца — `trifact.evaluation.eval_docproc.bootstrap_ci`.
+Resample count and CI level: `params.yaml: evaluation`. Reference implementation: `trifact.evaluation.eval_docproc.bootstrap_ci`.
 
-## Парный бутстреп разности
+## Paired Bootstrap of Differences
 
-Системы A и B, метрика на примерах `m_A[i]`, `m_B[i]` (для корпусных метрик вроде F1 — пересчёт на ресэмпле).
+Given systems A and B on identical examples:
+1. For $b = 1 \dots B$: draw $n$ indices with replacement; compute $\Delta_b = M(B, \text{idx}) - M(A, \text{idx})$ on the **same** indices.
+2. Compute the CI from percentiles of $\Delta_b$ (e.g., 2.5% and 97.5%).
+3. Significant gain holds when the entire CI > 0 (or > gate minimum gain).
+4. Recompute nonlinear corpus metrics (entity F1, macro F1, nDCG) from scratch on each resample rather than averaging per-item scores.
 
-1. Для b = 1..B: выбрать n индексов с возвращением; посчитать `Δ_b = M(B, idx) − M(A, idx)` на **одних и тех же** индексах.
-2. CI разности — перцентили `Δ_b` (например 2.5 % и 97.5 %).
-3. Улучшение значимо, если CI целиком > 0 (или > порога гейта, если порог задан как прирост).
+## Cluster Bootstrap
 
-Корпусные метрики (F1 по сущностям, nDCG по запросам) пересчитываются на каждом ресэмпле, а не усредняются по примерам, если метрика нелинейна.
+When examples are dependent, resample **clusters**, not individual rows:
+- Multiple questions sharing a context/document → cluster by `doc_key`.
+- Translations of one query across 9 retrieval directions → cluster by source query ID.
+- Sentences from the same NER document → cluster by `doc_id`.
 
-## Кластерный бутстреп
+Ignoring clusters produces artificially narrow CIs.
 
-Если примеры зависимы, ресэмплируются **кластеры**, а не примеры:
+## Multi-Seed Variance
 
-- несколько вопросов на один контекст или документ — кластер `doc_key`;
-- переводы одного запроса в разные направления — кластер исходного запроса;
-- предложения одного документа NER.
+Run ≥3 seeds for trained models. On each bootstrap resample, draw one random seed per system and compute $\Delta_b$ so the CI captures both data and training variance. Report seed `mean ± std` and difference CI.
 
-Иначе CI получаются слишком узкими.
+## Permutation Test
 
-## Сиды
+For small sets or exact p-values, randomly swap A and B outputs per cluster and compute the fraction of permutations with $\Delta \ge \Delta_{\text{obs}}$.
 
-Для обучаемой модели ≥ 3 сидов. Простой способ — для каждого ресэмпла взять случайный сид каждой системы и пересчитать разность. Так CI отражает и дисперсию данных, и дисперсию обучения. Отчёт — среднее ± std по сидам и CI разности.
+## Multiple Comparisons
 
-## Перестановочный тест
+Testing 9 directions × multiple metrics inflates false positives:
+- Follow the pre-specified gate rule (e.g., no direction worse, mean better) when defined.
+- Otherwise apply Holm–Bonferroni across the test family.
+- Publish every CI, not only statistically significant ones.
 
-Альтернатива бутстрепу для p-value: случайно меняются местами выходы A и B на каждом примере, считается доля перестановок с разностью ≥ наблюдаемой. Подходит для малых наборов и любых метрик.
+## Power & Sample Size
 
-## Множественные сравнения
+- For proportion $p$ on $n$ items, 95% CI half-width $\approx 1.96 \sqrt{p(1-p)/n}$ ($p=0.8, n=300 \Rightarrow \pm 4.5$ pp; $n=1000 \Rightarrow \pm 2.5$ pp).
+- Size human review sheets to achieve the required CI width before labeling.
+- Paired evaluation sharply narrows difference CIs because system errors correlate.
 
-Решение по 9 направлениям × нескольким метрикам повышает шанс ложной победы. Варианты:
+## Aggregation
 
-- правило гейта задано заранее (например «ни одно направление не хуже, среднее лучше») — тогда оно и есть критерий;
-- иначе поправка Холма–Бонферрони по семейству проверок;
-- все CI публикуются, а не только значимые.
-
-## Мощность и объём выборки
-
-- Для доли p на n примерах полуширина 95 % CI ≈ `1.96 × sqrt(p(1−p)/n)`. При p = 0.8 и n = 300 это ≈ ±4.5 п.п.; при n = 1000 — ±2.5 п.п.
-- Минимально обнаружимый эффект на малом kk-наборе может быть больше ожидаемого улучшения. Объём ручной разметки планируется по нужной ширине CI.
-- Парный дизайн сильно сужает CI разности по сравнению с независимыми выборками: ошибки систем коррелируют.
-
-## Усреднение
-
-- Macro по языкам и направлениям — для решений о справедливости между языками; micro — для общего объёма.
-- Нельзя сравнивать среднее по разным наборам примеров: сначала общий пересекающийся набор.
+- Use **macro** across languages/directions for fairness decisions; **micro** for aggregate volume.
+- Never compare averages across mismatched example sets; intersect IDs first.

@@ -1,8 +1,7 @@
-"""Agent Skills in `.agents/skills` follow the Agent Skills spec and are mirrored to `.claude/skills` unchanged."""
+"""Agent Skills in `.agents/skills` follow the Agent Skills spec as the single canonical directory."""
 
 from __future__ import annotations
 
-import importlib.util
 import re
 from pathlib import Path
 
@@ -29,6 +28,14 @@ def test_skills_exist() -> None:
     assert len(skill_dirs) >= 10
 
 
+def test_no_claude_skill_duplication() -> None:
+    assert not (ROOT / "CLAUDE.md").exists(), "CLAUDE.md must not exist; AGENTS.md is canonical"
+    assert not (ROOT / ".claude" / "skills").exists(), (
+        ".claude/skills must not exist; .agents/skills is canonical"
+    )
+    assert not (ROOT / "scripts" / "sync_skills.py").exists(), "scripts/sync_skills.py is obsolete"
+
+
 @pytest.mark.parametrize("skill", skill_dirs, ids=lambda p: p.name)
 def test_skill_frontmatter_follows_spec(skill: Path) -> None:
     meta, body = _frontmatter(skill / "SKILL.md")
@@ -49,11 +56,3 @@ def test_relative_links_resolve(doc: Path) -> None:
             continue
         path = (doc.parent / target.split("#", 1)[0]).resolve()
         assert path.exists(), f"{doc.relative_to(ROOT)}: broken link {target}"
-
-
-def test_claude_mirror_is_in_sync() -> None:
-    spec = importlib.util.spec_from_file_location("sync_skills", ROOT / "scripts" / "sync_skills.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert module.diff() == [], "run: python scripts/sync_skills.py"

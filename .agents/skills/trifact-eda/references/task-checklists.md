@@ -1,68 +1,68 @@
-# Чек-листы EDA по типам данных
+# Task-Specific EDA Checklists
 
-Каждый пункт: что посчитать → какое решение он может изменить. Разрезы — язык × источник × сплит × origin.
+Format: **what to measure → decision it informs**. Slice every metric by `language × source × split × origin`.
 
-## Корпуса (raw, clean, curated)
+## Corpora (`raw`, `clean`, `curated`)
 
-- Признаки фильтров качества до и после отсева, корреляции признаков, сверка с ручной выборкой → пороги `curation.quality`.
-- Boilerplate: частые строки по источнику, навигация, cookie-баннеры, шаблоны сайтов → список boilerplate-строк, фильтр повторов строк.
-- Лексика: частотный словарь, доля hapax, наклон Ципфа, n-граммы → признаки машинного или шаблонного текста.
-- Домены и время: хосты, TLD, даты → перевзвешивание, временной срез для `real_docs`.
-- Смешение языков внутри документа (`para_lang`) → фильтр по абзацам или разметка кода переключения.
-- Сущности Wikidata: покрытие меток и алиасов kk/ru/en, sitelinks, типы → стратегия связывания kk через ru/en-метки.
+- Quality-filter signals before/after filtering, signal correlations, agreement with human review → `curation.quality` thresholds.
+- Boilerplate: high-frequency lines per source (nav, cookie banners, templates) → boilerplate list, duplicate-line filter.
+- Vocabulary: frequency spectrum, hapax ratio, Zipf slope, top n-grams → detect machine/template text.
+- Domains & time: host, TLD, publish dates → reweighting, temporal slice for `real_docs`.
+- Intra-document language mixing (`para_lang`) → paragraph filtering or code-switch handling.
+- Wikidata `entities`: `kk`/`ru`/`en` label & alias coverage, sitelinks, type distribution → cross-lingual `kk` linking strategy.
 
-## Документы и OCR (`data/eval/docproc`, `real_docs`, загрузки)
+## Documents & OCR (`data/eval/docproc`, `real_docs`, uploads)
 
-- CER/WER по виду × языку, распределение по документам (хвост хуже среднего) → маршрутизация, пороги `docproc.router`.
-- Сохранность казахских букв: доля `ә ғ қ ң ө ұ ү һ і` в выходе против эталона и матрица замен символов (`қ→к`, `ң→н`, `ү→у`) → выбор OCR-движка.
-- Доля страниц без текстового слоя, с битым слоем, с таблицами, многоколоночных → нагрузка на Docling и OCR, оценка с/док.
-- Причины `ParseError` и их доли → лимиты `docproc.limits`, приоритет исправлений.
-- Длина документа в страницах и символах → таймауты, бюджет RAM.
+- CER/WER by `kind × lang`, tail quantiles (p90) → routing and `docproc.router` thresholds.
+- Kazakh letter retention (`ә ғ қ ң ө ұ ү һ і`) vs. reference and confusion matrix (`қ→к`, `ң→н`, `ү→у`) → OCR engine selection.
+- Share of pages with no text layer, broken encoding, tables, multi-column layout → Docling/OCR load and latency budget.
+- `ParseError` reason distribution → `docproc.limits` and parser fixes.
+- Page count and char length tails → timeouts and RAM limits.
 
 ## NER
 
-- Распределение меток по типам, плотность сущностей на предложение, длина спана в токенах → веса, `max_length`.
-- Валидность BIO (I- без B-, смена типа внутри спана), вложенные и пересекающиеся спаны в источнике → правила конвертации.
-- Согласованность: одна поверхность с разными типами в одном источнике (метонимия «Казахстан» ORG/LOC), газеттир-согласие → шум, фильтр silver.
-- Суффиксы казахского: доля сущностей с падежным окончанием внутри токена («Астанада», «Абайдың») → нормализация алиасов для linking.
-- Silver против gold: матрица типов на общих поверхностях, доля пропущенных сущностей (заглавные слова без метки) → `ner.silver.*`, curriculum.
-- Частотность сущностей: доля eval-сущностей, невиданных в train → разрез unseen-F1.
+- Label distribution, entity density per sentence, span token length → `max_length`, class handling.
+- BIO validity (`I-` without `B-`, type switch mid-span), nested/overlapping spans → conversion rules.
+- Consistency: same surface with multiple types in one source (ORG/LOC metonymy), gazetteer agreement → noise estimate, silver filter.
+- Kazakh suffixes: share of entities with case/possessive endings inside the token (`Астанада`, `Абайдың`) → alias normalization for linking.
+- Silver vs. gold: type confusion on shared surfaces, missed-entity rate (unlabeled capitalized words) → `ner.silver.*`, curriculum.
+- Entity frequency: share of eval surfaces unseen in train → `unseen-F1` slice.
 
-## Entity Linking и KB
+## Entity Linking & KB
 
-- Неоднозначность: число QID на нормализованный алиас по языкам, распределение приоров → ранжирование, порог NIL.
-- Покрытие: доля упоминаний gold, чей QID есть в KB, и чей алиас находится точным поиском → recall генерации кандидатов.
-- Популярность: распределение sitelinks у целевых сущностей → смещение к популярным.
+- Ambiguity: QIDs per normalized alias by language, prior distribution → ranker features, NIL threshold.
+- Coverage: share of gold mentions whose QID is in KB and whose alias matches exact lookup → candidate recall ceiling.
+- Popularity: sitelink distribution of target entities → popularity bias audit.
 
 ## Retrieval
 
-- Релевантных на запрос, длины запросов и пассажей в токенах эмбеддера → `max_length`, чанкинг.
-- BM25-ранг позитива среди негативов (лёгкость) и отношение оценок негатив/позитив (сложность) → стратегия hard negatives.
-- Лексическое пересечение запрос–пассаж по направлениям → ожидаемая польза sparse-ноги.
-- Доля ложных негативов: ручная проверка 100 топ-негативов → порог отсева при майнинге.
-- Распределение по 9 направлениям и по origin (человеческие, MT, синтетика, параллельные предложения) → веса смеси.
+- Positives per query; query and passage lengths in embedder tokens → `max_length`, chunking.
+- BM25 rank of positive among negatives (easiness) and negative/positive score ratio (hardness) → hard-negative mining.
+- Query–passage lexical overlap per direction → expected sparse-leg gain.
+- False-negative rate: manual audit of 100 top mined negatives → cross-encoder filtering threshold.
+- Volume across 9 language directions and origins (human, MT, synthetic, parallel sentences) → sampling weights.
 
-## QA и SFT
+## QA & SFT
 
-- Длины вопроса, контекста, ответа; позиция ответа в контексте → бюджет контекста, «lost in the middle».
-- Доля неотвечаемых и межъязыковых → соответствие `sft.mix`.
-- Типы вопросов (кто/когда/сколько), пересечение вопроса с контекстом → ярлыки, сложность.
-- Цитаты: число на ответ, валидность id, язык ответа против запрошенного → фильтры синтетики.
-- Пересечение вопросов SFT с eval → исключение.
+- Question, context, and answer lengths; answer position in context → context budget, lost-in-the-middle risk.
+- Unanswerable and cross-lingual shares → compliance with `sft.mix`.
+- Question types (`who`/`when`/`how many`), question–context overlap → shortcut audit.
+- Citations: count per answer, ID validity, answer language vs. requested → synthetic filters.
+- SFT ↔ eval question overlap → leakage removal.
 
 ## NLI
 
-- Баланс классов по языкам и origin, длины посылки и гипотезы в токенах модели → `max_length`, окна.
-- Hypothesis-only baseline, лексические сигналы (отрицания) → «трудное» подмножество для оценки.
-- Согласованность меток MT-перевода (модель-судья с оговоркой о её обучении) → фильтр kk.
+- Class balance by language/origin; premise & hypothesis token lengths → `max_length`, windowing.
+- Hypothesis-only baseline and lexical cues (negation) → hard evaluation subset.
+- MT label consistency (with caveat that judge was trained on XNLI) → `kk` filtering.
 
-## Синтетика
+## Synthetic Data
 
-- Воронка фильтров: доля отсева на каждом шаге по языкам → где теряется объём.
-- Разнообразие: distinct-1/2/3, топ первых n-грамм, доля шаблонных начал → правка промпта, температура.
-- Покрытие тем: распределение исходных чанков по доменам и длинам против корпуса → сэмплирование чанков.
-- Сравнение с человеческими данными: длины, типы вопросов, лексическое пересечение с контекстом → сдвиг синтетика ↔ eval.
+- Filter funnel: drop rate per filter and language → bottleneck identification.
+- Diversity: distinct-1/2/3, top opening n-grams, template share → prompt/temperature tuning.
+- Topic coverage: source chunk domain/length distribution vs. curated corpus → chunk sampling.
+- Synthetic vs. human eval shift (lengths, question types, lexical overlap) → mix adjustment.
 
-## Train против eval
+## Train vs. Eval
 
-- JS-дивергенция длин, классификаторный тест двух выборок, пересечение сущностей, вопросов, документов и near-дубли → утечка или сдвиг, отдельные разрезы метрик.
+- Length JS-divergence, classifier two-sample test, entity/question/doc/near-dup overlap → leakage fix or explicit shift slice.
