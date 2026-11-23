@@ -157,6 +157,16 @@ def build_gold(root: Path, labels: dict[str, Any]) -> pl.DataFrame:
     )
 
 
+def exclude_gold_test_overlap(gold: pl.DataFrame) -> tuple[pl.DataFrame, list[dict[str, Any]]]:
+    keys = gold.select(key_expr(pl.col("tokens").list.join(" "))).to_series()
+    test_keys = keys.filter(gold["split"] == "test").unique()
+    overlap = gold["split"].is_in(["train", "validation"]) & (keys != "") & keys.is_in(test_keys.implode())
+    drops = gold.filter(overlap).group_by("source", "lang", "split").len().sort("source", "lang", "split")
+    return gold.with_columns(
+        split=pl.when(overlap).then(pl.lit("drop")).otherwise(pl.col("split"))
+    ), drops.to_dicts()
+
+
 # ----------------------------------------------------------------------------- silver pass 1: sentences
 
 
@@ -606,7 +616,7 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.perf_counter()
     lake = LakeConfig.from_params(params["lake"], root)
     with ResourceMonitor() as mon:
-        gold = build_gold(root, labels)
+        gold, gold_overlap = exclude_gold_test_overlap(build_gold(root, labels))
         log.info(
             "gold: %s",
             gold.group_by("source", "lang", "split").len().sort("source", "lang", "split").to_dicts(),
@@ -627,6 +637,7 @@ def main(argv: list[str] | None = None) -> int:
         for split in ("train", "validation", "test"):
             w.write(f"gold_{split}", gold.filter(pl.col("split") == split).select(cols))
         metrics: dict[str, Any] = {
+            "gold_test_overlap_dropped": gold_overlap,
             "gold": gold.filter(pl.col("split") != "drop")
             .group_by("source", "lang", "split")
             .agg(

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
-from trifact.data.build_ner import gazetteer_tag, prf, tag_unit
+from trifact.data.build_ner import exclude_gold_test_overlap, gazetteer_tag, prf, tag_unit
 
 CFG = {"capital_filter": True}
 
@@ -65,3 +65,20 @@ def test_gazetteer_tag_longest_match_and_prf() -> None:
     assert tags == ["B-LOC", "I-LOC", "O", "B-LOC"]
     m = prf([["B-LOC", "I-LOC", "O", "B-PER"]], [tags])
     assert m["LOC"]["precision"] == 0.5 and m["PER"]["recall"] == 0.0
+
+
+def test_ner_drops_train_and_validation_copies_of_gold_test() -> None:
+    gold = pl.DataFrame(
+        {
+            "source": ["wikiann", "nerel", "wikineural", "wikiann"],
+            "lang": ["ru"] * 4,
+            "split": ["test", "train", "validation", "train"],
+            "tokens": [["Москва."], ["МОСКВА", "!"], ["Москва"], ["Казань"]],
+        }
+    )
+
+    filtered, drops = exclude_gold_test_overlap(gold)
+
+    assert filtered["split"].to_list() == ["test", "drop", "drop", "train"]
+    assert [row["len"] for row in drops] == [1, 1]
+    assert filtered.row(0) == gold.row(0)
