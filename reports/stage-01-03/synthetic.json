@@ -1,0 +1,102 @@
+{
+  "status": "passed",
+  "seconds": 153.6,
+  "mlflow_snapshot": "workspace-data/stage-01-03-reconcile/2026-11-23-cloud/synthetic/mlflow.db",
+  "result": {
+    "queries": {
+      "rows": {
+        "en": 33893,
+        "kk": 34123,
+        "ru": 33954
+      },
+      "drops": {
+        "round_trip": {
+          "kk": 6121,
+          "ru": 8417,
+          "en": 8414
+        },
+        "copy": {
+          "kk": 1669,
+          "ru": 34,
+          "en": 14
+        },
+        "language": {
+          "ru": 243,
+          "kk": 689,
+          "en": 155
+        },
+        "parse": {
+          "kk": 77,
+          "ru": 23,
+          "en": 23
+        },
+        "length": {
+          "en": 189,
+          "kk": 6,
+          "ru": 15
+        },
+        "duplicate": {
+          "ru": 12,
+          "en": 10,
+          "kk": 13
+        },
+        "not_generated": {
+          "kk": 62334,
+          "ru": 62334,
+          "en": 62334
+        }
+      }
+    },
+    "qa": {
+      "rows": {
+        "en": 1722,
+        "kk": 7385,
+        "ru": 1908
+      },
+      "drops": {
+        "citation": {
+          "kk": 7567,
+          "ru": 1780,
+          "en": 1671
+        },
+        "refusal": {
+          "kk": 1939,
+          "ru": 541,
+          "en": 440
+        },
+        "duplicate": {
+          "kk": 94,
+          "ru": 4,
+          "en": 2
+        },
+        "language": {
+          "kk": 40,
+          "ru": 73,
+          "en": 2
+        },
+        "parse": {
+          "kk": 1001,
+          "ru": 159,
+          "en": 108
+        },
+        "not_generated": {
+          "kk": 4889,
+          "ru": 9122,
+          "en": 9806
+        },
+        "nli": {
+          "kk": 3779,
+          "en": 959,
+          "ru": 1151
+        }
+      }
+    }
+  },
+  "git_sha": "6bbf6db3fa96dc8d6cb214504834c839e4183951",
+  "cloud_runtime": "Colab Standard CPU",
+  "cost_usd": 0,
+  "dvc_md5": {
+    "queries": "f4156e18c1cc0867435b04cd67e446f1.dir",
+    "qa": "09c42ed866a332fa3020f6e29cdfa2b2.dir"
+  }
+}

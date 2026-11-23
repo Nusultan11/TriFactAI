@@ -2292,23 +2292,28 @@ stages:
       size: 24448651281
       nfiles: 262
   synthetic_queries:
-    cmd: python -m trifact.data.synthetic import --kind queries --kaggle-out 
+    cmd: python -m trifact.data.synthetic import --kind queries --kaggle-out
       data/external/kaggle/teacher_queries/out
+      data/stage3_teacher/teacher_queries2
     deps:
     - path: data/external/kaggle/teacher_queries
       hash: md5
       md5: dc044607cda8636cf70844ab511dc474.dir
       size: 31624255
       nfiles: 12
-    - path: data/task/chunks
+    - path: data/stage3_teacher/teacher_queries2
       hash: md5
-      md5: 7846402a0010600118b33dcb7627fdab.dir
-      size: 24448651281
-      nfiles: 262
+      md5: 30ea75e0033c7a071dbcab3d46adb7c5.dir
+      size: 36071022
+      nfiles: 15
+    - path: data/task/chunks/dataset.yaml
+      hash: md5
+      md5: 40fc552b23588db18ed34745399e0f3a
+      size: 47334
     - path: src/trifact/data/synthetic.py
       hash: md5
-      md5: 2b1e5f9fc3c4a24e1f32668230295b43
-      size: 26745
+      md5: 39025a3c88af7f3f943276230664ed47
+      size: 35023
     params:
       params.yaml:
         scale.min_kk_share: 0.3
@@ -2330,39 +2335,52 @@ stages:
             ctx_per_slot: 4096
             temperature: 0.7
             top_p: 0.9
+            batch: 4096
+            ubatch: 2048
             extra_args:
             - -kvu
           time_budget_h: 11.0
     outs:
     - path: data/task/synthetic/queries
       hash: md5
-      md5: bdbeae96844a804cc1e3ba7e10bb6706.dir
-      size: 21528132
+      md5: f4156e18c1cc0867435b04cd67e446f1.dir
+      size: 49932345
       nfiles: 8
   synthetic_qa:
-    cmd: python -m trifact.data.synthetic import --kind qa --kaggle-out 
-      data/external/kaggle/teacher_qa/out && python -m trifact.data.synthetic 
-      finalize --kind qa --scores data/external/kaggle/nli_score_qa
+    cmd: python -m trifact.data.synthetic import --kind qa --kaggle-out
+      data/external/kaggle/teacher_qa/out data/stage3_teacher/teacher_qa2 &&
+      python -m trifact.data.synthetic finalize --kind qa --scores
+      data/stage3_teacher/nli_score_qa_v4 --scored-input
+      data/stage3_teacher/nli_input_v4
     deps:
-    - path: data/external/kaggle/nli_score_qa
-      hash: md5
-      md5: 259d00bb72afe7d96ee621bfef188030.dir
-      size: 893195
-      nfiles: 7
     - path: data/external/kaggle/teacher_qa
       hash: md5
       md5: 9d2469d8fc6f69e970b05c32b7569916.dir
       size: 27439595
       nfiles: 8
-    - path: data/task/chunks
+    - path: data/stage3_teacher/nli_input_v4
       hash: md5
-      md5: 7846402a0010600118b33dcb7627fdab.dir
-      size: 24448651281
-      nfiles: 262
+      md5: 1c1d6d7f07f977e68e2d4b1364c758fe.dir
+      size: 9503707
+      nfiles: 2
+    - path: data/stage3_teacher/nli_score_qa_v4
+      hash: md5
+      md5: 1c52e15d54001b2a81a3334eb73a6533.dir
+      size: 5179057
+      nfiles: 6
+    - path: data/stage3_teacher/teacher_qa2
+      hash: md5
+      md5: 9acca30628e042d434bb5656d9167039.dir
+      size: 43691634
+      nfiles: 7
+    - path: data/task/chunks/dataset.yaml
+      hash: md5
+      md5: 40fc552b23588db18ed34745399e0f3a
+      size: 47334
     - path: src/trifact/data/synthetic.py
       hash: md5
-      md5: 2b1e5f9fc3c4a24e1f32668230295b43
-      size: 26745
+      md5: 39025a3c88af7f3f943276230664ed47
+      size: 35023
     params:
       params.yaml:
         scale.min_kk_share: 0.3
@@ -2384,6 +2402,8 @@ stages:
             ctx_per_slot: 4096
             temperature: 0.7
             top_p: 0.9
+            batch: 4096
+            ubatch: 2048
             extra_args:
             - -kvu
           time_budget_h: 11.0
@@ -2395,8 +2415,8 @@ stages:
     outs:
     - path: data/task/synthetic/qa
       hash: md5
-      md5: 83a2e323fda7922d255a42a78dbe2c44.dir
-      size: 4042848
+      md5: 09c42ed866a332fa3020f6e29cdfa2b2.dir
+      size: 17771518
       nfiles: 8
   build_pairs:
     cmd: python -m trifact.data.build_pairs --synthetic 
