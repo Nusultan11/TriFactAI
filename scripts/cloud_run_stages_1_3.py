@@ -311,14 +311,14 @@ def step_build_ner(uv: list[str]) -> dict[str, Any]:
         "dvc",
         "pull",
         "split",
-        "data/task/kb/dataset.yaml",
         "wikitext",
-        "data/raw/wikidata/source.yaml",
         "acquire@kaznerd",
         "acquire@wikiann",
         "acquire@wikineural",
         "acquire@nerel",
     )
+    run(*uv, "dvc", "pull", "data/raw/wikidata/source.yaml")
+    run(*uv, "dvc", "pull", "data/task/kb/dataset.yaml")
     kb = ROOT / "data/task/kb"
     titles = [shard for shard in DatasetManifest.read(kb).shards if shard.table == "titles"]
     if not titles:
@@ -340,6 +340,7 @@ def step_build_ner(uv: list[str]) -> dict[str, Any]:
     silver = manifest.rows_of("silver_train")
     if set(silver) != {"kk", "ru", "en"} or silver != report["silver"]["kept_by_lang"]:
         raise RuntimeError("Silver NER report does not match the output manifest")
+    report["silver"]["target_met"] = sum(silver.values()) >= 5_000_000
     push_verified(uv, "build_ner")
     return report
 
@@ -349,7 +350,8 @@ def step_synthetic(uv: list[str]) -> dict[str, Any]:
 
     from trifact.lake.manifest import DatasetManifest, verify_dataset
 
-    run(*uv, "dvc", "pull", "data/external.dvc", "data/stage3_teacher.dvc", "data/task/chunks/dataset.yaml")
+    for target in ("data/external.dvc", "data/stage3_teacher.dvc", "data/task/chunks/dataset.yaml"):
+        run(*uv, "dvc", "pull", target)
     validate_nli_scores_dir(ROOT / "data/stage3_teacher/nli_score_qa_v4")
     run(*uv, "dvc", "repro", "--single-item", "synthetic_queries")
     q_problems = verify_dataset(ROOT / "data/task/synthetic/queries", deep=True)
@@ -490,6 +492,7 @@ def sync_reports_to(out_dir: Path) -> None:
     rep_dst.mkdir(parents=True, exist_ok=True)
     for rel in (
         "reports/ner_data.json",
+        "data/review/ner_silver/to_label.csv",
         "reports/synthetic_queries.json",
         "reports/synthetic_qa.json",
         "reports/retrieval_data.json",
