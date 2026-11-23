@@ -308,19 +308,17 @@ def step_wikitext_merge(uv: list[str], drive: Path) -> dict[str, Any]:
 def step_build_ner(uv: list[str]) -> dict[str, Any]:
     from trifact.lake.manifest import DatasetManifest, verify_dataset
 
-    run(
-        *uv,
-        "dvc",
-        "pull",
+    for target in (
         "split",
         "wikitext",
         "acquire@kaznerd",
         "acquire@wikiann",
         "acquire@wikineural",
         "acquire@nerel",
-    )
-    run(*uv, "dvc", "pull", "data/raw/wikidata/source.yaml")
-    run(*uv, "dvc", "pull", "data/task/kb/dataset.yaml")
+        "data/raw/wikidata/source.yaml",
+        "data/task/kb/dataset.yaml",
+    ):
+        run(*uv, "dvc", "pull", target)
     kb = ROOT / "data/task/kb"
     titles = [shard for shard in DatasetManifest.read(kb).shards if shard.table == "titles"]
     if not titles:
