@@ -3,7 +3,16 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
-from trifact.data.eda import hist, iin_valid, luhn, merge, quantiles_from_hist, text_profile
+from trifact.data.eda import (
+    accumulate,
+    combine,
+    hist,
+    iin_valid,
+    luhn,
+    merge,
+    quantiles_from_hist,
+    text_profile,
+)
 
 
 def test_merge_and_quantiles() -> None:
@@ -28,3 +37,22 @@ def test_text_profile_scripts_encoding_pii() -> None:
 def test_iin_and_luhn() -> None:
     assert luhn("4111 1111 1111 1111") and not luhn("4111 1111 1111 1112")
     assert not iin_valid("000000000000")
+
+
+def test_incremental_accumulate_matches_combine() -> None:
+    import copy
+
+    parts = [
+        {
+            "key": ("src", "kk", "part"),
+            "res": {"rows": 2, "text": {"text": {"docs": 2, "extremes": {"a": []}}}},
+        },
+        {
+            "key": ("src", "kk", "part"),
+            "res": {"rows": 3, "text": {"text": {"docs": 3, "extremes": {"a": []}}}},
+        },
+    ]
+    acc: dict[tuple[str, str, str], dict] = {}
+    for p in copy.deepcopy(parts):
+        accumulate(acc, p)
+    assert acc == combine(copy.deepcopy(parts))

@@ -20,6 +20,7 @@ Tokenizer fertility and context-length shares come from `corpus_stats` (sample o
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import logging
 import os
@@ -44,7 +45,7 @@ from trifact.lake.stats import ResourceMonitor, log_mlflow
 log = logging.getLogger("trifact.eda")
 OUT = ROOT / "reports" / "eda"
 BATCH = 20_000
-BATCH_BYTES = 32 * 2**20  # uncompressed bytes per batch: words of a batch are exploded into one row each
+BATCH_BYTES = 16 * 2**20  # uncompressed bytes per batch: words of a batch are exploded into one row each
 VOCAB_CHARS = (
     200_000  # vocabulary and line counts read the first N characters of a document (a few are 100+ MB)
 )
@@ -392,6 +393,7 @@ def profile_shard(args: tuple[str, str, str, str, list[str], dict[str, Any]]) ->
         res["quality"] = quality_profile(path, opt["quality_signals"])
     if opt.get("lang") and "lang_score" in schema:
         res["langid"] = langid_profile(path)
+    gc.collect()
     return {"key": (source, lang, table), "res": res}
 
 
@@ -523,22 +525,30 @@ def finalize(key: tuple[str, str, str], res: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def accumulate(
+    acc: dict[tuple[str, str, str], dict[str, Any]], p: dict[str, Any]
+) -> dict[tuple[str, str, str], dict[str, Any]]:
+    """Merge one shard profile into the running accumulator (avoids holding all shard dicts in RAM)."""
+    k = tuple(p["key"])
+    r = p["res"]
+    # lists that must not be added element-wise: keep as list of parts
+    for t in r.get("text", {}).values():
+        for f in ("top_words", "top_lines", "vocab_sample"):
+            if f in t:
+                t[f] = [t[f]]
+        t["extremes"] = [t["extremes"]]
+    if "id" in r:
+        r["id"] = {**r["id"], "hash_file": [r["id"]["hash_file"]], "column": [r["id"]["column"]]}
+    if "quality" in r:
+        r["quality"]["corr_sample"] = [r["quality"]["corr_sample"]]
+    acc[k] = merge(acc.get(k), r)  # type: ignore[index]
+    return acc
+
+
 def combine(parts: list[dict[str, Any]]) -> dict[tuple[str, str, str], dict[str, Any]]:
     acc: dict[tuple[str, str, str], dict[str, Any]] = {}
     for p in parts:
-        k = tuple(p["key"])
-        r = p["res"]
-        # lists that must not be added element-wise: keep as list of parts
-        for t in r.get("text", {}).values():
-            for f in ("top_words", "top_lines", "vocab_sample"):
-                if f in t:
-                    t[f] = [t[f]]
-            t["extremes"] = [t["extremes"]]
-        if "id" in r:
-            r["id"] = {**r["id"], "hash_file": [r["id"]["hash_file"]], "column": [r["id"]["column"]]}
-        if "quality" in r:
-            r["quality"]["corr_sample"] = [r["quality"]["corr_sample"]]
-        acc[k] = merge(acc.get(k), r)  # type: ignore[index]
+        accumulate(acc, p)
     return acc
 
 
@@ -691,7 +701,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
     root = (ROOT / params["lake"]["root"]).resolve()
-    workers = args.workers or params["curation"]["workers"]
+    workers = args.workers or min(int(params["curation"]["workers"]), 2)
     work = root / ".cache" / "work" / f"eda_{args.layer}"
     work.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
@@ -712,14 +722,13 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 jobs = derived_jobs(root, args.layer, work, params["seed"], signals)
             os.environ["POLARS_MAX_THREADS"] = str(max(1, (os.cpu_count() or 1) // workers))
-            parts = []
+            acc: dict[tuple[str, str, str], dict[str, Any]] = {}
             jobs.sort(key=lambda j: -os.path.getsize(j[0]))  # big shards first: shorter tail
             with ProcessPoolExecutor(workers) as pool:
                 for i, p in enumerate(pool.map(profile_shard, jobs, chunksize=1)):
-                    parts.append(p)
+                    accumulate(acc, p)
                     if i % 20 == 0:
                         log.info("%s: %d/%d shards", args.layer, i + 1, len(jobs))
-            acc = combine(parts)
             report = {"/".join(k): finalize(k, v) for k, v in sorted(acc.items())}
     meta = {"layer": args.layer, "seconds": round(time.perf_counter() - t0, 1), "workers": workers,
             "peak_rss_mb": mon.stats(1, 0, workers).peak_rss_mb}  # fmt: skip
