@@ -135,16 +135,22 @@ stages:
     outs: [{data/task/chunks: {persist: true}}]
 
   synthetic_queries: # import + filters of the Kaggle teacher runs (ADR-0015, ADR-0020)
-    cmd: python -m trifact.data.synthetic import --kind queries --kaggle-out data/external/kaggle/teacher_queries/out
-    deps: [src/trifact/data/synthetic.py, data/task/chunks, data/external/kaggle/teacher_queries]
+    cmd: >-
+      python -m trifact.data.synthetic import --kind queries
+      --kaggle-out data/external/kaggle/teacher_queries/out data/stage3_teacher/teacher_queries2
+    deps: [src/trifact/data/synthetic.py, data/task/chunks, data/external/kaggle/teacher_queries,
+           data/stage3_teacher/teacher_queries2]
     params: [teacher, sft.mix, scale.min_kk_share]
     outs: [data/task/synthetic/queries]
 
   synthetic_qa:      # import writes the claim-level NLI pairs that the Kaggle nli_score run scored
     cmd: >-
-      python -m trifact.data.synthetic import --kind qa --kaggle-out data/external/kaggle/teacher_qa/out &&
-      python -m trifact.data.synthetic finalize --kind qa --scores data/external/kaggle/nli_score_qa
-    deps: [src/trifact/data/synthetic.py, data/task/chunks, data/external/kaggle/teacher_qa, data/external/kaggle/nli_score_qa]
+      python -m trifact.data.synthetic import --kind qa
+      --kaggle-out data/external/kaggle/teacher_qa/out data/stage3_teacher/teacher_qa2 &&
+      python -m trifact.data.synthetic finalize --kind qa
+      --scores data/stage3_teacher/nli_score_qa_v4 --scored-input data/stage3_teacher/nli_input_v4
+    deps: [src/trifact/data/synthetic.py, data/task/chunks, data/external/kaggle/teacher_qa,
+           data/stage3_teacher/teacher_qa2, data/stage3_teacher/nli_score_qa_v4, data/stage3_teacher/nli_input_v4]
     params: [teacher, sft.mix, scale.min_kk_share, verification.nli_job]
     outs: [data/task/synthetic/qa]
 

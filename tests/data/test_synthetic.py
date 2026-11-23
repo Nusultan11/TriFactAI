@@ -63,3 +63,8 @@ def test_finalize_qa_scores_fails_on_missing_or_incomplete_scores(tmp_path) -> N
     final_kept, dropped = synthetic.finalize_qa_scores(kept, scores_dir, thr=0.7)
     assert final_kept["id"].to_list() == ["qa/1", "qa/u"]
     assert dropped.select("id", "reason").rows() == [("qa/2", "nli")]
+
+    expected = tmp_path / "pairs.parquet"
+    pl.DataFrame({"id": ["qa/1@c0@w0", "qa/1@c1@w0", "qa/2@c0@w0"]}).write_parquet(expected)
+    with pytest.raises(ValueError, match="1 missing, 0 unexpected"):
+        synthetic.finalize_qa_scores(kept, scores_dir, thr=0.7, expected_pairs=expected)

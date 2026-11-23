@@ -1,0 +1,6 @@
+outs:
+- md5: 3b87db61e0dbc7a1b6086b0dc7598db8.dir
+  size: 94445420
+  nfiles: 30
+  hash: md5
+  path: stage3_teacher

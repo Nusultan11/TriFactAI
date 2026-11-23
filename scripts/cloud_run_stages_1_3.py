@@ -10,7 +10,7 @@ Steps (selectable via --steps):
   2. build_ner       - rebuild gold + silver NER (>5M target) with ruwiki part 4 and push to DVC
   3. synthetic       - import combined teacher_queries + queries2 and finalize qa + qa2 with NLI scores
   4. train_and_eval  - rebuild build_pairs, build_sft, verify eval_leakage == 0, run task_eda
-  5. eda_rss_check   - run eda entities + curated (peak RSS <= lake.peak_ram_gb) and eda_report
+  5. eda_rss_check   - run full raw, clean, curated and entities EDA and validate peak RSS
 
 All DVC outputs are pushed immediately to the configured remote (`verify=true`), MLflow SQLite is
 atomically snapshotted after each step, and updated `dvc.lock` + `reports/` are persisted to
@@ -22,7 +22,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -49,6 +51,19 @@ def run(*cmd: Any, check: bool = True, env: dict[str, str] | None = None) -> sub
     args = [str(c) for c in cmd]
     print("+", " ".join(args), flush=True)
     return subprocess.run(args, cwd=ROOT, check=check, text=True, env=env)
+
+
+def push_verified(uv: list[str], stage: str) -> None:
+    run(*uv, "dvc", "push", stage)
+    status = subprocess.run(
+        [*uv, "dvc", "status", "--cloud", "--json", stage],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    if json.loads(status.stdout):
+        raise RuntimeError(f"DVC objects for {stage} are not synchronized: {status.stdout.strip()}")
 
 
 def sha256_file(path: Path) -> str:
@@ -91,7 +106,7 @@ def validate_nli_scores_dir(nli_dir: Path) -> list[Path]:
 
 def validate_rss_ceiling(meta: dict[str, Any], stage_name: str, max_ram_gb: float = 10.0) -> None:
     peak = meta.get("peak_rss_mb")
-    if not isinstance(peak, (int, float)) or peak <= 0:
+    if type(peak) not in (int, float) or not math.isfinite(peak) or peak <= 0:
         raise RuntimeError(f"{stage_name}: invalid or missing peak_rss_mb ({peak!r})")
     if peak > max_ram_gb * 1024:
         raise RuntimeError(f"{stage_name}: peak RSS {peak} MiB exceeds {max_ram_gb} GiB ceiling")
@@ -160,7 +175,10 @@ def setup_dvc_and_models(drive: Path, dvc_remote_url: str | None = None) -> list
             if token:
                 run(*uv, "dvc", "remote", "modify", "--local", "drive", "auth", "custom")
                 run(*uv, "dvc", "remote", "modify", "--local", "drive", "custom_auth_header", "Authorization")
-                run(*uv, "dvc", "remote", "modify", "--local", "drive", "password", f"Bearer {token}")
+                from dvc.repo import Repo
+
+                with Repo(str(ROOT)) as repo, repo.config.edit("local") as config:
+                    config["remote"]["drive"]["password"] = f"Bearer {token}"
     else:
         dvc_dir = drive / "dvc"
         assert (dvc_dir / "files" / "md5").is_dir(), f"DVC cache missing at {dvc_dir}"
@@ -190,10 +208,28 @@ def step_wikitext_merge(uv: list[str], drive: Path) -> dict[str, Any]:
         raise RuntimeError(f"Invalid ruwiki part 4 result.json (no shards): {res_file}")
     src = ROOT / "data/raw/wikipedia_wikitext"
     m = SourceManifest.read(src)
-    existing_paths = {s.path for s in m.shards}
+    existing_paths = {s.path: s for s in m.shards}
 
     # Verify all incoming part 4 artifacts before mutating the canonical dataset
     parsed_shards = [ShardEntry.model_validate(s_dict) for s_dict in info["shards"]]
+    from trifact.core.params import load_params
+
+    spec = load_params()["sources"]["wikipedia_wikitext"]
+    expected = next(f for f in spec["files"] if f["wiki"] == "ruwiki" and "articles4." in f["name"])
+    if (
+        m.revision != str(spec["revision"])
+        or info["file"] != expected
+        or info["url"] != f"{spec['base_url']}/ruwiki/{m.revision}/{expected['name']}"
+        or len({s.path for s in parsed_shards}) != len(parsed_shards)
+        or any(
+            s.lang != "ru" or not re.fullmatch(rf"ru/{s.table}-004-\d+\.parquet", s.path)
+            for s in parsed_shards
+        )
+        or {s.table for s in parsed_shards} != {"part", "redirects"}
+        or sum(s.rows for s in parsed_shards if s.table == "part") != info["kept"]
+        or sum(s.rows for s in parsed_shards if s.table == "redirects") != info["redirects"]
+    ):
+        raise RuntimeError(f"Unexpected ruwiki part 4 inventory: {res_file}")
     for se in parsed_shards:
         src_f = part4_dir / se.path
         if not src_f.is_file():
@@ -204,6 +240,8 @@ def step_wikitext_merge(uv: list[str], drive: Path) -> dict[str, Any]:
     added = 0
     for se in parsed_shards:
         if se.path in existing_paths:
+            if se != existing_paths[se.path]:
+                raise RuntimeError(f"Existing canonical shard differs from verified part 4: {se.path}")
             continue
         src_f = part4_dir / se.path
         dst_f = src / se.path
@@ -240,16 +278,15 @@ def step_wikitext_merge(uv: list[str], drive: Path) -> dict[str, Any]:
     if problems:
         raise RuntimeError(f"wikipedia_wikitext verify failed: {problems}")
     run(*uv, "dvc", "commit", "-f", "wikitext")
-    run(*uv, "dvc", "push", "wikitext")
-    status = run(*uv, "dvc", "status", "--cloud", "wikitext")
-    if status.returncode != 0:
-        raise RuntimeError("dvc status --cloud wikitext failed")
-    log_mlflow(
+    push_verified(uv, "wikitext")
+    logged = log_mlflow(
         "data",
         "wikipedia_wikitext",
         {"revision": m.revision, "code_version": m.code_version, "part4_added": added},
         {"rows": sum(s.rows for s in m.shards if s.table == "part"), "shards": len(m.shards)},
     )
+    if not logged:
+        raise RuntimeError("Failed to record the Wikipedia merge in MLflow")
     return {
         "status": "passed",
         "shards_added": added,
@@ -277,28 +314,28 @@ def step_build_ner(uv: list[str]) -> dict[str, Any]:
     problems = verify_dataset(ROOT / "data/task/ner", deep=True)
     if problems:
         raise RuntimeError(f"task/ner verify failed: {problems}")
-    run(*uv, "dvc", "push", "build_ner")
     rep = ROOT / "reports/ner_data.json"
     if not rep.is_file():
         raise RuntimeError(f"Missing NER report after build_ner: {rep}")
-    return json.loads(rep.read_text(encoding="utf-8"))
+    report = json.loads(rep.read_text(encoding="utf-8"))
+    from trifact.lake.manifest import DatasetManifest
+
+    manifest = DatasetManifest.read(ROOT / "data/task/ner")
+    silver = manifest.rows_of("silver_train")
+    if set(silver) != {"kk", "ru", "en"} or silver != report["silver"]["kept_by_lang"]:
+        raise RuntimeError("Silver NER report does not match the output manifest")
+    push_verified(uv, "build_ner")
+    return report
 
 
-def step_synthetic(uv: list[str], drive: Path) -> dict[str, Any]:
+def step_synthetic(uv: list[str]) -> dict[str, Any]:
     import polars as pl
 
     from trifact.lake.manifest import DatasetManifest, verify_dataset
 
-    run(*uv, "dvc", "pull", "data/external.dvc", "chunk_corpus")
-    q2 = drive / "workspace-data/kaggle/trifact-teacher-queries2/v1"
-    qa2 = drive / "workspace-data/kaggle/trifact-teacher-qa2/v1"
-    nli2 = drive / "workspace-data/kaggle/trifact-nli-score-qa2"
-
-    # Validate NLI scores exist BEFORE claiming synthetic completion
-    validate_nli_scores_dir(nli2)
-
-    q_runs = [ROOT / "data/external/kaggle/teacher_queries/out"] + ([q2] if q2.is_dir() else [])
-    run(*uv, "python", "-m", "trifact.data.synthetic", "import", "--kind", "queries", "--kaggle-out", *q_runs)
+    run(*uv, "dvc", "pull", "data/external.dvc", "data/stage3_teacher.dvc", "chunk_corpus")
+    validate_nli_scores_dir(ROOT / "data/stage3_teacher/nli_score_qa_v4")
+    run(*uv, "dvc", "repro", "--single-item", "synthetic_queries")
     q_problems = verify_dataset(ROOT / "data/task/synthetic/queries", deep=True)
     if q_problems:
         raise RuntimeError(f"task/synthetic/queries verify failed: {q_problems}")
@@ -309,12 +346,9 @@ def step_synthetic(uv: list[str], drive: Path) -> dict[str, Any]:
         raise RuntimeError("task/synthetic/queries kept table is empty")
     if q_kept.select(pl.concat_str("id", "q_lang", separator="|")).is_duplicated().any():
         raise RuntimeError("Duplicate (id, q_lang) found in task/synthetic/queries")
-    run(*uv, "dvc", "commit", "-f", "synthetic_queries")
-    run(*uv, "dvc", "push", "synthetic_queries")
+    push_verified(uv, "synthetic_queries")
 
-    qa_runs = [ROOT / "data/external/kaggle/teacher_qa/out"] + ([qa2] if qa2.is_dir() else [])
-    run(*uv, "python", "-m", "trifact.data.synthetic", "import", "--kind", "qa", "--kaggle-out", *qa_runs)
-    run(*uv, "python", "-m", "trifact.data.synthetic", "finalize", "--kind", "qa", "--scores", nli2)
+    run(*uv, "dvc", "repro", "--single-item", "synthetic_qa")
     qa_dir = ROOT / "data/task/synthetic/qa"
     qa_problems = verify_dataset(qa_dir, deep=True)
     if qa_problems:
@@ -327,8 +361,7 @@ def step_synthetic(uv: list[str], drive: Path) -> dict[str, Any]:
         raise RuntimeError("task/synthetic/qa kept table is empty")
     if qa_kept["id"].is_duplicated().any():
         raise RuntimeError("Duplicate id found in task/synthetic/qa")
-    run(*uv, "dvc", "commit", "-f", "synthetic_qa")
-    run(*uv, "dvc", "push", "synthetic_qa")
+    push_verified(uv, "synthetic_qa")
 
     return {
         "queries": json.loads((ROOT / "reports/synthetic_queries.json").read_text(encoding="utf-8")),
@@ -362,20 +395,20 @@ def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
     p_probs = verify_dataset(ROOT / "data/task/retrieval", deep=True)
     if p_probs:
         raise RuntimeError(f"task/retrieval verify failed: {p_probs}")
-    run(*uv, "dvc", "push", "build_pairs")
 
     run(*uv, "dvc", "repro", "--single-item", "build_sft")
     s_probs = verify_dataset(ROOT / "data/task/sft", deep=True)
     if s_probs:
         raise RuntimeError(f"task/sft verify failed: {s_probs}")
-    run(*uv, "dvc", "push", "build_sft")
 
     run(*uv, "dvc", "pull", "build_ner", "build_nli")
     run(*uv, "dvc", "repro", "--single-item", "eval_leakage")
     leak = validate_eval_leakage(ROOT / "reports/eval_leakage.json")
+    push_verified(uv, "build_pairs")
+    push_verified(uv, "build_sft")
 
     run(*uv, "dvc", "repro", "--single-item", "task_eda")
-    run(*uv, "dvc", "push", "task_eda")
+    push_verified(uv, "task_eda")
     return {
         "eval_leakage": leak,
         "retrieval": json.loads((ROOT / "reports/retrieval_data.json").read_text(encoding="utf-8")),
@@ -386,20 +419,35 @@ def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
 def step_eda_rss_check(uv: list[str]) -> dict[str, Any]:
     from trifact.core.params import load_params
 
-    max_ram_gb = float(load_params()["lake"]["peak_ram_gb"])
-    run(*uv, "dvc", "pull", "wikidata", "decontaminate", "eda@raw", "eda@clean", "task_eda")
-    run(*uv, "dvc", "repro", "--single-item", "eda@entities")
-    run(*uv, "dvc", "push", "eda@entities")
-    run(*uv, "dvc", "repro", "--single-item", "eda@curated")
-    run(*uv, "dvc", "push", "eda@curated")
-    ent = json.loads((ROOT / "reports/eda/entities.json").read_text(encoding="utf-8"))["meta"]
-    cur = json.loads((ROOT / "reports/eda/curated.json").read_text(encoding="utf-8"))["meta"]
-    validate_rss_ceiling(ent, "eda@entities", max_ram_gb)
-    validate_rss_ceiling(cur, "eda@curated", max_ram_gb)
-
+    params = load_params()
+    max_ram_gb = float(params["lake"]["peak_ram_gb"])
+    raw = ["wikidata", "wikitext"]
+    raw.extend(
+        f"acquire@{name}" for name in params["sources"] if name not in ("wikidata", "wikipedia_wikitext")
+    )
+    results = {}
+    for layer, inputs in (
+        ("entities", ["wikidata"]),
+        ("raw", raw),
+        ("clean", ["clean"]),
+        ("curated", ["dedup", "decontaminate"]),
+    ):
+        run(*uv, "dvc", "pull", *inputs)
+        stage = f"eda@{layer}"
+        run(*uv, "dvc", "repro", "--single-item", "--force", stage)
+        report = json.loads((ROOT / f"reports/eda/{layer}.json").read_text(encoding="utf-8"))
+        meta = report["meta"]
+        if meta["layer"] != layer or not report["profiles"]:
+            raise RuntimeError(f"Incomplete EDA profiles for {layer}")
+        validate_rss_ceiling(meta, stage, max_ram_gb)
+        push_verified(uv, stage)
+        results[layer] = meta
+    run(*uv, "dvc", "pull", "task_eda")
+    if not (ROOT / "reports/corpus_stats.json").is_file():
+        run(*uv, "dvc", "repro", "--single-item", "--force", "corpus_stats")
     run(*uv, "dvc", "repro", "--single-item", "eda_report")
-    run(*uv, "dvc", "push", "eda_report")
-    return {"entities": ent, "curated": cur}
+    push_verified(uv, "eda_report")
+    return results
 
 
 def sync_reports_to(out_dir: Path) -> None:
@@ -412,6 +460,12 @@ def sync_reports_to(out_dir: Path) -> None:
         "reports/retrieval_data.json",
         "reports/sft_data.json",
         "reports/eval_leakage.json",
+        "reports/corpus_stats.json",
+        "reports/eda/raw.json",
+        "reports/eda/clean.json",
+        "reports/eda/curated.json",
+        "reports/eda/entities.json",
+        "reports/eda/task.json",
         "reports/eda/report.md",
         "reports/eda/findings.json",
     ):
@@ -432,9 +486,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--steps", default=",".join(ALL_STEPS))
     args = ap.parse_args(argv)
     steps = [s.strip() for s in args.steps.split(",") if s.strip()]
-    unknown = set(steps) - set(ALL_STEPS)
-    if unknown:
-        raise SystemExit(f"Unknown steps: {sorted(unknown)}")
+    if not steps or len(steps) != len(set(steps)) or (set(steps) - set(ALL_STEPS)):
+        raise SystemExit("Specify one or more distinct known steps")
 
     uv = setup_dvc_and_models(args.drive, args.dvc_remote)
     session = uuid4().hex[:12]
@@ -453,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
             elif step == "build_ner":
                 res = step_build_ner(uv)
             elif step == "synthetic":
-                res = step_synthetic(uv, args.drive)
+                res = step_synthetic(uv)
             elif step == "train_and_eval":
                 res = step_train_and_eval(uv)
             else:

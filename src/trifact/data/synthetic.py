@@ -532,23 +532,42 @@ def finalize_qa_scores(
     raw_scores = pl.concat([pl.read_parquet(f) for f in score_files], how="diagonal_relaxed")
     if raw_scores.is_empty() or not {"id", "p_entailment"} <= set(raw_scores.columns):
         raise ValueError(f"Invalid or empty NLI scores in {scores_dir / 'out'}")
-    # an answer is as supported as its weakest claim
+    invalid = raw_scores.filter(
+        pl.col("id").is_null()
+        | ~pl.col("id").str.contains(r"^.+@c\d+@w\d+$")
+        | pl.col("p_entailment").is_null()
+        | ~pl.col("p_entailment").is_finite()
+        | ~pl.col("p_entailment").is_between(0, 1)
+    )
+    if invalid.height or raw_scores["id"].is_duplicated().any():
+        raise ValueError(f"Invalid or duplicate NLI score rows in {scores_dir / 'out'}")
+    if expected_pairs is None:
+        ids = (
+            pair["id"]
+            for row in kept.filter(pl.col("mode") == "answerable")
+            .select("id", "answer", "evidence_ids", "evidence_texts")
+            .iter_rows()
+            for pair in claim_pairs(*row)
+        )
+        expected = pl.Series("id", list(ids), dtype=pl.String)
+    else:
+        expected = pl.read_parquet(expected_pairs, columns=["id"])["id"]
+    if expected.has_nulls() or expected.is_duplicated().any():
+        raise ValueError("Invalid or duplicate expected NLI pair IDs")
+    missing = expected.filter(~expected.is_in(raw_scores["id"].implode()))
+    extra = raw_scores["id"].filter(~raw_scores["id"].is_in(expected.implode()))
+    if len(missing) or len(extra):
+        raise ValueError(
+            f"Incomplete NLI scores or mismatched pair IDs in {scores_dir}: "
+            f"{len(missing)} missing, {len(extra)} unexpected"
+        )
+    # An answer is as supported as its weakest claim.
     s = (
         raw_scores.group_by(c=pl.col("id").str.replace(r"@w\d+$", ""))
         .agg(pl.col("p_entailment").max())
         .group_by(id=pl.col("c").str.replace(r"@c\d+$", ""))
         .agg(pl.col("p_entailment").min())
     )
-    scored_ids = set(s["id"].to_list())
-    if expected_pairs is not None and expected_pairs.is_file():
-        exp = pl.read_parquet(expected_pairs, columns=["id"])
-        expected_ids = set(exp["id"].str.replace(r"@c\d+@w\d+$", "").unique().to_list())
-        missing_ids = expected_ids - scored_ids
-        if missing_ids:
-            raise ValueError(
-                f"Incomplete NLI scores in {scores_dir}: {len(missing_ids)} / {len(expected_ids)} "
-                f"expected QA candidates have no score (sample: {sorted(missing_ids)[:5]})"
-            )
     joined = kept.join(s.select("id", "p_entailment"), on="id", how="left")
     unscored_ans = joined.filter((pl.col("mode") == "answerable") & pl.col("p_entailment").is_null())
     if unscored_ans.height:
@@ -564,7 +583,9 @@ def finalize_qa_scores(
                 f"Incomplete NLI scores in {scores_dir}: {len(missing_with_claims)} answerable QA candidates "
                 f"with claims have no NLI score (sample: {missing_with_claims[:5]})"
             )
-    bad = (pl.col("mode") == "answerable") & (pl.col("p_entailment").fill_null(0) < thr)
+    bad = (pl.col("mode") == "answerable") & (
+        pl.col("p_entailment").is_null() | (pl.col("p_entailment") < thr)
+    )
     dropped = joined.filter(bad).select("id", "lang", "mode", "question", "answer", reason=pl.lit("nli"))
     return joined.filter(~bad), dropped
 
@@ -583,6 +604,7 @@ def main(argv: list[str] | None = None) -> int:
         "--exclude-docs", type=Path, help="prepare: Parquet with column doc_id of documents to skip"
     )
     ap.add_argument("--scores", type=Path, help="finalize: Kaggle nli_score output over <work>/nli_in")
+    ap.add_argument("--scored-input", type=Path, help="finalize: pinned NLI input directory used by Kaggle")
     ap.add_argument(
         "--work", type=Path, help="NLI pairs and QA candidates (default data/.cache/work/synthetic_<kind>)"
     )
@@ -624,7 +646,15 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit("--scores is required for finalize")
             kept = pl.read_parquet(work / "qa_candidates.parquet")
             thr = float(params["teacher"]["filters"]["min_nli_entail"])
-            kept, dropped = finalize_qa_scores(kept, args.scores, thr, work / "nli_in" / "pairs.parquet")
+            pairs = work / "nli_in" / "pairs.parquet"
+            if args.scored_input is not None:
+                scored = args.scored_input
+                source_config = json.loads((scored / "config.json").read_text(encoding="utf-8"))
+                if source_config != params["verification"]["nli_job"] or not (
+                    pl.read_parquet(pairs).sort("id").equals(pl.read_parquet(scored / pairs.name).sort("id"))
+                ):
+                    raise ValueError("Current NLI model config or pair content differs from the scored input")
+            kept, dropped = finalize_qa_scores(kept, args.scores, thr, pairs)
             old = DatasetManifest.read((ROOT / params["lake"]["root"]).resolve() / "task/synthetic/qa")
             prev = pl.scan_parquet(
                 str((ROOT / params["lake"]["root"]).resolve() / "task/synthetic/qa/*/dropped-*.parquet")
