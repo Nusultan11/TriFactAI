@@ -154,6 +154,13 @@ def setup_dvc_and_models(drive: Path, dvc_remote_url: str | None = None) -> list
     uv = [shutil.which("uv") or "uv", "run", "--no-sync"]
     if dvc_remote_url:
         run(*uv, "dvc", "remote", "add", "--local", "--force", "--default", "drive", dvc_remote_url)
+        if dvc_remote_url.startswith(("http://", "https://")):
+            run(*uv, "dvc", "remote", "modify", "--local", "drive", "method", "PUT")
+            token = os.environ.get("TRIFACT_BRIDGE_TOKEN")
+            if token:
+                run(*uv, "dvc", "remote", "modify", "--local", "drive", "auth", "custom")
+                run(*uv, "dvc", "remote", "modify", "--local", "drive", "custom_auth_header", "Authorization")
+                run(*uv, "dvc", "remote", "modify", "--local", "drive", "password", f"Bearer {token}")
     else:
         dvc_dir = drive / "dvc"
         assert (dvc_dir / "files" / "md5").is_dir(), f"DVC cache missing at {dvc_dir}"
