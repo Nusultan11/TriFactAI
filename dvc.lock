@@ -2536,6 +2536,31 @@ stages:
       hash: md5
       md5: 0863e007cb507944c73a7b0ceee3aae8
       size: 801
+    - path: data/eval/qa
+      hash: md5
+      md5: e88496479bbf01353ae055df90d4fa01.dir
+      size: 7614122
+      nfiles: 6
+    - path: data/eval/retrieval
+      hash: md5
+      md5: 6a0aa883c6e9928c2e7f68a3eb5fb11a.dir
+      size: 19093284
+      nfiles: 8
+    - path: data/raw/kazqad
+      hash: md5
+      md5: 719ed958566b7973b5a099a785aed63f.dir
+      size: 48553080
+      nfiles: 6
+    - path: data/raw/sberquad
+      hash: md5
+      md5: ee0a59be2aef1bb2553b2d4605ae16b3.dir
+      size: 12813436
+      nfiles: 4
+    - path: data/raw/squad_v2
+      hash: md5
+      md5: 129c2f4ca71f5b93600f793ccc6e5d75.dir
+      size: 11732444
+      nfiles: 3
     - path: data/task/mt/qa
       hash: md5
       md5: c5706c6a44464cd70a6b106a9f73ba30.dir
@@ -2548,17 +2573,25 @@ stages:
       nfiles: 5
     - path: data/task/synthetic/qa
       hash: md5
-      md5: 83a2e323fda7922d255a42a78dbe2c44.dir
-      size: 4042848
+      md5: 09c42ed866a332fa3020f6e29cdfa2b2.dir
+      size: 17771518
       nfiles: 8
+    - path: src/trifact/data/bm25.py
+      hash: md5
+      md5: 14272fc46183220221a03ffdaafe849d
+      size: 3204
     - path: src/trifact/data/build_sft.py
       hash: md5
-      md5: 4500d0cd03053865e1159f5050e14952
-      size: 12881
+      md5: b9b678a30245857a114c57b04c000d24
+      size: 13355
     - path: src/trifact/data/qa_common.py
       hash: md5
       md5: 555e664c5bd4014268f06453a5138db1
       size: 3173
+    - path: src/trifact/data/task_common.py
+      hash: md5
+      md5: 5be8ced822a79eeff0e22cba0a34ce4e
+      size: 10986
     params:
       params.yaml:
         nli.kk_filters:
@@ -2596,8 +2629,8 @@ stages:
     outs:
     - path: data/task/sft
       hash: md5
-      md5: d2af410a0bc7544a1f1b96600c32114b.dir
-      size: 587495015
+      md5: 9179c88d01b9d538b4049af6d164f655.dir
+      size: 641320458
       nfiles: 8
   build_eval:
     cmd: python -m trifact.data.build_eval build

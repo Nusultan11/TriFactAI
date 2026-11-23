@@ -1,0 +1,313 @@
+{
+  "status": "passed",
+  "audit": {
+    "rows": 338688,
+    "query": 0,
+    "evidence": 0
+  },
+  "release": false,
+  "rows_by_lang": {
+    "en": 164377,
+    "kk": 101604,
+    "ru": 72707
+  },
+  "stats": {
+    "seconds": 395.5,
+    "rows_per_s": 856.4,
+    "mb_per_s": 0.0,
+    "peak_rss_mb": 8687.0,
+    "workers": 1
+  },
+  "mlflow_snapshot": "workspace-data/stage-01-03-reconcile/2026-11-23-cloud/sft/mlflow.db",
+  "rows_by_split": {
+    "train": 301097,
+    "validation": 37591
+  },
+  "metrics": {
+    "per_source_pool": {
+      "squad_v2": 316790,
+      "sberquad": 107598,
+      "kazqad": 165540
+    },
+    "pool": [
+      {
+        "type": "answerable",
+        "lang": "en",
+        "len": 138267
+      },
+      {
+        "type": "answerable",
+        "lang": "kk",
+        "len": 60964
+      },
+      {
+        "type": "answerable",
+        "lang": "ru",
+        "len": 45869
+      },
+      {
+        "type": "cross_lingual",
+        "lang": "en",
+        "len": 36135
+      },
+      {
+        "type": "cross_lingual",
+        "lang": "kk",
+        "len": 78247
+      },
+      {
+        "type": "cross_lingual",
+        "lang": "ru",
+        "len": 61239
+      },
+      {
+        "type": "unanswerable",
+        "lang": "en",
+        "len": 123258
+      },
+      {
+        "type": "unanswerable",
+        "lang": "kk",
+        "len": 55170
+      },
+      {
+        "type": "unanswerable",
+        "lang": "ru",
+        "len": 183
+      }
+    ],
+    "total_feasible": 338688,
+    "final": [
+      {
+        "split": "train",
+        "type": "answerable",
+        "lang": "en",
+        "origin": "gold",
+        "len": 94727
+      },
+      {
+        "split": "train",
+        "type": "answerable",
+        "lang": "kk",
+        "origin": "gold",
+        "len": 48197
+      },
+      {
+        "split": "train",
+        "type": "answerable",
+        "lang": "kk",
+        "origin": "synthetic",
+        "len": 6124
+      },
+      {
+        "split": "train",
+        "type": "answerable",
+        "lang": "ru",
+        "origin": "gold",
+        "len": 31248
+      },
+      {
+        "split": "train",
+        "type": "answerable",
+        "lang": "ru",
+        "origin": "synthetic",
+        "len": 281
+      },
+      {
+        "split": "train",
+        "type": "cross_lingual",
+        "lang": "en",
+        "origin": "mt_query",
+        "len": 18851
+      },
+      {
+        "split": "train",
+        "type": "cross_lingual",
+        "lang": "en",
+        "origin": "synthetic",
+        "len": 869
+      },
+      {
+        "split": "train",
+        "type": "cross_lingual",
+        "lang": "kk",
+        "origin": "mt_query",
+        "len": 22552
+      },
+      {
+        "split": "train",
+        "type": "cross_lingual",
+        "lang": "kk",
+        "origin": "synthetic",
+        "len": 25
+      },
+      {
+        "split": "train",
+        "type": "cross_lingual",
+        "lang": "ru",
+        "origin": "mt_query",
+        "len": 32341
+      },
+      {
+        "split": "train",
+        "type": "cross_lingual",
+        "lang": "ru",
+        "origin": "synthetic",
+        "len": 792
+      },
+      {
+        "split": "train",
+        "type": "unanswerable",
+        "lang": "en",
+        "origin": "gold",
+        "len": 31484
+      },
+      {
+        "split": "train",
+        "type": "unanswerable",
+        "lang": "en",
+        "origin": "synthetic",
+        "len": 70
+      },
+      {
+        "split": "train",
+        "type": "unanswerable",
+        "lang": "kk",
+        "origin": "gold",
+        "len": 13265
+      },
+      {
+        "split": "train",
+        "type": "unanswerable",
+        "lang": "kk",
+        "origin": "synthetic",
+        "len": 225
+      },
+      {
+        "split": "train",
+        "type": "unanswerable",
+        "lang": "ru",
+        "origin": "synthetic",
+        "len": 46
+      },
+      {
+        "split": "validation",
+        "type": "answerable",
+        "lang": "en",
+        "origin": "gold",
+        "len": 12081
+      },
+      {
+        "split": "validation",
+        "type": "answerable",
+        "lang": "kk",
+        "origin": "gold",
+        "len": 6352
+      },
+      {
+        "split": "validation",
+        "type": "answerable",
+        "lang": "kk",
+        "origin": "synthetic",
+        "len": 290
+      },
+      {
+        "split": "validation",
+        "type": "answerable",
+        "lang": "ru",
+        "origin": "gold",
+        "len": 3897
+      },
+      {
+        "split": "validation",
+        "type": "answerable",
+        "lang": "ru",
+        "origin": "synthetic",
+        "len": 16
+      },
+      {
+        "split": "validation",
+        "type": "cross_lingual",
+        "lang": "en",
+        "origin": "mt_query",
+        "len": 2281
+      },
+      {
+        "split": "validation",
+        "type": "cross_lingual",
+        "lang": "en",
+        "origin": "synthetic",
+        "len": 51
+      },
+      {
+        "split": "validation",
+        "type": "cross_lingual",
+        "lang": "kk",
+        "origin": "mt_query",
+        "len": 2820
+      },
+      {
+        "split": "validation",
+        "type": "cross_lingual",
+        "lang": "kk",
+        "origin": "synthetic",
+        "len": 4
+      },
+      {
+        "split": "validation",
+        "type": "cross_lingual",
+        "lang": "ru",
+        "origin": "mt_query",
+        "len": 4040
+      },
+      {
+        "split": "validation",
+        "type": "cross_lingual",
+        "lang": "ru",
+        "origin": "synthetic",
+        "len": 46
+      },
+      {
+        "split": "validation",
+        "type": "unanswerable",
+        "lang": "en",
+        "origin": "gold",
+        "len": 3962
+      },
+      {
+        "split": "validation",
+        "type": "unanswerable",
+        "lang": "en",
+        "origin": "synthetic",
+        "len": 1
+      },
+      {
+        "split": "validation",
+        "type": "unanswerable",
+        "lang": "kk",
+        "origin": "gold",
+        "len": 1738
+      },
+      {
+        "split": "validation",
+        "type": "unanswerable",
+        "lang": "kk",
+        "origin": "synthetic",
+        "len": 12
+      }
+    ],
+    "kk_share": 0.3,
+    "eval_questions_dropped": 57,
+    "eval_evidence_rows_dropped": 1554,
+    "type_share": {
+      "answerable": 0.6,
+      "cross_lingual": 0.25,
+      "unanswerable": 0.15
+    }
+  },
+  "git_sha": "e8ac61feb382d2053c12c35eb90bb992328885dc",
+  "cost_usd": 0,
+  "cloud_runtime": "Colab Standard CPU",
+  "mlflow_run": "a5442b9292664dfaa483a0eb50b6a434",
+  "dvc_md5": "9179c88d01b9d538b4049af6d164f655.dir"
+}
