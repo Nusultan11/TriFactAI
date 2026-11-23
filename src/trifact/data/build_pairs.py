@@ -44,6 +44,7 @@ from trifact.data.qa_common import QA_SOURCES, bm25_negatives, load_qa
 from trifact.data.task_common import (
     DatasetWriter,
     dataset_input_of,
+    eval_passage_hashes,
     eval_query_hashes,
     finish,
     inherited,
@@ -345,7 +346,10 @@ def run_builder(name: str, cfg: dict[str, Any]) -> dict[str, Any]:
         pairs, passages = synthetic_pairs(Path(cfg["synthetic"]))
     # mojibake (double-encoded UTF-8 inherited from MS MARCO: 4.2 % of mMARCO-ru passages, EDA) is not
     # repairable: such passages are dropped, with the pairs they are the positive of and from negative lists
-    bad = passages.filter(pl.col("text").str.contains(MOJIBAKE))["doc_id"]
+    eval_passages = eval_passage_hashes(root, include_miracl=name != "miracl")
+    overlap = key_expr("text").hash(seed=0).is_in(eval_passages.implode())
+    eval_docs_dropped = passages.select(overlap.sum()).item()
+    bad = passages.filter(overlap | pl.col("text").str.contains(MOJIBAKE))["doc_id"]
     if bad.len():
         passages = passages.filter(~pl.col("doc_id").is_in(bad.implode()))
         pairs = pairs.filter(~pl.col("doc_id").is_in(bad.implode())).with_columns(
@@ -366,7 +370,14 @@ def run_builder(name: str, cfg: dict[str, Any]) -> dict[str, Any]:
     pp, sp = tmp / f"{name}-pairs.parquet", tmp / f"{name}-passages.parquet"
     pairs.write_parquet(pp)
     passages.select("doc_id", "lang", "source", "title", "text").write_parquet(sp)
-    stats = [{"builder": name, "pairs": pairs.height, "passages": passages.height}] + (
+    stats = [
+        {
+            "builder": name,
+            "pairs": pairs.height,
+            "passages": passages.height,
+            "eval_passages_dropped": eval_docs_dropped,
+        }
+    ] + (
         pairs.group_by("source", "origin", "direction", "split")
         .agg(n=pl.len(), with_negatives=(pl.col("neg_ids").list.len() > 0).sum())
         .sort("source", "origin", "direction", "split")

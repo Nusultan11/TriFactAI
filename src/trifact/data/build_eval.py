@@ -230,9 +230,17 @@ def train_keys(root: Path) -> dict[str, pl.Series]:
                 add("sentence", pl.scan_parquet(files), pl.col("tokens").list.join(" "))
     if (t / "retrieval").is_dir():
         add("query", pl.scan_parquet(str(t / "retrieval/*/pairs-*.parquet")), pl.col("query"))
-        add("passage", pl.scan_parquet(str(t / "retrieval/multi/passages-*.parquet")), pl.col("text"))
+        docs = pl.scan_parquet(str(t / "retrieval/multi/passages-*.parquet"))
+        shared = (pl.col("source") == "miracl_corpus") & pl.col("doc_id").str.starts_with("miracl/")
+        add("passage", docs, pl.col("text"))
+        add("miracl_passage", docs.filter(~shared.fill_null(False)), pl.col("text"))
+        add("miracl_shared", docs.filter(shared), pl.col("text"))
     if (t / "sft").is_dir():
-        add("query", pl.scan_parquet(str(t / "sft/*/*.parquet")), pl.col("question"))
+        sft = pl.scan_parquet(str(t / "sft/*/*.parquet"))
+        add("query", sft, pl.col("question"))
+        evidence = sft.select("evidence").explode("evidence").unnest("evidence")
+        for kind in ("passage", "miracl_passage"):
+            add(kind, evidence, pl.col("text"))
     if (t / "nli").is_dir():
         for tab in ("train", "validation"):
             add(
@@ -249,9 +257,21 @@ def leakage(eval_texts: dict[str, pl.Series], keys: dict[str, pl.Series]) -> dic
         kind = name.split(":")[1]
         k = pl.DataFrame({"t": s}).select(k=key_expr("t"))["k"]
         train = keys.get(kind, pl.Series([], dtype=pl.UInt64))
-        hit = k.hash(seed=0).is_in(train.implode()) & (k.str.len_chars() >= 20)
+        h = k.hash(seed=0)
+        hit = h.is_in(train.implode()) & (k != "")
         out[name] = {"items": len(k), "overlap": int(hit.sum()), "examples": k.filter(hit).head(5).to_list()}
+        if kind == "miracl_passage":
+            shared = keys.get("miracl_shared", pl.Series([], dtype=pl.UInt64))
+            out[name]["allowed_shared_miracl"] = int((h.is_in(shared.implode()) & (k != "") & ~hit).sum())
     return out
+
+
+def retrieval_passage_texts(docs: pl.DataFrame) -> dict[str, pl.Series]:
+    shared = docs["doc_id"].str.starts_with("miracl/")
+    return {
+        "retrieval:miracl_passage": docs.filter(shared)["text"],
+        "retrieval:passage": docs.filter(~shared)["text"],
+    }
 
 
 # ----------------------------------------------------------------------------- review sheets
@@ -362,7 +382,7 @@ def build(params: dict[str, Any], root: Path) -> int:
                 texts["qa:passage"] = tables["test"]["context"].unique()
             elif name == "retrieval":
                 texts["retrieval:query"] = tables["queries"]["query"]
-                texts["retrieval:passage"] = tables["docs"]["text"]
+                texts.update(retrieval_passage_texts(tables["docs"]))
             else:
                 texts["nli:nli"] = tables["test"].select(
                     pl.concat_str("premise", "hypothesis", separator=" || ")
@@ -455,7 +475,7 @@ def eval_texts(root: Path) -> dict[str, pl.Series]:
         out["qa:query"], out["qa:passage"] = qa["question"], qa["context"].unique()
     if (q := read("retrieval", "queries", ["query"])).height:
         out["retrieval:query"] = q["query"]
-        out["retrieval:passage"] = read("retrieval", "docs", ["text"])["text"]
+        out.update(retrieval_passage_texts(read("retrieval", "docs", ["doc_id", "text"])))
     if (n := read("nli", "test", ["premise", "hypothesis"])).height:
         out["nli:nli"] = n.select(pl.concat_str("premise", "hypothesis", separator=" || "))[:, 0]
     return out
@@ -482,7 +502,7 @@ def leakage_check(params: dict[str, Any], root: Path) -> int:
         {k.replace(":", "_"): v["overlap"] for k, v in res["sets"].items()},
     )
     print(json.dumps({k: v["overlap"] for k, v in res["sets"].items()}))
-    return int(any(v["overlap"] for k, v in res["sets"].items() if k != "retrieval:passage"))
+    return int(any(v["overlap"] for v in res["sets"].values()))
 
 
 def status(params: dict[str, Any], root: Path) -> int:

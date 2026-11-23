@@ -38,6 +38,7 @@ from trifact.data.qa_common import QA_SOURCES, bm25_negatives, load_qa
 from trifact.data.task_common import (
     DatasetWriter,
     dataset_input_of,
+    eval_passage_hashes,
     eval_query_hashes,
     finish,
     inherited,
@@ -199,6 +200,16 @@ def main(argv: list[str] | None = None) -> int:
         hit = key_expr(pl.col("question")).hash(seed=0).is_in(eq_h.implode())
         n_eval_q = df.filter(hit).height
         df = df.filter(~hit)
+        eval_passages = eval_passage_hashes(root, include_miracl=True)
+        evidence_hit = (
+            pl.col("evidence")
+            .list.eval(
+                key_expr(pl.element().struct.field("text")).hash(seed=0).is_in(eval_passages.implode())
+            )
+            .list.any()
+        )
+        n_eval_passages = df.filter(evidence_hit).height
+        df = df.filter(~evidence_hit)
         cap = stage_params["cap"] if profile == "pilot" else None
         final, mix_stats = mix(df, cfg["mix"], params["scale"]["min_kk_share"], cap, params["seed"])
         if out.exists():
@@ -216,6 +227,7 @@ def main(argv: list[str] | None = None) -> int:
     kk_share = final.filter(pl.col("lang") == "kk").height / max(final.height, 1)
     metrics = {"per_source_pool": per_source, **mix_stats, "final": dist, "kk_share": round(kk_share, 4),
                "eval_questions_dropped": n_eval_q,
+               "eval_evidence_rows_dropped": n_eval_passages,
                "type_share": {t: round(final.filter(pl.col("type") == t).height / max(final.height, 1), 4) for t in cfg["mix"]}}  # fmt: skip
     extra_datasets = [args.synthetic] if args.synthetic else []
     lic = inherited(root, list(QA_SOURCES), extra_datasets) + ([MT_LICENSE] if mt is not None else [])

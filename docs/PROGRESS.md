@@ -24,7 +24,7 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 3. **Interactive Colab Google Drive OAuth (cloud CPU stages):**
    - `colab new -s trifact-s14` succeeded, but `colab drivemount` requires one-time per-session interactive browser OAuth consent from the user before running cloud CPU stages (`wikitext` `ruwiki` part 4 → `build_ner` >5M silver → `synthetic_queries` + `synthetic_qa` → `build_pairs` + `build_sft` → `eval_leakage` → `task_eda` → `eda_report` → `eda` RSS verification).
 4. **Kaggle GPU quota for synthetic teacher:**
-   - On 2026-11-23, `kaggle quota` reported `7.76 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`). `nurs2005/trifact-nli-score-qa` v4 (combined 16,904 QA candidates) was queued on Kaggle 2× T4 (`$0` USD); fetch via `uv run python -m trifact.batch.kaggle fetch nli_score --name nli-score-qa --version 4 --out "G:\Мой диск\TrifactAI\workspace-data\kaggle\trifact-nli-score-qa2"`.
+   - On 2026-11-23, `kaggle quota` reported `7.76 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`). NLI QA v4 outputs were recovered and verified as recorded below.
    - Full synthetic targets in `datasets.md §6` require additional weekly quota or approved `params.yaml: cloud.budget_usd > 0`.
 5. **Colab GPU tier & budget:**
    - Hosted CPU runtime (12.67 GB RAM, 107.72 GB disk) verified with Drive. Account has `0.00` compute units (NVIDIA L4 unavailable without paid units); `params.yaml: cloud.budget_usd: 0`. Recovery protocol: [ADR-0025](architecture/adr/0025-cloud-only-computing.md).
@@ -54,6 +54,13 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 - `dvc.yaml` lists `build_eval` outputs individually (`data/eval/{ner,qa,retrieval,nli,review}`) because `data/eval/docproc` belongs to `build_docproc`.
 
 ---
+
+## Stage 1–3 · Cloud Reconciliation (2026-11-23)
+
+- **NLI QA v4:** `kaggle kernels status nurs2005/trifact-nli-score-qa` reported `COMPLETE`. The explicit version-4 output contained two successful T4 workers and **218,451** scored windows (109,226 in 377.8 s and 109,225 in 411.1 s, $0). An independent recovery matched every score and log SHA-256 against Drive. The staged NLI input had **0 missing IDs, 0 extra IDs, 0 duplicate score IDs, and 0 invalid probabilities**. Input Parquet SHA-256 is `f2aa3aa725bb938ba974738ae89e21195dc8b06660c4d5fae485cd3e14e28c56`.
+- **Pinned teacher inputs:** verified second-run receipts (12 query artifacts and 4 QA artifacts), with no ID overlaps across the original and second runs. Raw generations were 12,624 + 20,642 for queries (second run includes judge prompts) and 4,554 + 5,629 for QA. Added `data/stage3_teacher.dvc` (30 files, 94,445,420 bytes, `3b87db61e0dbc7a1b6086b0dc7598db8.dir`), pushed 31 DVC objects to private Drive and confirmed `dvc status --cloud --json` returned `{}`. Canonical synthesis now requires both teacher runs and the exact scored claim windows and model config. These counts describe the input runs.
+- **CPU access:** existing Colab `trifact-s13` reported 12,975 MiB RAM and 101 GiB free disk. The approved private Drive DVC store was reachable from the VM over the official Colab SSH relay with a loopback-only DVC endpoint. Colab's interactive Drive mount was still waiting for OAuth when the private relay was qualified. No paid resources were requested.
+- **Human review:** reused the existing Drive packets in `workspace-data/human-review`. They contain machine suggestions for 1,500/1,500 curation, 457/600 silver NER and 3,403/3,500 eval items, respectively. Human verification remains required as described above.
 
 ## Stage 1–4 · Storage Repair, EDA Fix & Verification (2026-11-23)
 

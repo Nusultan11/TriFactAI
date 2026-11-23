@@ -24,14 +24,15 @@ def test_validate_eval_leakage_rejects_unintended_overlap(tmp_path) -> None:
             "qa:query": {"items": 10, "overlap": 0},
             "qa:passage": {"items": 10, "overlap": 0},
             "retrieval:query": {"items": 10, "overlap": 0},
-            "retrieval:passage": {"items": 10, "overlap": 25},
+            "retrieval:passage": {"items": 10, "overlap": 0},
+            "retrieval:miracl_passage": {"items": 10, "overlap": 0, "allowed_shared_miracl": 5},
             "nli:nli": {"items": 10, "overlap": 0},
         }
     }
     p.write_text(json.dumps(clean), encoding="utf-8")
-    assert runner.validate_eval_leakage(p)["sets"]["retrieval:passage"]["overlap"] == 25
+    assert runner.validate_eval_leakage(p)["sets"]["retrieval:miracl_passage"]["allowed_shared_miracl"] == 5
 
-    clean["sets"]["retrieval:query"]["overlap"] = 1
+    clean["sets"]["retrieval:miracl_passage"]["overlap"] = 1
     p.write_text(json.dumps(clean), encoding="utf-8")
     with pytest.raises(RuntimeError, match="Nonzero unintended evaluation leakage"):
         runner.validate_eval_leakage(p)

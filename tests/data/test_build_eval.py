@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import polars as pl
 
-from trifact.data.build_eval import freeze, human_done, nli_cluster, query_cluster
+from trifact.data.build_eval import freeze, human_done, leakage, nli_cluster, query_cluster
+from trifact.data.task_common import key_expr
 
 
 def test_freeze_requires_every_item_in_the_review_packet(tmp_path) -> None:
@@ -62,3 +63,25 @@ def test_nli_cluster_is_the_english_premise() -> None:
     c = nli_cluster(kk, en).to_list()
     assert c[0] == c[1] != c[2]
     assert c[3] is None
+
+
+def test_only_shared_miracl_training_passages_are_exempt() -> None:
+    def hashes(*texts: str) -> pl.Series:
+        return pl.DataFrame({"text": texts}).select(key_expr("text").hash(seed=0)).to_series()
+
+    report = leakage(
+        {
+            "retrieval:miracl_passage": pl.Series(["Allowed passage", "Duplicated outside MIRACL"]),
+            "retrieval:passage": pl.Series(["Allowed passage"]),
+            "retrieval:query": pl.Series(["Short?"]),
+        },
+        {
+            "miracl_passage": hashes("Duplicated outside MIRACL"),
+            "miracl_shared": hashes("Allowed passage", "Duplicated outside MIRACL"),
+            "passage": hashes("Allowed passage"),
+            "query": hashes("short"),
+        },
+    )
+
+    assert report["retrieval:miracl_passage"]["allowed_shared_miracl"] == 1
+    assert all(result["overlap"] == 1 for result in report.values())

@@ -77,6 +77,23 @@ def eval_query_hashes(root: Path) -> pl.Series:
     return pl.concat(parts).filter(pl.col("k") != "").select(pl.col("k").hash(seed=0)).unique().collect()["k"]
 
 
+def eval_passage_hashes(root: Path, *, include_miracl: bool) -> pl.Series:
+    """Hash excluded QA contexts and retrieval passages, with the shared MIRACL corpus exception."""
+    qa_files = sorted((root / "eval/qa").glob("*/test-*.parquet"))
+    retrieval_files = sorted((root / "eval/retrieval").glob("*/docs-*.parquet"))
+    parts = []
+    if qa_files:
+        parts.append(pl.scan_parquet(qa_files).select(k=key_expr("context")))
+    if retrieval_files:
+        docs = pl.scan_parquet(retrieval_files)
+        if not include_miracl:
+            docs = docs.filter(~pl.col("doc_id").str.starts_with("miracl/"))
+        parts.append(docs.select(k=key_expr("text")))
+    if not parts:
+        return pl.Series("k", [], dtype=pl.UInt64)
+    return pl.concat(parts).filter(pl.col("k") != "").select(pl.col("k").hash(seed=0)).unique().collect()["k"]
+
+
 def hash_expr(col: str | pl.Expr, seed: int) -> pl.Expr:
     """Stable per-value hash in [0, 1) for split assignment (blake2b via map_elements on unique keys)."""
     e = pl.col(col) if isinstance(col, str) else col

@@ -32,7 +32,7 @@ from trifact.data.bm25 import BM25
 from trifact.data.curation import write_report
 from trifact.data.ner_common import entities
 from trifact.data.task_common import key_expr
-from trifact.lake.stats import log_mlflow
+from trifact.lake.stats import ResourceMonitor, log_mlflow
 
 log = logging.getLogger("trifact.task_eda")
 OUT = ROOT / "reports" / "eda" / "task.json"
@@ -112,40 +112,60 @@ def distinct_n(texts: list[str], n: int) -> float:
 
 def ner(root: Path) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    frames = []
-    for tab in ("gold_train", "gold_validation", "gold_test", "silver_train"):
-        df = scan(root / "task/ner", f"*/{tab}-*.parquet")
-        if df is not None:
-            frames.append(df.with_columns(table=pl.lit(tab)))
-    if not frames:
+    import pyarrow.parquet as pq
+
+    base = root / "task/ner"
+    counts: dict[tuple[str, str, str], Counter[int]] = {}
+    stats: dict[tuple[str, str, str], Counter[str]] = {}
+    labels: Counter[tuple[str, str, str]] = Counter()
+    test_surfaces: set[tuple[str, str]] = set()
+    seen: dict[str, set[tuple[str, str]]] = {"gold_train": set(), "silver_train": set()}
+    for tab in ("gold_test", "gold_train", "gold_validation", "silver_train"):
+        for path in sorted(base.glob(f"*/{tab}-*.parquet")):
+            with pq.ParquetFile(path) as parquet:
+                for batch in parquet.iter_batches(
+                    batch_size=32_768, columns=["source", "lang", "tokens", "tags"]
+                ):
+                    for source, lang, tokens, tags in pl.DataFrame(batch).iter_rows():
+                        key = (tab, source, lang)
+                        n = len(tokens)
+                        counts.setdefault(key, Counter())[n] += 1
+                        acc = stats.setdefault(key, Counter())
+                        spans = entities(tags)
+                        acc["tokens"] += n
+                        acc["entities"] += len(spans)
+                        acc["absent"] += not spans
+                        acc["off_schema"] += sum(tag != "O" and tag[2:] not in CORE for tag in tags)
+                        for start, end, label in spans:
+                            acc["tagged_tokens"] += end - start
+                            labels[tab, lang, label] += 1
+                            if tab == "gold_test":
+                                test_surfaces.add((lang, " ".join(tokens[start:end]).lower()))
+                            elif tab in seen:
+                                surface = (lang, " ".join(tokens[start:end]).lower())
+                                if surface in test_surfaces:
+                                    seen[tab].add(surface)
+    if not stats:
         return {}
-    df = pl.concat(frames, how="diagonal_relaxed")
-    ents = []
-    for src, lang, tab, toks, tags, full in df.select(
-        "source", "lang", "table", "tokens", "tags", "tags_full"
-    ).iter_rows():
-        es = entities(tags)
-        ents.append((len(toks), len(es), sum(e - s for s, e, _ in es), [t for _, _, t in es], [e - s for s, e, _ in es],
-                     sum(1 for t in tags if t != "O" and t[2:] not in CORE)))  # fmt: skip
-    df = df.with_columns(
-        n_tok=pl.Series([e[0] for e in ents]), n_ent=pl.Series([e[1] for e in ents]), ent_tok=pl.Series([e[2] for e in ents]),
-        types=pl.Series([e[3] for e in ents], dtype=pl.List(pl.String)), span_len=pl.Series([e[4] for e in ents], dtype=pl.List(pl.Int64)),
-        off_schema=pl.Series([e[5] for e in ents]),
-    )  # fmt: skip
-    g = df.group_by("table", "source", "lang").agg(
-        sentences=pl.len(), tokens=pl.col("n_tok").sum(), mean_len=pl.col("n_tok").mean().round(2),
-        p95_len=pl.col("n_tok").quantile(0.95), entities=pl.col("n_ent").sum(),
-        ent_per_sent=pl.col("n_ent").mean().round(3), ent_token_share=(pl.col("ent_tok").sum() / pl.col("n_tok").sum()).round(4),
-        no_entity_share=(pl.col("n_ent") == 0).mean().round(4), off_schema_tags=pl.col("off_schema").sum(),
-        mean_span=pl.col("span_len").explode().mean().round(3),
-    ).sort("table", "source", "lang")  # fmt: skip
-    out["by_table_source_lang"] = g.to_dicts()
-    t = (
-        df.select("table", "lang", "types")
-        .explode("types")
-        .drop_nulls()
-        .group_by("table", "lang", "types")
-        .len()
+    rows = []
+    for (tab, source, lang), acc in sorted(stats.items()):
+        lengths = sorted(counts[tab, source, lang].items())
+        sentences = sum(n for _, n in lengths)
+        p95 = np.searchsorted(
+            np.cumsum([n for _, n in lengths]), math.floor(0.95 * (sentences - 1) + 0.5) + 1
+        )
+        tokens, n_ent, ent_tokens = acc["tokens"], acc["entities"], acc["tagged_tokens"]
+        rows.append({"table": tab, "source": source, "lang": lang, "sentences": sentences,
+                     "tokens": tokens, "mean_len": round(tokens / sentences, 2), "p95_len": lengths[p95][0],
+                     "entities": n_ent, "ent_per_sent": round(n_ent / sentences, 3),
+                     "ent_token_share": round(ent_tokens / tokens, 4) if tokens else None,
+                     "no_entity_share": round(acc["absent"] / sentences, 4), "off_schema_tags": acc["off_schema"],
+                     "mean_span": round(ent_tokens / n_ent, 3) if n_ent else None})  # fmt: skip
+    out["by_table_source_lang"] = rows
+    t = pl.DataFrame(
+        [(tab, lang, label, n) for (tab, lang, label), n in labels.items()],
+        schema={"table": pl.String, "lang": pl.String, "types": pl.String, "len": pl.UInt32},
+        orient="row",
     )
     out["labels"] = t.sort("table", "lang", "types").to_dicts()
     # silver vs gold type distribution per language
@@ -169,29 +189,12 @@ def ner(root: Path) -> dict[str, Any]:
             "js": js([dg.get(k, 0) for k in sorted(CORE)], [ds.get(k, 0) for k in sorted(CORE)]),
         }
     out["silver_vs_gold_types"] = shift
-    # NEREL nesting (from tags_full: brat spans overlapping are flattened; nesting measured on raw brat)
-    out["entity_overlap_train_test"] = surface_overlap(df)
-    return out
-
-
-def surface_overlap(df: pl.DataFrame) -> dict[str, Any]:
-    """Share of gold test entity surfaces that also occur in train (gold or silver): memorization risk."""
-
-    def surfaces(sub: pl.DataFrame) -> set[tuple[str, str]]:
-        s = set()
-        for lang, toks, tags in sub.select("lang", "tokens", "tags").iter_rows():
-            for a, b, t in entities(tags):
-                s.add((lang, " ".join(toks[a:b]).lower()))
-        return s
-
-    test = surfaces(df.filter(pl.col("table") == "gold_test"))
-    out = {}
-    for tab in ("gold_train", "silver_train"):
-        tr = surfaces(df.filter(pl.col("table") == tab))
-        for lang in ("kk", "ru", "en"):
-            te = {x for x in test if x[0] == lang}
-            if te:
-                out[f"{tab}/{lang}"] = round(len(te & tr) / len(te), 4)
+    totals = Counter(lang for lang, _ in test_surfaces)
+    overlap = {}
+    for tab, matches in seen.items():
+        by_lang = Counter(lang for lang, _ in matches)
+        overlap.update({f"{tab}/{lang}": round(by_lang[lang] / n, 4) for lang, n in sorted(totals.items())})
+    out["entity_overlap_train_test"] = overlap
     return out
 
 
@@ -259,26 +262,33 @@ def qa(root: Path) -> dict[str, Any]:
 
 
 def retrieval(root: Path, sample: int, seed: int) -> dict[str, Any]:
-    pairs = scan(root / "task/retrieval", "*/pairs-*.parquet")
+    files = sorted((root / "task/retrieval").glob("*/pairs-*.parquet"))
     out: dict[str, Any] = {}
-    if pairs is not None:
-        pairs = pairs.with_columns(
+    if files:
+        pairs = pl.scan_parquet(files).with_columns(
             q_len=pl.col("query").str.count_matches(r"\w+"), n_neg=pl.col("neg_ids").list.len()
         )
         out["train"] = pairs.group_by("source", "origin", "direction", "split").agg(
             n=pl.len(), queries=pl.col("query_id").n_unique(), q_len=pl.col("q_len").mean().round(2),
             with_negatives=(pl.col("n_neg") > 0).mean().round(4), neg_per_query=pl.col("n_neg").mean().round(2),
-        ).sort("source", "origin", "direction", "split").to_dicts()  # fmt: skip
+        ).sort("source", "origin", "direction", "split").collect(engine="streaming").to_dicts()  # fmt: skip
         out["positives_per_query"] = pairs.group_by("source", "query_id").len().group_by("source").agg(
             mean=pl.col("len").mean().round(3), p99=pl.col("len").quantile(0.99), max=pl.col("len").max()
-        ).sort("source").to_dicts()  # fmt: skip
+        ).sort("source").collect(engine="streaming").to_dicts()  # fmt: skip
         # BM25 ease and hardness on a sample of monolingual pairs with negatives
         pas = pl.scan_parquet(str(root / "task/retrieval/multi/passages-*.parquet")).select("doc_id", "text")
         mono = pairs.filter(
             (pl.col("n_neg") > 0)
             & (pl.col("direction").str.slice(0, 2) == pl.col("direction").str.slice(3, 2))
         )
-        smp = mono.with_columns(r=pl.col("pair_id").hash(seed=seed)).sort("r").group_by("source").head(sample)
+        smp = (
+            mono.with_columns(r=pl.col("pair_id").hash(seed=seed))
+            .group_by("source")
+            .agg(pl.struct("query", "doc_id", "neg_ids").top_k_by("r", sample, reverse=True).alias("pairs"))
+            .explode("pairs")
+            .unnest("pairs")
+            .collect(engine="streaming")
+        )
         ids = pl.concat([smp.select("doc_id"), smp.select(doc_id="neg_ids").explode("doc_id")]).unique()
         texts = dict(
             pas.filter(pl.col("doc_id").is_in(ids["doc_id"].implode()))
@@ -445,11 +455,12 @@ def main(argv: list[str] | None = None) -> int:
     params = load_params()
     root = (ROOT / params["lake"]["root"]).resolve()
     t0 = time.perf_counter()
-    rep = {"ner": ner(root), "qa": qa(root), "retrieval": retrieval(root, args.bm25_sample, params["seed"]),
-           "nli": nli(root), "synthetic": synthetic(root), "train_vs_eval": train_vs_eval(root)}  # fmt: skip
-    meta = {"seconds": round(time.perf_counter() - t0, 1)}
+    with ResourceMonitor() as monitor:
+        rep = {"ner": ner(root), "qa": qa(root), "retrieval": retrieval(root, args.bm25_sample, params["seed"]),
+               "nli": nli(root), "synthetic": synthetic(root), "train_vs_eval": train_vs_eval(root)}  # fmt: skip
+    meta = {"seconds": round(time.perf_counter() - t0, 1), "peak_rss_mb": round(monitor.peak_rss_mb, 1)}
     write_report(OUT, {"meta": meta, "profiles": rep})
-    log_mlflow("eda", "eda-task", {"bm25_sample": args.bm25_sample}, {"seconds": meta["seconds"]})
+    log_mlflow("eda", "eda-task", {"bm25_sample": args.bm25_sample}, meta)
     log.info("task EDA in %.0f s", meta["seconds"])
     return 0
 

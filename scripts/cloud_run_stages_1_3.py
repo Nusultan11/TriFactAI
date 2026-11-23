@@ -42,6 +42,7 @@ REQUIRED_LEAKAGE_SETS = (
     "qa:query",
     "qa:passage",
     "retrieval:query",
+    "retrieval:miracl_passage",
     "retrieval:passage",
     "nli:nli",
 )
@@ -85,11 +86,17 @@ def validate_eval_leakage(leak_path: Path) -> dict[str, Any]:
     missing = [k for k in REQUIRED_LEAKAGE_SETS if k not in sets]
     if missing:
         raise RuntimeError(f"Incomplete leakage report; missing sets: {missing}")
-    bad = {
-        k: int(v.get("overlap", -1))
-        for k, v in sets.items()
-        if k != "retrieval:passage" and int(v.get("overlap", -1)) != 0
-    }
+    for name in REQUIRED_LEAKAGE_SETS:
+        row = sets[name]
+        if (
+            not isinstance(row, dict)
+            or type(row.get("items")) is not int
+            or row["items"] <= 0
+            or type(row.get("overlap")) is not int
+            or not 0 <= row["overlap"] <= row["items"]
+        ):
+            raise RuntimeError(f"Invalid leakage counts for {name}")
+    bad = {k: v["overlap"] for k, v in sets.items() if v["overlap"] != 0}
     if bad:
         raise RuntimeError(f"Nonzero unintended evaluation leakage detected: {bad}")
     return leak
@@ -305,6 +312,7 @@ def step_build_ner(uv: list[str]) -> dict[str, Any]:
         "split",
         "build_kb",
         "wikitext",
+        "data/raw/wikidata/source.yaml",
         "acquire@kaznerd",
         "acquire@wikiann",
         "acquire@wikineural",
@@ -333,7 +341,7 @@ def step_synthetic(uv: list[str]) -> dict[str, Any]:
 
     from trifact.lake.manifest import DatasetManifest, verify_dataset
 
-    run(*uv, "dvc", "pull", "data/external.dvc", "data/stage3_teacher.dvc", "chunk_corpus")
+    run(*uv, "dvc", "pull", "data/external.dvc", "data/stage3_teacher.dvc", "data/task/chunks/dataset.yaml")
     validate_nli_scores_dir(ROOT / "data/stage3_teacher/nli_score_qa_v4")
     run(*uv, "dvc", "repro", "--single-item", "synthetic_queries")
     q_problems = verify_dataset(ROOT / "data/task/synthetic/queries", deep=True)
@@ -370,6 +378,7 @@ def step_synthetic(uv: list[str]) -> dict[str, Any]:
 
 
 def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
+    from trifact.core.params import load_params
     from trifact.lake.manifest import verify_dataset
 
     run(
@@ -391,6 +400,10 @@ def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
         "acquire@sberquad",
         "acquire@kazqad",
     )
+    for name in ("ner", "qa", "retrieval", "nli"):
+        problems = verify_dataset(ROOT / f"data/eval/{name}", deep=True)
+        if problems:
+            raise RuntimeError(f"eval/{name} verify failed: {problems}")
     run(*uv, "dvc", "repro", "--single-item", "build_pairs")
     p_probs = verify_dataset(ROOT / "data/task/retrieval", deep=True)
     if p_probs:
@@ -408,6 +421,10 @@ def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
     push_verified(uv, "build_sft")
 
     run(*uv, "dvc", "repro", "--single-item", "task_eda")
+    task = json.loads((ROOT / "reports/eda/task.json").read_text(encoding="utf-8"))
+    if any(not task["profiles"].get(name) for name in ("ner", "qa", "retrieval", "nli", "synthetic")):
+        raise RuntimeError("Missing task EDA profiles")
+    validate_rss_ceiling(task["meta"], "task_eda", float(load_params()["lake"]["peak_ram_gb"]))
     push_verified(uv, "task_eda")
     return {
         "eval_leakage": leak,
@@ -497,7 +514,8 @@ def main(argv: list[str] | None = None) -> int:
         (args.drive / "workspace-data" / "mlflow") if args.out_dir is None else (out_dir / "mlflow")
     )
     proc, db, tracking = start_mlflow(tracking_dir, session)
-    summary: dict[str, Any] = {"session": session, "steps": {}}
+    summary: dict[str, Any] = {"session": session, "requested": steps, "status": "running", "steps": {}}
+    summary_path = out_dir / "summary.json"
     try:
         for step in steps:
             t0 = time.perf_counter()
@@ -513,15 +531,29 @@ def main(argv: list[str] | None = None) -> int:
                 res = step_eda_rss_check(uv)
             snap = snapshot_mlflow(db, tracking, session)
             summary["steps"][step] = {
+                "status": "passed",
                 "seconds": round(time.perf_counter() - t0, 1),
                 "mlflow_snapshot": str(snap),
                 "result": res,
             }
             shutil.copy2(ROOT / "dvc.lock", out_dir / "dvc.lock")
             sync_reports_to(out_dir)
-            (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+            summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    except Exception as exc:
+        summary["status"] = "failed"
+        summary["failed_step"] = step
+        summary["error"] = str(exc)
+        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        raise
     finally:
         proc.terminate()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+    summary["status"] = "passed"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
     return 0
 

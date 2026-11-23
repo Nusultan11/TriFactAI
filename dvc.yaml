@@ -108,7 +108,8 @@ stages:
   build_ner:
     cmd: python -m trifact.data.build_ner
     deps: [src/trifact/data/build_ner.py, src/trifact/data/ner_common.py, src/trifact/data/wikimarkup.py,
-           configs/labels.yaml, data/task/splits, data/task/kb, data/raw/wikipedia_wikitext]
+           configs/labels.yaml, data/task/splits, data/task/kb, data/raw/wikipedia_wikitext,
+           data/raw/wikidata/source.yaml]
     params: [scale, ner.silver, seed]
     outs: [data/task/ner]
 
@@ -138,7 +139,7 @@ stages:
     cmd: >-
       python -m trifact.data.synthetic import --kind queries
       --kaggle-out data/external/kaggle/teacher_queries/out data/stage3_teacher/teacher_queries2
-    deps: [src/trifact/data/synthetic.py, data/task/chunks, data/external/kaggle/teacher_queries,
+    deps: [src/trifact/data/synthetic.py, data/task/chunks/dataset.yaml, data/external/kaggle/teacher_queries,
            data/stage3_teacher/teacher_queries2]
     params: [teacher, sft.mix, scale.min_kk_share]
     outs: [data/task/synthetic/queries]
@@ -149,14 +150,15 @@ stages:
       --kaggle-out data/external/kaggle/teacher_qa/out data/stage3_teacher/teacher_qa2 &&
       python -m trifact.data.synthetic finalize --kind qa
       --scores data/stage3_teacher/nli_score_qa_v4 --scored-input data/stage3_teacher/nli_input_v4
-    deps: [src/trifact/data/synthetic.py, data/task/chunks, data/external/kaggle/teacher_qa,
+    deps: [src/trifact/data/synthetic.py, data/task/chunks/dataset.yaml, data/external/kaggle/teacher_qa,
            data/stage3_teacher/teacher_qa2, data/stage3_teacher/nli_score_qa_v4, data/stage3_teacher/nli_input_v4]
     params: [teacher, sft.mix, scale.min_kk_share, verification.nli_job]
     outs: [data/task/synthetic/qa]
 
   build_pairs:
     cmd: python -m trifact.data.build_pairs --synthetic data/task/synthetic/queries
-    deps: [src/trifact/data/build_pairs.py, src/trifact/data/qa_common.py, src/trifact/data/bm25.py, data/task/splits,
+    deps: [src/trifact/data/build_pairs.py, src/trifact/data/qa_common.py, src/trifact/data/bm25.py,
+           src/trifact/data/task_common.py, data/task/splits,
            data/task/mt/qa, data/task/synthetic/queries, data/raw/ms_marco, data/raw/mmarco_ru, data/raw/miracl,
            data/raw/miracl_corpus, data/raw/ru_hnp, data/raw/kazparc, data/raw/squad_v2, data/raw/sberquad, data/raw/kazqad,
            data/eval/retrieval, data/eval/qa]
@@ -165,8 +167,10 @@ stages:
 
   build_sft:
     cmd: python -m trifact.data.build_sft --synthetic data/task/synthetic/qa
-    deps: [src/trifact/data/build_sft.py, src/trifact/data/qa_common.py, configs/prompts/grounded_answer.md, data/task/splits,
-           data/task/mt/qa, data/task/synthetic/qa, data/eval/retrieval, data/eval/qa]
+    deps: [src/trifact/data/build_sft.py, src/trifact/data/qa_common.py, src/trifact/data/bm25.py,
+           src/trifact/data/task_common.py, configs/prompts/grounded_answer.md, data/task/splits,
+           data/task/mt/qa, data/task/synthetic/qa, data/eval/retrieval, data/eval/qa, data/raw/squad_v2,
+           data/raw/sberquad, data/raw/kazqad]
     params: [scale, sft, nli.kk_filters]
     outs: [data/task/sft]
 
@@ -180,13 +184,15 @@ stages:
 
   eval_leakage:  # eval sets vs train data after every train rebuild (ADR-0007); train builders drop eval queries
     cmd: python -m trifact.data.build_eval leakage
-    deps: [src/trifact/data/build_eval.py, data/eval/ner, data/eval/qa, data/eval/retrieval, data/eval/nli,
+    deps: [src/trifact/data/build_eval.py, src/trifact/data/task_common.py,
+           data/eval/ner, data/eval/qa, data/eval/retrieval, data/eval/nli,
            data/task/ner, data/task/retrieval, data/task/sft, data/task/nli]
     metrics: [{reports/eval_leakage.json: {cache: false}}]
 
   task_eda:    # ROADMAP 3.7
     cmd: python -m trifact.data.task_eda
-    deps: [src/trifact/data/task_eda.py, data/task, data/eval/ner, data/eval/qa, data/eval/retrieval, data/eval/nli]
+    deps: [src/trifact/data/task_eda.py, data/task/ner, data/task/sft, data/task/retrieval, data/task/nli,
+           data/task/synthetic, data/eval/ner, data/eval/qa, data/eval/retrieval, data/eval/nli]
     outs: [reports/eda/task.json]
 
   # ------------------------------------------------ corpus index
