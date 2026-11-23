@@ -6,27 +6,29 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 
 | Field | Status |
 |---|---|
-| **Active stage** | Stage 1–3 cloud requalification. Colab CPU verified Git, selective DVC restore, and model restore; full `raw` and Stage 2–3 cloud requalification remain open |
-| **Last completed stage** | Stage 1 — Data Platform & Acquisition (2026-11-20); Stage 4 completed earlier (2026-11-20) |
+| **Active stage** | Stage 1–4 verification & cloud requalification (2026-11-23). Stage 4 re-verified end-to-end after repairing 105 Drive DVC cache filenames; Stage 1–3 cloud CPU rebuilds gated on interactive Colab Drive OAuth; Stage 2–3 closeout gated on human review sheets & GPU quota |
+| **Last completed stage** | Stage 1 — Data Platform & Acquisition (2026-11-20; `ruwiki` part 4 added in `febc68c` awaits cloud `wikitext` run); Stage 4 — Document Processing Engine (2026-11-20, re-verified 2026-11-23) |
 | **Remote repository** | `origin` → `https://github.com/Nusultan11/TriFactAI` (`main`) |
-| **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All 5,158 cache objects (220 GiB) verified by name and size on Drive; clean-clone `dvc pull` restored 9 `data/review.dvc` files |
-| **Raw layer** | 19 sources: 17 HF + Wikidata `20261116` (122,308,973 entities) + Wikipedia wikitext `20261101`; all row checks passed |
+| **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All **3,274 / 3,274** DVC-cached objects across `dvc.lock`, `data/external.dvc`, and `data/review.dvc` verified on Drive after stripping spurious `.pdf` extensions from 105 `docproc` cache objects (2026-11-23) |
+| **Raw layer** | 19 sources: 17 HF + Wikidata `20261116` (122,308,973 entities) + Wikipedia wikitext `20261101`; all 584 shards / 270,766,215 rows passed deep verification in Colab CPU (`stage-01-03-3a88f9d273da/raw-integrity.json`, 0 problems) |
 
 ## Open Blockers (User Action, Quota, or Budget Required)
 
 1. **Stage 3 human review (eval & silver NER):**
-   - `data/eval/review/sheet-01.csv` — 3,500 items (MT retrieval queries, `kk` NLI). ROADMAP 3.5 requires full human labeling; `retrieval` and `nli` remain `candidate` until `python -m trifact.data.build_eval freeze`.
+   - `data/eval/review/sheet-01.csv` — 3,500 items (MT retrieval queries, `kk` NLI; `0 / 3,500` human-verified). ROADMAP 3.5 requires full human labeling; `retrieval` and `nli` remain `candidate` until `python -m trifact.data.build_eval freeze`.
    - `data/review/ner_silver/to_label.csv` — 600 silver NER sentences (200/language, ADR-0015 noise audit).
    - AI/LLM judgments do not substitute for human labels.
 2. **Stage 2 human review:**
    - `data/review/quality_human/to_label.csv` — 1,500 stratified docs (500/language: 350 kept, 150 dropped). Save completed sheet as `labels.csv`, then run `python -m trifact.evaluation.review_quality score --review-dir data/review/quality_human --reviewer "<name>"`.
    - Prior `data/review/quality` and 550 re-checked langid paragraphs were LLM-labeled (Claude, tagged in `reviewer`) and do not replace human review.
-3. **Kaggle GPU quota for synthetic teacher:**
-   - On 2026-11-22, API reported `7.78 / 30` GPU-hours remaining (reset `2026-11-28 00:00 UTC`). Prior 6 h run produced 12,624 / 30,000 query prompts and 4,554 / 10,000 QA prompts → 33,471 queries and 1,824 QA pairs after filtering.
-   - Below `datasets.md §6` synthetic targets; requires additional weekly quota or approved `params.yaml: cloud.budget_usd > 0`.
-4. **Colab GPU tier & budget:**
+3. **Interactive Colab Google Drive OAuth (cloud CPU stages):**
+   - `colab new -s trifact-s14` succeeded, but `colab drivemount` requires one-time per-session interactive browser OAuth consent from the user before running cloud CPU stages (`wikitext` `ruwiki` part 4 → `build_ner` >5M silver → `synthetic_queries` + `synthetic_qa` → `build_pairs` + `build_sft` → `eval_leakage` → `task_eda` → `eda_report` → `eda` RSS verification).
+4. **Kaggle GPU quota for synthetic teacher:**
+   - On 2026-11-23, `kaggle quota` reported `7.76 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`). `nurs2005/trifact-nli-score-qa` v4 (combined 16,904 QA candidates) was queued on Kaggle 2× T4 (`$0` USD); fetch via `uv run python -m trifact.batch.kaggle fetch nli_score --name nli-score-qa --version 4 --out "G:\Мой диск\TrifactAI\workspace-data\kaggle\trifact-nli-score-qa2"`.
+   - Full synthetic targets in `datasets.md §6` require additional weekly quota or approved `params.yaml: cloud.budget_usd > 0`.
+5. **Colab GPU tier & budget:**
    - Hosted CPU runtime (12.67 GB RAM, 107.72 GB disk) verified with Drive. Account has `0.00` compute units (NVIDIA L4 unavailable without paid units); `params.yaml: cloud.budget_usd: 0`. Recovery protocol: [ADR-0025](architecture/adr/0025-cloud-only-computing.md).
-5. **Optional MCP servers:**
+6. **Optional MCP servers:**
    - `github` MCP: invalid `Authorization` header (`GITHUB_PERSONAL_ACCESS_TOKEN`).
    - `mlflow` MCP: `127.0.0.1:5000` refused connection (2026-11-22). Historical MLflow runs logged via local HTTP; shared cloud MLflow server remains to be qualified.
 
@@ -50,6 +52,16 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 - **Document processing (ADR-0021):** worker needs Tesseract 5 binary (`TRIFACT_TESSERACT` on Linux) and ~2.1 GB RAM/parser process with Docling; scans/tables take 2–9 s/page on CPU → separate load-test scenario in Stage 9. Verify synthetic benchmark transfer on `real_docs` (≥50 files, Stage 10).
 - `chunking.variants` are chosen in Stage 6; `chunk_corpus` currently chunks flat, while `DocumentChunker` respects sections.
 - `dvc.yaml` lists `build_eval` outputs individually (`data/eval/{ner,qa,retrieval,nli,review}`) because `data/eval/docproc` belongs to `build_docproc`.
+
+---
+
+## Stage 1–4 · Storage Repair, EDA Fix & Verification (2026-11-23)
+
+- **Stage 1 & 4 Drive DVC cache repair:** Discovered that Google Drive had appended a spurious `.pdf` extension to **105** extensionless DVC cache files under `TrifactAI/dvc/files/md5/`, causing `dvc pull data/eval/docproc` to fail on 105 files (`[WinError 2]`). Stripped the `.pdf` suffix from all 105 objects and audited **3,274 / 3,274 (100%)** DVC-cached objects referenced by `dvc.lock`, `data/external.dvc`, and `data/review.dvc` on Drive (the 4 uncached outputs are `{cache: false}` JSON reports archived in `workspace-data/files/reports/`).
+- **Stage 1 cloud integrity confirmed:** Audited Colab CPU verification log `workspace-data/colab-validation/stage-01-03-3a88f9d273da/raw-integrity.json` — all **19 raw sources, 584 shards, 270,766,215 rows** passed deep verification with **0 problems** (2,457.2 s). `ruwiki` part 4 (added to `params.yaml` in `febc68c`) remains queued for cloud CPU `wikitext` execution once Colab Drive OAuth is authorized.
+- **Stage 2 EDA memory ceiling fixed (`7d9a4f6`):** Updated [eda.py](../src/trifact/data/eda.py) to merge shard profiles incrementally (`accumulate()`) instead of buffering all shard dicts in driver RAM, reduced `BATCH_BYTES` (`32 MiB → 16 MiB`), added `gc.collect()` per shard, and capped default workers to `min(curation.workers, 2)` to stay within `lake.peak_ram_gb: 10` and 12.67 GB Colab CPU RAM. Added regression test in [test_eda.py](../tests/data/test_eda.py).
+- **Stage 3 eval & synthetic QA NLI:** Verified `data/eval/{ner,qa,retrieval,nli}` via `trifact.lake verify --layer eval` (4/4 OK) and `build_eval status` (`ner` and `qa` frozen & intact; `retrieval` 8,390 and `nli` 2,650 `needs_review` intact as `candidate`; `sheet-01.csv` `0 / 3,500` human-verified). Queued Kaggle 2× T4 job `nurs2005/trifact-nli-score-qa` v4 (`$0` USD, within `7.76 / 30.00 h` free quota) to score claim pairs of the combined 16,904 synthetic QA candidates (`stage-01-03-2026d1dadd71/candidate-qa/nli-input`).
+- **Stage 4 verified end-to-end:** Clean `dvc pull data/eval/docproc` restored all **324 files**; **323 / 323** SHA-256 hashes in `data/eval/docproc/manifest.yaml` passed (`0` mismatches); **57 / 57** `tests/ingestion` + `tests/evaluation/test_eval_docproc.py` passed (1 skipped); **17 / 17** live hostile-file robustness checks passed through `SafeParser` (`restarts=0`).
 
 ---
 
