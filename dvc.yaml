@@ -108,7 +108,7 @@ stages:
   build_ner:
     cmd: python -m trifact.data.build_ner
     deps: [src/trifact/data/build_ner.py, src/trifact/data/ner_common.py, src/trifact/data/wikimarkup.py,
-           configs/labels.yaml, data/task/splits, data/task/kb, data/raw/wikipedia_wikitext,
+           configs/labels.yaml, data/task/splits, data/task/kb/dataset.yaml, data/raw/wikipedia_wikitext,
            data/raw/wikidata/source.yaml]
     params: [scale, ner.silver, seed]
     outs: [data/task/ner]

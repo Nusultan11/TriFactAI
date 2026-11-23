@@ -37,6 +37,7 @@ from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 ALL_STEPS = ("wikitext_merge", "build_ner", "synthetic", "train_and_eval", "eda_rss_check")
+EDA_LAYERS = ("entities", "raw", "clean", "curated")
 REQUIRED_LEAKAGE_SETS = (
     "ner:sentence",
     "qa:query",
@@ -303,14 +304,14 @@ def step_wikitext_merge(uv: list[str], drive: Path) -> dict[str, Any]:
 
 
 def step_build_ner(uv: list[str]) -> dict[str, Any]:
-    from trifact.lake.manifest import verify_dataset
+    from trifact.lake.manifest import DatasetManifest, verify_dataset
 
     run(
         *uv,
         "dvc",
         "pull",
         "split",
-        "build_kb",
+        "data/task/kb/dataset.yaml",
         "wikitext",
         "data/raw/wikidata/source.yaml",
         "acquire@kaznerd",
@@ -318,6 +319,15 @@ def step_build_ner(uv: list[str]) -> dict[str, Any]:
         "acquire@wikineural",
         "acquire@nerel",
     )
+    kb = ROOT / "data/task/kb"
+    titles = [shard for shard in DatasetManifest.read(kb).shards if shard.table == "titles"]
+    if not titles:
+        raise RuntimeError("The KB manifest has no title shards for silver NER")
+    run(*uv, "dvc", "pull", *((kb / shard.path).relative_to(ROOT) for shard in titles))
+    for shard in titles:
+        path = kb / shard.path
+        if path.stat().st_size != shard.bytes or sha256_file(path) != shard.sha256:
+            raise RuntimeError(f"Invalid KB title shard: {path}")
     run(*uv, "dvc", "repro", "--single-item", "build_ner")
     problems = verify_dataset(ROOT / "data/task/ner", deep=True)
     if problems:
@@ -326,8 +336,6 @@ def step_build_ner(uv: list[str]) -> dict[str, Any]:
     if not rep.is_file():
         raise RuntimeError(f"Missing NER report after build_ner: {rep}")
     report = json.loads(rep.read_text(encoding="utf-8"))
-    from trifact.lake.manifest import DatasetManifest
-
     manifest = DatasetManifest.read(ROOT / "data/task/ner")
     silver = manifest.rows_of("silver_train")
     if set(silver) != {"kk", "ru", "en"} or silver != report["silver"]["kept_by_lang"]:
@@ -433,7 +441,9 @@ def step_train_and_eval(uv: list[str]) -> dict[str, Any]:
     }
 
 
-def step_eda_rss_check(uv: list[str]) -> dict[str, Any]:
+def step_eda_rss_check(
+    uv: list[str], layers: tuple[str, ...] = EDA_LAYERS, report_only: bool = False
+) -> dict[str, Any]:
     from trifact.core.params import load_params
 
     params = load_params()
@@ -442,25 +452,33 @@ def step_eda_rss_check(uv: list[str]) -> dict[str, Any]:
     raw.extend(
         f"acquire@{name}" for name in params["sources"] if name not in ("wikidata", "wikipedia_wikitext")
     )
+    targets = {
+        "entities": ["wikidata"],
+        "raw": raw,
+        "clean": ["clean"],
+        "curated": ["dedup", "decontaminate"],
+    }
     results = {}
-    for layer, inputs in (
-        ("entities", ["wikidata"]),
-        ("raw", raw),
-        ("clean", ["clean"]),
-        ("curated", ["dedup", "decontaminate"]),
-    ):
-        run(*uv, "dvc", "pull", *inputs)
+    if report_only:
+        run(*uv, "dvc", "pull", *(f"eda@{layer}" for layer in layers))
+    for layer in layers:
         stage = f"eda@{layer}"
-        run(*uv, "dvc", "repro", "--single-item", "--force", stage)
+        if not report_only:
+            run(*uv, "dvc", "pull", *targets[layer])
+            run(*uv, "dvc", "repro", "--single-item", "--force", stage)
         report = json.loads((ROOT / f"reports/eda/{layer}.json").read_text(encoding="utf-8"))
         meta = report["meta"]
         if meta["layer"] != layer or not report["profiles"]:
             raise RuntimeError(f"Incomplete EDA profiles for {layer}")
         validate_rss_ceiling(meta, stage, max_ram_gb)
-        push_verified(uv, stage)
+        if not report_only:
+            push_verified(uv, stage)
         results[layer] = meta
+    if set(layers) != set(EDA_LAYERS):
+        return results
     run(*uv, "dvc", "pull", "task_eda")
     if not (ROOT / "reports/corpus_stats.json").is_file():
+        run(*uv, "dvc", "pull", "decontaminate")
         run(*uv, "dvc", "repro", "--single-item", "--force", "corpus_stats")
     run(*uv, "dvc", "repro", "--single-item", "eda_report")
     push_verified(uv, "eda_report")
@@ -501,10 +519,16 @@ def main(argv: list[str] | None = None) -> int:
         "--out-dir", type=Path, default=None, help="Output directory for summary, dvc.lock, reports"
     )
     ap.add_argument("--steps", default=",".join(ALL_STEPS))
+    eda_options = ap.add_mutually_exclusive_group()
+    eda_options.add_argument("--eda-layer", choices=EDA_LAYERS, action="append")
+    eda_options.add_argument("--eda-report-only", action="store_true")
     args = ap.parse_args(argv)
     steps = [s.strip() for s in args.steps.split(",") if s.strip()]
     if not steps or len(steps) != len(set(steps)) or (set(steps) - set(ALL_STEPS)):
         raise SystemExit("Specify one or more distinct known steps")
+    if (args.eda_layer or args.eda_report_only) and "eda_rss_check" not in steps:
+        ap.error("EDA options require eda_rss_check")
+    eda_layers = tuple(dict.fromkeys(args.eda_layer)) if args.eda_layer else EDA_LAYERS
 
     uv = setup_dvc_and_models(args.drive, args.dvc_remote)
     session = uuid4().hex[:12]
@@ -528,7 +552,7 @@ def main(argv: list[str] | None = None) -> int:
             elif step == "train_and_eval":
                 res = step_train_and_eval(uv)
             else:
-                res = step_eda_rss_check(uv)
+                res = step_eda_rss_check(uv, eda_layers, args.eda_report_only)
             snap = snapshot_mlflow(db, tracking, session)
             summary["steps"][step] = {
                 "status": "passed",
