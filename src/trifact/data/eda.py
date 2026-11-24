@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import hashlib
 import json
 import logging
 import os
@@ -702,8 +703,16 @@ def main(argv: list[str] | None = None) -> int:
     params = load_params()
     root = (ROOT / params["lake"]["root"]).resolve()
     workers = args.workers or min(int(params["curation"]["workers"]), 2)
-    work = root / ".cache" / "work" / f"eda_{args.layer}"
+    cache_env = os.environ.get("TRIFACT_EDA_SHARD_CACHE")
+    shard_cache = (Path(cache_env) / args.layer / "shards") if cache_env else None
+    work = (
+        (Path(cache_env) / args.layer / "work")
+        if cache_env
+        else (root / ".cache" / "work" / f"eda_{args.layer}")
+    )
     work.mkdir(parents=True, exist_ok=True)
+    if shard_cache is not None:
+        shard_cache.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
     with ResourceMonitor() as mon:
         if args.layer == "entities":
@@ -724,11 +733,40 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["POLARS_MAX_THREADS"] = str(max(1, (os.cpu_count() or 1) // workers))
             acc: dict[tuple[str, str, str], dict[str, Any]] = {}
             jobs.sort(key=lambda j: -os.path.getsize(j[0]))  # big shards first: shorter tail
+
+            def cache_file(job: tuple[Any, ...]) -> Path | None:
+                if shard_cache is None:
+                    return None
+                rel = os.path.relpath(job[0], root).replace("\\", "/")
+                sig = f"{args.layer}|{rel}|{os.path.getsize(job[0])}|{params['seed']}".encode()
+                return shard_cache / f"{hashlib.sha256(sig).hexdigest()[:20]}.json"
+
+            pending: list[tuple[Any, ...]] = []
+            reused = 0
+            for job in jobs:
+                cf = cache_file(job)
+                if cf is not None and cf.is_file():
+                    p = json.loads(cf.read_text(encoding="utf-8"))
+                    hf = p.get("res", {}).get("id", {}).get("hash_file")
+                    if not hf or Path(hf).is_file():
+                        accumulate(acc, p)
+                        reused += 1
+                        continue
+                pending.append(job)
+            if reused:
+                log.info("%s: reused %d/%d cached shards", args.layer, reused, len(jobs))
             with ProcessPoolExecutor(workers) as pool:
-                for i, p in enumerate(pool.map(profile_shard, jobs, chunksize=1)):
+                for i, (job, p) in enumerate(
+                    zip(pending, pool.map(profile_shard, pending, chunksize=1), strict=True)
+                ):
+                    cf = cache_file(job)
+                    if cf is not None:
+                        tmp = cf.with_suffix(".tmp")
+                        tmp.write_text(json.dumps(p), encoding="utf-8")
+                        tmp.replace(cf)
                     accumulate(acc, p)
-                    if i % 20 == 0:
-                        log.info("%s: %d/%d shards", args.layer, i + 1, len(jobs))
+                    if (reused + i) % 20 == 0:
+                        log.info("%s: %d/%d shards", args.layer, reused + i + 1, len(jobs))
             report = {"/".join(k): finalize(k, v) for k, v in sorted(acc.items())}
     meta = {"layer": args.layer, "seconds": round(time.perf_counter() - t0, 1), "workers": workers,
             "peak_rss_mb": mon.stats(1, 0, workers).peak_rss_mb}  # fmt: skip
