@@ -54,6 +54,7 @@ TOP_WORDS = 50_000
 TOP_LINES = 200
 SAMPLE_RATE = 0.02
 SAMPLE_CAP = 4000  # documents per shard in the vocabulary sample
+VOCAB_MAX_DOCS = 20_000  # max pooled documents per profile for Zipf / n-gram stats (bounds driver RSS)
 LOG_BINS = np.concatenate([[0], np.unique(np.round(np.logspace(0, 8, 161)).astype(np.int64))])
 KK_LETTERS = "әғқңөұүһіӘҒҚҢӨҰҮҺІ"
 MOJIBAKE = r"(?:Ð[\x80-\xbf]|Ñ[\x80-\xbf]|Ã[\x80-\xbf]|â€|Ã©|Â )"
@@ -238,6 +239,7 @@ def vocab_sample(texts: list[str]) -> dict[str, Any]:
     """Exact vocabulary statistics and n-gram top lists of a document sample."""
     if not texts:
         return {}
+    texts = texts[:VOCAB_MAX_DOCS]
     s = pl.Series(texts)
     wc = words_of(s).sort("len", descending=True)
     toks = int(wc["len"].sum())
@@ -245,14 +247,22 @@ def vocab_sample(texts: list[str]) -> dict[str, Any]:
     freq = wc["len"].to_numpy()
     sel = (ranks >= 10) & (ranks <= min(10_000, wc.height))
     zipf = float(-np.polyfit(np.log(ranks[sel]), np.log(freq[sel]), 1)[0]) if sel.sum() > 10 else None
-    lists = (
-        pl.DataFrame({"t": s}).select(w=pl.col("t").str.to_lowercase().str.extract_all(WORD))["w"].to_list()
-    )
     bi: Counter[str] = Counter()
     tri: Counter[str] = Counter()
-    for ws in lists:
-        bi.update(" ".join(ws[i : i + 2]) for i in range(len(ws) - 1))
-        tri.update(" ".join(ws[i : i + 3]) for i in range(len(ws) - 2))
+    for start in range(0, len(texts), 2000):
+        batch = pl.Series(texts[start : start + 2000])
+        lists = (
+            pl.DataFrame({"t": batch})
+            .select(w=pl.col("t").str.to_lowercase().str.extract_all(WORD))["w"]
+            .to_list()
+        )
+        for ws in lists:
+            bi.update(" ".join(ws[i : i + 2]) for i in range(len(ws) - 1))
+            tri.update(" ".join(ws[i : i + 3]) for i in range(len(ws) - 2))
+        if len(bi) > 250_000:
+            bi = Counter(dict(bi.most_common(50_000)))
+        if len(tri) > 250_000:
+            tri = Counter(dict(tri.most_common(50_000)))
     return {
         "sample_docs": len(texts), "tokens": toks, "types": wc.height,
         "type_token_ratio": round(wc.height / max(toks, 1), 5),
@@ -482,7 +492,7 @@ def finalize(key: tuple[str, str, str], res: dict[str, Any]) -> dict[str, Any]:
         if "top_words" in t:
             d["top_words"] = _top(t["top_words"], 200)
             d["top_lines"] = [(ln, k) for ln, k in _top(t["top_lines"], TOP_LINES) if k > 1]
-            d["vocab"] = vocab_sample([x for part in t["vocab_sample"] for x in part][: 50 * SAMPLE_CAP])
+            d["vocab"] = vocab_sample([x for part in t["vocab_sample"] for x in part][:VOCAB_MAX_DOCS])
         ex: dict[str, list[Any]] = {}
         for part in t["extremes"]:
             for k, v in part.items():
@@ -496,11 +506,16 @@ def finalize(key: tuple[str, str, str], res: dict[str, Any]) -> dict[str, Any]:
         txt[c] = d
     out["text"] = txt
     if "id" in res:
-        h = pl.scan_parquet(res["id"]["hash_file"]).select("h").collect()
+        n_rows, n_uniq = (
+            pl.scan_parquet(res["id"]["hash_file"])
+            .select(n=pl.len(), u=pl.col("h").n_unique())
+            .collect(engine="streaming")
+            .row(0)
+        )
         out["id"] = {
             "column": res["id"]["column"][0], "rows": res["id"]["rows"],
             "duplicates_within_shards": res["id"]["duplicate_rows_in_shard"],
-            "duplicates_across_shards": int(h.height - h["h"].n_unique()),
+            "duplicates_across_shards": int(n_rows - n_uniq),
         }  # fmt: skip
     if "quality" in res:
         q = res["quality"]
@@ -533,10 +548,16 @@ def accumulate(
     k = tuple(p["key"])
     r = p["res"]
     # lists that must not be added element-wise: keep as list of parts
-    for t in r.get("text", {}).values():
+    existing_text = (acc.get(k) or {}).get("text", {})
+    for col, t in r.get("text", {}).items():
         for f in ("top_words", "top_lines", "vocab_sample"):
             if f in t:
-                t[f] = [t[f]]
+                if f == "vocab_sample":
+                    have = sum(len(part) for part in existing_text.get(col, {}).get("vocab_sample", ()))
+                    rem = max(0, VOCAB_MAX_DOCS - have)
+                    t[f] = [t[f][:rem]] if rem else []
+                else:
+                    t[f] = [t[f]]
         t["extremes"] = [t["extremes"]]
     if "id" in r:
         r["id"] = {**r["id"], "hash_file": [r["id"]["hash_file"]], "column": [r["id"]["column"]]}
@@ -767,7 +788,10 @@ def main(argv: list[str] | None = None) -> int:
                     accumulate(acc, p)
                     if (reused + i) % 20 == 0:
                         log.info("%s: %d/%d shards", args.layer, reused + i + 1, len(jobs))
-            report = {"/".join(k): finalize(k, v) for k, v in sorted(acc.items())}
+            report = {}
+            for k in sorted(acc):
+                report["/".join(k)] = finalize(k, acc.pop(k))
+                gc.collect()
     meta = {"layer": args.layer, "seconds": round(time.perf_counter() - t0, 1), "workers": workers,
             "peak_rss_mb": mon.stats(1, 0, workers).peak_rss_mb}  # fmt: skip
     OUT.mkdir(parents=True, exist_ok=True)
