@@ -61,9 +61,9 @@ Silver NER maps internal Wikipedia links → Wikidata QID → `P31`/`P279` class
 | Raw corpora | Target ~27 M docs; ● 36.9 M (`multidomain_kk` = 24.9 M) | Est. ~40 GB; ● full raw layer 48.5 GB (19 sources incl. Wikidata + wikitext) |
 | Curated (clean + dedup + decontam) | Target 60–80% of raw; ● 30.85 M docs = 84% (`kk` 19.86 M, `ru` 4.62 M, `en` 6.37 M; 2026-11-20) | Est. ~30 GB; ● corpus 23.7 GB |
 | **RAG index** | **Target ~35 M chunks** (~20 M `en`, ~7 M `ru`, ~8 M `kk`); ● 59.63 M chunked (`kk` 29.59 M, `ru` 11.78 M, `en` 18.25 M; subset chosen in Stage 6) | fp16 vectors on disk ~72 GB; binary quant in RAM ~4.5 GB |
-| NER | Target 5–10 M silver + ~1.3 M gold; ● silver 4.52 M (`kk` 0.24 M), gold 0.44 M (2026-11-20) | ~5 GB |
-| Retrieval pairs | Target 10–20 M; ● 14.98 M across 9 directions (`kk-kk` 63.5k; synthetic queries 33.5k) | ~10 GB |
-| SFT grounded QA | Target 1–2 M; ● 0.31 M (teacher synthetic 1.8k — Kaggle quota, `PROGRESS.md` Blocker 3) | ~5 GB |
+| NER | Target 5–10 M silver + ~1.3 M gold; ● silver 5.17 M (`kk` 0.23 M, `ru` 2.81 M, `en` 2.13 M — meets 5–10 M target), gold 0.44 M (2026-11-23) | ~5 GB |
+| Retrieval pairs | Target 10–20 M; ● 15.05 M across 9 directions (meets target; `kk-kk` 86.6k; synthetic queries 102.0k) | ~10 GB |
+| SFT grounded QA | Target 1–2 M; ● 338.7k (teacher synthetic QA 11.0k — `$0` budget / Kaggle quota deviation documented in `PROGRESS.md`) | ~5 GB |
 | NLI | Target ~1.2 M; ● train 1.0 M (`en` 393k, `ru` 393k, `kk` 210k MT) | ~0.5 GB |
 | Eval (frozen) | Target 30–50k (incl. 3.5k human-verified, 9 directions); ● `qa` 32.4k & `ner` frozen; `retrieval` 38.6k queries & `nli` 12.7k awaiting human review | — |
 | Eval `docproc` (frozen, Stage 4) | ● 150 docs (18 × 8 kinds, 6 per `kk`/`ru`/`en`) + 6 mixed `kk`/`ru`/`en`; 239 PDF pages; 3 × 300-page PDFs; 17 hostile files (`clean/wikipedia`, CC-BY-SA-3.0) | 161 MB |

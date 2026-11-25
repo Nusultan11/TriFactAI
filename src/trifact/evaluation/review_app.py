@@ -100,6 +100,68 @@ def build(name: str, params: dict[str, Any], root: Path) -> Path:
     return out
 
 
+def build_hub(out_dir: Path, links: dict[str, str], stats: dict[str, dict[str, Any]]) -> Path:
+    """Build a single consolidated HTML hub linking all 3 human-review packets with exact save/CLI instructions."""
+    cards = []
+    meta = {
+        "quality": (
+            "1. Stage 2 — Качество документов (1 500)",
+            "data/review/quality_human/labels.csv",
+            'uv run --no-sync python -m trifact.evaluation.review_quality score --review-dir data/review/quality_human --reviewer "<Ваше имя>"',
+        ),
+        "ner": (
+            "2. Stage 3 — Silver NER аудит (600)",
+            "data/review/ner_silver/labels.csv",
+            "uv run --no-sync python -m trifact.evaluation.review_ner score",
+        ),
+        "eval": (
+            "3. Stage 3 — Eval MT & NLI (3 500)",
+            "data/eval/review/sheet-01.csv",
+            "uv run --no-sync python -m trifact.data.build_eval freeze",
+        ),
+    }
+    for key in ("quality", "ner", "eval"):
+        if key not in links:
+            continue
+        title, save_to, cmd = meta[key]
+        st = stats.get(key, {})
+        u = st.get("uncertainty", {})
+        cards.append(
+            f"""<div class="card">
+  <h2>{title}</h2>
+  <p>Элементов: <b>{st.get("items", 0)}</b> · Машинных оценок: <b>{st.get("judged", 0)}/{st.get("items", 0)}</b> ·
+  Риск: <span class="hi">high {u.get("high", 0)}</span> / <span class="med">medium {u.get("medium", 0)}</span> / <span class="lo">low {u.get("low", 0)}</span></p>
+  <p><a class="btn" href="{links[key]}">Открыть интерфейс проверки →</a></p>
+  <p class="hint">Сохранить экспорт как: <code>{save_to}</code><br>Команда после проверки: <code>{cmd}</code></p>
+</div>"""
+        )
+    html = f"""<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TriFact AI — Единый пакет проверки (Stages 2–3, 5 600 элементов)</title>
+<style>
+body {{ font:15px/1.5 system-ui, sans-serif; max-width:900px; margin:24px auto; padding:0 16px; background:#fafaf9; color:#1c1917; }}
+.card {{ background:#fff; border:1px solid #e7e5e4; border-radius:10px; padding:16px; margin-bottom:16px; }}
+.btn {{ display:inline-block; background:#2563eb; color:#fff; text-decoration:none; padding:8px 14px; border-radius:6px; font-weight:600; }}
+.hint {{ color:#57534e; font-size:13px; }}
+code {{ background:#f5f5f4; padding:2px 5px; border-radius:4px; }}
+.hi {{ color:#b91c1c; font-weight:600; }} .med {{ color:#b45309; font-weight:600; }} .lo {{ color:#15803d; font-weight:600; }}
+</style>
+</head>
+<body>
+<h1>TriFact AI — Единый пакет проверки (Stages 2–3)</h1>
+<p>Все <b>5 600 / 5 600</b> элементов имеют полные машинные оценки, рекомендации, исправления и уровни неопределённости.
+Машинные метки <b>не являются человеческой проверкой</b> (ADR-0022): откройте каждый пакет, введите своё имя, проверьте спорные случаи (high/medium) и подтвердите корректные рекомендации, затем экспортируйте CSV.</p>
+{"".join(cards)}
+</body></html>
+"""
+    out = out_dir / "index.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(html, encoding="utf-8", newline="\n")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sheet", choices=list(SHEETS), action="append")
@@ -107,8 +169,27 @@ def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
     root = (ROOT / params["lake"]["root"]).resolve()
+    built: dict[str, Path] = {}
+    stats: dict[str, dict[str, Any]] = {}
     for name in args.sheet or list(SHEETS):
-        print(name, "->", build(name, params, root))
+        p = build(name, params, root)
+        built[name] = p
+        mfile = machine_dir(name) / LABELS
+        if mfile.exists():
+            m = pl.read_csv(mfile, infer_schema_length=10000)
+            vcol = {"quality": "judge_label", "ner": "judge_ok", "eval": "judge_verdict"}[name]
+            judged = int(m[vcol].sum()) if name == "ner" else int(m[vcol].is_not_null().sum())
+            unc = dict(m.group_by("uncertainty").len().iter_rows()) if "uncertainty" in m.columns else {}
+            stats[name] = {"items": m.height, "judged": judged, "uncertainty": unc}
+        print(name, "->", p)
+    if len(built) == len(SHEETS):
+        hub_links = {
+            "quality": "quality_human/review.html",
+            "ner": "ner_silver/review.html",
+            "eval": "eval_mt/review.html",
+        }
+        hub = build_hub(ROOT / "data" / "review", hub_links, stats)
+        print("hub ->", hub)
     return 0
 
 

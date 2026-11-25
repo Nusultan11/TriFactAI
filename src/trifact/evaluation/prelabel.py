@@ -122,15 +122,86 @@ def read_sheet(name: str) -> pl.DataFrame:
     return pl.read_csv(ROOT / path, infer_schema_length=0, encoding="utf8-lossy")
 
 
-def parse_json(text: str | None) -> dict[str, Any] | None:
-    m = re.search(r"\{.*\}", text or "", re.DOTALL)
+def _extract_array_items(s: str, key: str) -> list[Any]:
+    """Extract complete JSON elements from a possibly truncated top-level array field."""
+    m = re.search(rf'"{re.escape(key)}"\s*:\s*\[', s)
     if not m:
+        return []
+    pos = m.end()
+    dec = json.JSONDecoder()
+    items: list[Any] = []
+    n = len(s)
+    while pos < n:
+        while pos < n and s[pos] in " \t\r\n,":
+            pos += 1
+        if pos >= n or s[pos] == "]":
+            break
+        try:
+            obj, end = dec.raw_decode(s, pos)
+            items.append(obj)
+            pos = end
+        except json.JSONDecodeError:
+            break
+    return items
+
+
+TOP_KEYS = {"label", "verdict", "wrong_type", "wrong_span", "not_entity", "missed"}
+
+
+def parse_json(text: str | None) -> dict[str, Any] | None:
+    """Parse judge JSON, preferring the last complete top-level object and recovering truncated outputs."""
+    if not text:
         return None
-    try:
-        d = json.loads(m.group(0))
-    except json.JSONDecodeError:
+    # If the model emitted an explicit "Revised JSON" block, parse from that block first.
+    rev = text.rfind("Revised JSON")
+    if rev != -1:
+        revised = parse_json(text[rev + len("Revised JSON") :])
+        if revised is not None:
+            return revised
+    # Prefer the last complete TOP-LEVEL JSON object (must contain a known judge key, not an inner entity dict).
+    starts = [m.start() for m in re.finditer(r"\{", text)]
+    dec = json.JSONDecoder()
+    for pos in reversed(starts):
+        try:
+            obj, _ = dec.raw_decode(text, pos)
+            if isinstance(obj, dict) and (set(obj.keys()) & TOP_KEYS):
+                return obj
+        except json.JSONDecodeError:
+            continue
+    if not starts:
         return None
-    return d if isinstance(d, dict) else None
+    s = text[starts[0] :]
+    idx = s.rfind('"reason"')
+    if idx != -1:
+        prefix = s[:idx].rstrip()
+        prefix = prefix.removesuffix(",")
+        rm = re.search(r'"reason"\s*:\s*"((?:[^"\\]|\\.)*)', s[idx:])
+        reason = rm.group(1) if rm else ""
+        try:
+            obj = json.loads(prefix + "}")
+            if isinstance(obj, dict) and (set(obj.keys()) & TOP_KEYS):
+                obj["reason"] = reason
+                obj["_truncated"] = True
+                return obj
+        except json.JSONDecodeError:
+            pass
+    # Fallback 1: eval verdict object truncated mid-field
+    vm = re.search(r'"verdict"\s*:\s*"(ok|fix|drop)"', s)
+    if vm:
+        out: dict[str, Any] = {"verdict": vm.group(1), "_truncated": True}
+        for k in ("fixed_text", "fixed_hypothesis", "fixed_premise", "reason"):
+            km = re.search(rf'"{k}"\s*:\s*"((?:[^"\\]|\\.)*)', s)
+            if km:
+                out[k] = km.group(1)
+        return out
+    # Fallback 2: NER object truncated mid-array
+    if any(f'"{k}"' in s for k in ("wrong_type", "wrong_span", "not_entity", "missed")):
+        out = {k: _extract_array_items(s, k) for k in ("wrong_type", "wrong_span", "not_entity", "missed")}
+        rm = re.search(r'"reason"\s*:\s*"((?:[^"\\]|\\.)*)', s)
+        out["reason"] = rm.group(1) if rm else ""
+        out["_truncated"] = True
+        return out
+    return None
 
 
 def query_langs(direction: str) -> tuple[str, str]:
@@ -349,8 +420,42 @@ def ner_signals() -> pl.DataFrame:
 # ----------------------------------------------------------------------------- import
 
 
+CORE_TYPES = {"PER", "ORG", "LOC"}
+FULL_DOC_DROP_REASONS = {"dup_lines", "dup_ngrams", "bad_chars", "few_stopwords", "bullets", "ellipsis"}
+SIGNAL_COLS = {
+    "quality": ["doc_id", "glotlid_lang", "glotlid_score", "lid176_lang", "lid176_score", "kk_letter_share"],
+    "ner": [
+        "sent_id",
+        "gliner_exact",
+        "gliner_type_diff",
+        "gliner_boundary_diff",
+        "silver_only",
+        "gliner_only",
+    ],
+    "eval": [
+        "item_id",
+        "kind",
+        "cand_lang",
+        "cos_source",
+        "cos_premise",
+        "digits_kept",
+        "len_ratio",
+        "chrf_back",
+        "nli_kk",
+        "nli_kk_p",
+        "nli_en",
+    ],
+}
+
+
 def teacher_answers(out: Path) -> dict[str, str]:
-    gen = pl.read_parquet(sorted(str(p) for p in (out / "out").glob("*.parquet")))
+    if out.is_file():
+        files = [str(out)]
+    elif (out / "out").is_dir():
+        files = sorted(str(p) for p in (out / "out").glob("*.parquet"))
+    else:
+        files = sorted(str(p) for p in out.glob("*.parquet"))
+    gen = pl.read_parquet(files)
     return dict(gen.filter(pl.col("id").str.starts_with("judge/")).select("id", "text").iter_rows())
 
 
@@ -358,64 +463,241 @@ def as_list(x: Any) -> list[Any]:
     return x if isinstance(x, list) else []
 
 
+def _strip_span_markup(s: str) -> str:
+    m = SPAN.fullmatch(s.strip())
+    return m.group(1).strip() if m else s.strip()
+
+
+def _sanitize_ner_judge(
+    marked_text: str, d: dict[str, Any]
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[str], list[dict[str, str]], int]:
+    """Validate NER judge errors against marked spans and ADR-0006 core types (PER/ORG/LOC).
+
+    Prevents non-core types (EVENT/WORK/DATE), already-marked spans in `missed`, no-op fixes,
+    and double-counting the same marked span across multiple error buckets.
+    """
+    plain, spans = plain_spans(marked_text)
+    plain_low = plain.lower()
+    # Track remaining occurrences of each marked (surface_lower, type) so a span cannot be counted twice
+    avail: list[tuple[str, str]] = [(plain[a:b].lower(), ty) for a, b, ty in spans]
+    marked_surfaces = {s for s, _ in avail}
+
+    def consume_marked(surface: str) -> tuple[bool, str | None]:
+        low = surface.lower()
+        for idx, (s, ty) in enumerate(avail):
+            if s == low:
+                avail.pop(idx)
+                return True, ty
+        return False, None
+
+    sanitized = 0
+    wt_clean: list[dict[str, str]] = []
+    ws_clean: list[dict[str, str]] = []
+    ne_clean: list[str] = []
+    mi_clean: list[dict[str, str]] = []
+
+    # 1. not_entity first (highest precedence for non-entities)
+    for x in as_list(d.get("not_entity")):
+        raw_txt = x.get("text", "") if isinstance(x, dict) else str(x)
+        tx = _strip_span_markup(str(raw_txt))
+        if not tx:
+            sanitized += 1
+            continue
+        ok, _ = consume_marked(tx)
+        if ok:
+            ne_clean.append(tx)
+        else:
+            sanitized += 1
+
+    # 2. wrong_type (reclassify non-core target types like O/DATE/EVENT into not_entity)
+    for x in as_list(d.get("wrong_type")):
+        if not isinstance(x, dict):
+            sanitized += 1
+            continue
+        tx = _strip_span_markup(str(x.get("text") or ""))
+        ty = str(x.get("type") or "").strip().upper()
+        if not tx:
+            sanitized += 1
+            continue
+        ok, cur_ty = consume_marked(tx)
+        if not ok:
+            sanitized += 1
+            continue
+        if ty not in CORE_TYPES:
+            ne_clean.append(tx)
+            sanitized += 1
+        elif ty == cur_ty:
+            # Put back if judge suggested the same type it already had
+            avail.append((tx.lower(), cur_ty or ""))
+            sanitized += 1
+        else:
+            wt_clean.append({"text": tx, "type": ty})
+
+    # 3. wrong_span
+    for x in as_list(d.get("wrong_span")):
+        if not isinstance(x, dict):
+            sanitized += 1
+            continue
+        tx = _strip_span_markup(str(x.get("text") or ""))
+        co = _strip_span_markup(str(x.get("correct") or ""))
+        if not tx or not co or tx.lower() == co.lower():
+            sanitized += 1
+            continue
+        ok, _ = consume_marked(tx)
+        if ok:
+            ws_clean.append({"text": tx, "correct": co})
+        else:
+            sanitized += 1
+
+    # 4. missed (only valid PER/ORG/LOC present in plain text and not already marked)
+    seen_missed: set[str] = set()
+    for x in as_list(d.get("missed")):
+        if not isinstance(x, dict):
+            sanitized += 1
+            continue
+        tx = _strip_span_markup(str(x.get("text") or ""))
+        ty = str(x.get("type") or "").strip().upper()
+        low = tx.lower()
+        if (
+            not tx
+            or ty not in CORE_TYPES
+            or low in marked_surfaces
+            or low in seen_missed
+            or low not in plain_low
+        ):
+            sanitized += 1
+            continue
+        seen_missed.add(low)
+        mi_clean.append({"text": tx, "type": ty})
+
+    return wt_clean, ws_clean, ne_clean, mi_clean, sanitized
+
+
 def import_quality(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
-    df = read_sheet("quality").select("doc_id", "review_lang", "status", "stratum")
+    df = read_sheet("quality").select("doc_id", "review_lang", "status", "stratum", "text")
     rows = []
-    for doc_id in df["doc_id"].to_list():
+    for r in df.iter_rows(named=True):
+        doc_id = r["doc_id"]
         d = parse_json(ans.get(f"judge/quality/{doc_id}")) or {}
-        rows.append({"doc_id": doc_id, "judge_label": d.get("label") if d.get("label") in ("good", "bad") else None,
-                     "judge_category": str(d.get("category") or ""), "judge_language": str(d.get("language") or ""),
-                     "judge_reason": str(d.get("reason") or "")})  # fmt: skip
-    j = df.join(pl.DataFrame(rows), on="doc_id").join(sig, on="doc_id", how="left")
-    # signal opinion: the language is right by GlotLID (independent of the lid.176 filters)
+        text = r["text"] or ""
+        rows.append(
+            {
+                "doc_id": doc_id,
+                "judge_label": d.get("label") if d.get("label") in ("good", "bad") else None,
+                "judge_category": str(d.get("category") or ""),
+                "judge_language": str(d.get("language") or ""),
+                "judge_reason": str(d.get("reason") or ""),
+                "judge_truncated": bool(d.get("_truncated", False)),
+                "text_chars": len(text),
+            }
+        )
+    j = df.drop("text").join(pl.DataFrame(rows), on="doc_id").join(sig, on="doc_id", how="left")
     sig_ok = (pl.col("glotlid_lang") == pl.col("review_lang")) & (pl.col("glotlid_score") >= 0.5)
     kk_doubt = (pl.col("review_lang") == "kk") & (pl.col("kk_letter_share") < 0.05)
-    return (
-        j.with_columns(
-            machine_label=pl.col("judge_label"),
-            signal_language_ok=sig_ok & ~kk_doubt,
+    j = j.with_columns(
+        machine_label=pl.col("judge_label"),
+        signal_language_ok=sig_ok & ~kk_doubt,
+    ).with_columns(
+        machine_agree=pl.when(pl.col("judge_label").is_null())
+        .then(pl.lit(False))
+        .when(pl.col("judge_label") == "good")
+        .then(pl.col("signal_language_ok"))
+        .when(pl.col("judge_category") == "wrong_language")
+        .then(~pl.col("signal_language_ok"))
+        .otherwise(pl.lit(True)),
+        filter_disagree=((pl.col("status") == "kept") & (pl.col("judge_label") == "bad"))
+        | ((pl.col("status") == "dropped") & (pl.col("judge_label") == "good")),
+    )
+    unc_levels: list[str] = []
+    unc_reasons: list[str] = []
+    for r in j.iter_rows(named=True):
+        reasons: list[str] = []
+        if r["judge_label"] is None:
+            reasons.append("judge_missing")
+        if r["judge_truncated"]:
+            reasons.append("judge_truncated")
+        if not r["machine_agree"]:
+            reasons.append("signal_disagrees")
+        if r["filter_disagree"]:
+            reasons.append("filter_disagrees")
+        if r["review_lang"] == "kk" and (r["kk_letter_share"] or 0.0) < 0.05:
+            reasons.append("kk_low_letter_share")
+        if (
+            r["status"] == "dropped"
+            and r["stratum"] in FULL_DOC_DROP_REASONS
+            and (r["text_chars"] or 0) >= 600
+        ):
+            reasons.append("preview_truncated_600c")
+        if not r["machine_agree"] or r["judge_label"] is None:
+            lvl = "high"
+        elif r["filter_disagree"] or "preview_truncated_600c" in reasons or "kk_low_letter_share" in reasons:
+            lvl = "medium"
+        else:
+            lvl = "low"
+        unc_levels.append(lvl)
+        unc_reasons.append("; ".join(reasons))
+    return j.with_columns(
+        uncertainty=pl.Series(unc_levels),
+        uncertainty_reasons=pl.Series(unc_reasons),
+    ).with_columns(
+        priority=pl.when(
+            pl.col("judge_label").is_null() | ~pl.col("machine_agree") | pl.col("filter_disagree")
         )
-        .with_columns(
-            # GlotLID only speaks about the language: a `good` needs it to agree, a `wrong_language` needs it to object
-            machine_agree=pl.when(pl.col("judge_label").is_null())
-            .then(pl.lit(False))
-            .when(pl.col("judge_label") == "good")
-            .then(pl.col("signal_language_ok"))
-            .when(pl.col("judge_category") == "wrong_language")
-            .then(~pl.col("signal_language_ok"))
-            .otherwise(pl.lit(True)),
-            # the filters decided too: disagreement of the judge with the filter decision is worth a human look
-            filter_disagree=((pl.col("status") == "kept") & (pl.col("judge_label") == "bad"))
-            | ((pl.col("status") == "dropped") & (pl.col("judge_label") == "good")),
-        )
-        .with_columns(
-            priority=pl.when(
-                pl.col("judge_label").is_null() | ~pl.col("machine_agree") | pl.col("filter_disagree")
-            )
-            .then(1)
-            .otherwise(2)
-        )
+        .then(1)
+        .otherwise(2)
     )
 
 
 def import_ner(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
-    df = read_sheet("ner").select("sent_id", "lang", "entities")
+    df = read_sheet("ner").select("sent_id", "lang", "text", "entities")
     rows = []
-    for sid in df["sent_id"].to_list():
+    for r in df.iter_rows(named=True):
+        sid = r["sent_id"]
         d = parse_json(ans.get(f"judge/ner/{sid}"))
         if d is None:
-            rows.append({"sent_id": sid, "judge_ok": False})
+            rows.append(
+                {
+                    "sent_id": sid,
+                    "judge_ok": False,
+                    "judge_truncated": False,
+                    "judge_sanitized": 0,
+                    "judge_wrong_type": 0,
+                    "judge_wrong_span": 0,
+                    "judge_not_entity": 0,
+                    "judge_missed": 0,
+                    "judge_wrong_type_items": "",
+                    "judge_wrong_span_items": "",
+                    "judge_not_entity_items": "",
+                    "judge_missed_items": "",
+                    "judge_reason": "",
+                }
+            )
             continue
-        wt, ws, ne, mi = (as_list(d.get(k)) for k in ("wrong_type", "wrong_span", "not_entity", "missed"))
+        wt, ws, ne, mi, san = _sanitize_ner_judge(r["text"], d)
         fmt = lambda xs, k: "; ".join(
             f"{x.get('text', '')}->{x.get(k, '')}" if isinstance(x, dict) else str(x) for x in xs
         )
-        rows.append({"sent_id": sid, "judge_ok": True, "judge_wrong_type": len(wt), "judge_wrong_span": len(ws),
-                     "judge_not_entity": len(ne), "judge_missed": len(mi), "judge_wrong_type_items": fmt(wt, "type"),
-                     "judge_wrong_span_items": fmt(ws, "correct"), "judge_not_entity_items": fmt(ne, ""),
-                     "judge_missed_items": fmt(mi, "type"), "judge_reason": str(d.get("reason") or "")})  # fmt: skip
-    j = df.join(pl.DataFrame(rows, infer_schema_length=None), on="sent_id").join(
-        sig, on="sent_id", how="left"
+        rows.append(
+            {
+                "sent_id": sid,
+                "judge_ok": True,
+                "judge_truncated": bool(d.get("_truncated", False)),
+                "judge_sanitized": san,
+                "judge_wrong_type": len(wt),
+                "judge_wrong_span": len(ws),
+                "judge_not_entity": len(ne),
+                "judge_missed": len(mi),
+                "judge_wrong_type_items": fmt(wt, "type"),
+                "judge_wrong_span_items": fmt(ws, "correct"),
+                "judge_not_entity_items": fmt(ne, ""),
+                "judge_missed_items": fmt(mi, "type"),
+                "judge_reason": str(d.get("reason") or ""),
+            }
+        )
+    j = (
+        df.drop("text")
+        .join(pl.DataFrame(rows, infer_schema_length=None), on="sent_id")
+        .join(sig, on="sent_id", how="left")
     )
     judge_err = pl.sum_horizontal(
         pl.col("judge_wrong_type", "judge_wrong_span", "judge_not_entity", "judge_missed").fill_null(0)
@@ -425,58 +707,172 @@ def import_ner(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
         | (pl.col("gliner_boundary_diff").fill_null("") != "")
         | (pl.col("gliner_only").fill_null("") != "")
     )
-    return j.with_columns(
+    j = j.with_columns(
         machine_errors=judge_err,
         machine_agree=pl.col("judge_ok") & ((judge_err > 0) == gliner_err),
+    )
+    unc_levels: list[str] = []
+    unc_reasons: list[str] = []
+    for r in j.iter_rows(named=True):
+        reasons: list[str] = []
+        if not r["judge_ok"]:
+            reasons.append("judge_missing")
+        if r["judge_truncated"]:
+            reasons.append("judge_truncated")
+        if (r["judge_sanitized"] or 0) > 0:
+            reasons.append(f"judge_sanitized({r['judge_sanitized']})")
+        if not r["machine_agree"]:
+            reasons.append("gliner_disagrees")
+        if (r["machine_errors"] or 0) > 0:
+            reasons.append("errors_found")
+        if (r["gliner_only"] or "").strip():
+            reasons.append("gliner_only_candidates")
+        if not r["judge_ok"] or not r["machine_agree"] or r["judge_truncated"]:
+            lvl = "high"
+        elif (r["machine_errors"] or 0) > 0 or (r["judge_sanitized"] or 0) > 0:
+            lvl = "medium"
+        else:
+            lvl = "low"
+        unc_levels.append(lvl)
+        unc_reasons.append("; ".join(reasons))
+    return j.with_columns(
+        uncertainty=pl.Series(unc_levels),
+        uncertainty_reasons=pl.Series(unc_reasons),
     ).with_columns(
-        priority=pl.when(~pl.col("machine_agree") | (pl.col("machine_errors") > 0)).then(1).otherwise(2)
+        priority=pl.when(
+            ~pl.col("machine_agree") | (pl.col("machine_errors") > 0) | pl.col("judge_truncated")
+        )
+        .then(1)
+        .otherwise(2)
     )
 
 
 def import_eval(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
-    df = read_sheet("eval").select("item_id", "kind", "direction", "label")
+    df = read_sheet("eval").select("item_id", "kind", "direction", "label", "source_text", "candidate_text")
     rows = []
-    for iid in df["item_id"].to_list():
+    for r in df.iter_rows(named=True):
+        iid = r["item_id"]
         d = parse_json(ans.get(f"judge/eval/{iid}")) or {}
         v = d.get("verdict") if d.get("verdict") in ("ok", "fix", "drop") else None
-        rows.append({"item_id": iid, "judge_verdict": v, "judge_fixed_text": str(d.get("fixed_text") or d.get("fixed_hypothesis") or ""),
-                     "judge_fixed_source": str(d.get("fixed_premise") or ""), "judge_reason": str(d.get("reason") or "")})  # fmt: skip
-    j = df.join(pl.DataFrame(rows), on="item_id").join(sig.drop("kind"), on="item_id", how="left")
+        ft = str(d.get("fixed_text") or d.get("fixed_hypothesis") or "").strip()
+        fs = str(d.get("fixed_premise") or "").strip()
+        san = False
+        if v == "fix":
+            if r["kind"] == "query_translation":
+                if not ft or ft == (r["candidate_text"] or "").strip():
+                    v, ft, san = "ok", "", True
+            else:
+                ft_same = not ft or ft == (r["candidate_text"] or "").strip()
+                fs_same = not fs or fs == (r["source_text"] or "").strip()
+                if ft_same and fs_same:
+                    v, ft, fs, san = "ok", "", "", True
+        rows.append(
+            {
+                "item_id": iid,
+                "judge_verdict": v,
+                "judge_fixed_text": ft,
+                "judge_fixed_source": fs,
+                "judge_reason": str(d.get("reason") or ""),
+                "judge_truncated": bool(d.get("_truncated", False)),
+                "judge_sanitized": san,
+            }
+        )
+    sig_clean = sig.drop("kind") if "kind" in sig.columns else sig
+    j = (
+        df.drop("source_text", "candidate_text")
+        .join(pl.DataFrame(rows), on="item_id")
+        .join(sig_clean, on="item_id", how="left")
+    )
     is_q = pl.col("kind") == "query_translation"
     tgt = pl.col("direction").str.split("-").list.first()
-    # signal opinion: the translation is plausible by similarity, language and digits; NLI items also need the
-    # label to be predicted on the Kazakh pair whenever it is predicted on the English pair
     sig_ok = (
         (pl.col("cos_source") >= 0.75)
         & pl.col("digits_kept")
         & pl.when(is_q).then(pl.col("cand_lang") == tgt).otherwise(pl.lit(True))
-        & pl.when(is_q).then(pl.lit(True)).otherwise((pl.col("nli_en") != pl.col("label")) | (pl.col("nli_kk") == pl.col("label")))
-    )  # fmt: skip
-    return (
-        j.with_columns(signal_ok=sig_ok)
-        .with_columns(
-            machine_agree=pl.col("judge_verdict").is_not_null()
-            & ((pl.col("judge_verdict") == "ok") == pl.col("signal_ok")),
-        )
-        .with_columns(
-            priority=pl.when(~pl.col("machine_agree") | (pl.col("judge_verdict") != "ok"))
-            .then(1)
-            .otherwise(2)
-        )
+        & pl.when(is_q)
+        .then(pl.lit(True))
+        .otherwise((pl.col("nli_en") != pl.col("label")) | (pl.col("nli_kk") == pl.col("label")))
     )
+    j = j.with_columns(signal_ok=sig_ok).with_columns(
+        machine_agree=pl.col("judge_verdict").is_not_null()
+        & ((pl.col("judge_verdict") == "ok") == pl.col("signal_ok")),
+    )
+    unc_levels: list[str] = []
+    unc_reasons: list[str] = []
+    for r in j.iter_rows(named=True):
+        reasons: list[str] = []
+        if r["judge_verdict"] is None:
+            reasons.append("judge_missing")
+        if r["judge_truncated"]:
+            reasons.append("judge_truncated")
+        if r["judge_sanitized"]:
+            reasons.append("noop_fix_normalized")
+        if not r["machine_agree"]:
+            reasons.append("signal_disagrees")
+        if r["cos_source"] is not None and float(r["cos_source"]) < 0.75:
+            reasons.append("low_cos_source")
+        if r["chrf_back"] is not None and float(r["chrf_back"]) < 45.0:
+            reasons.append("low_chrf_back")
+        if r["digits_kept"] is False:
+            reasons.append("digits_mismatch")
+        if r["kind"] == "nli_translation" and r["nli_en"] == r["label"] and r["nli_kk"] != r["label"]:
+            reasons.append("nli_label_mismatch")
+        if r["judge_verdict"] in ("fix", "drop"):
+            reasons.append(f"verdict_{r['judge_verdict']}")
+        if r["judge_verdict"] is None or not r["machine_agree"] or r["judge_truncated"]:
+            lvl = "high"
+        elif r["judge_verdict"] in ("fix", "drop") or r["judge_sanitized"] or "low_chrf_back" in reasons:
+            lvl = "medium"
+        else:
+            lvl = "low"
+        unc_levels.append(lvl)
+        unc_reasons.append("; ".join(reasons))
+    return j.with_columns(
+        uncertainty=pl.Series(unc_levels),
+        uncertainty_reasons=pl.Series(unc_reasons),
+    ).with_columns(
+        priority=pl.when(
+            ~pl.col("machine_agree")
+            | (pl.col("judge_verdict") != "ok")
+            | pl.col("judge_truncated")
+            | pl.col("judge_sanitized")
+        )
+        .then(1)
+        .otherwise(2)
+    )
+
+
+def _load_signals(name: str, d: Path) -> pl.DataFrame:
+    if (d / SIGNALS).is_file():
+        return pl.read_parquet(d / SIGNALS)
+    if (d / LABELS).is_file():
+        prev = pl.read_csv(d / LABELS, infer_schema_length=10000)
+        cols = [c for c in SIGNAL_COLS[name] if c in prev.columns]
+        return prev.select(cols)
+    raise FileNotFoundError(f"missing {d / SIGNALS} (and no fallback {d / LABELS})")
 
 
 def import_all(teacher_out: Path, params: dict[str, Any]) -> dict[str, Any]:
     ans = teacher_answers(teacher_out)
-    labeler = f"machine: judge {params['teacher']['model']} (llama.cpp {params['teacher']['serve']['file']}); signals"
+    labeler = (
+        f"machine: judge {params['teacher']['model']} (llama.cpp {params['teacher']['serve']['file']}); "
+        "sanitized + independent signals"
+    )
     summary: dict[str, Any] = {}
     for name, fn in (("quality", import_quality), ("ner", import_ner), ("eval", import_eval)):
         d = machine_dir(name)
-        sig = pl.read_parquet(d / SIGNALS)
+        sig = _load_signals(name, d)
         out = fn(ans, sig).with_columns(labeler=pl.lit(labeler))
         out.write_csv(d / LABELS)
-        summary[name] = {"items": out.height, "judged": int(out["machine_agree"].is_not_null().sum()),
-                         "priority_1": int((out["priority"] == 1).sum())}  # fmt: skip
+        valid_col = {"quality": "judge_label", "ner": "judge_ok", "eval": "judge_verdict"}[name]
+        judged = int(out[valid_col].sum()) if name == "ner" else int(out[valid_col].is_not_null().sum())
+        summary[name] = {
+            "items": out.height,
+            "judged": judged,
+            "truncated_recovered": int(out["judge_truncated"].sum()),
+            "priority_1": int((out["priority"] == 1).sum()),
+            "uncertainty": dict(out.group_by("uncertainty").len().iter_rows()),
+        }
         log.info("%s: %s -> %s", name, summary[name], d / LABELS)
     return summary
 
@@ -493,23 +889,73 @@ def wilson(k: int, n: int) -> list[float]:
 def report(params: dict[str, Any]) -> dict[str, Any]:
     """Machine-only estimates (`human: false`): judge opinion per stratum and agreement of the two opinions.
     Where a human label exists for the same item, the judge's agreement with it is reported (ADR-0022)."""
+    import numpy as np
+
     res: dict[str, Any] = {
         "human": False,
         "note": "machine pre-labels, not a human review; uncalibrated judge",
+        "coverage": {},
     }
     d = machine_dir("quality")
     q = pl.read_csv(d / LABELS, infer_schema_length=10000)
+    res["coverage"]["quality"] = {
+        "items": q.height,
+        "judged": int(q["judge_label"].is_not_null().sum()),
+        "priority_1": int((q["priority"] == 1).sum()),
+        "machine_agree": int(q["machine_agree"].sum()),
+        "uncertainty": dict(q.group_by("uncertainty").len().iter_rows())
+        if "uncertainty" in q.columns
+        else {},
+    }
+    sample_path = d / "sample.parquet"
+    stratum_sizes: dict[tuple[str, str, str], int] = {}
+    if sample_path.is_file():
+        sp = pl.read_parquet(sample_path, columns=["review_lang", "status", "stratum", "stratum_size"])
+        for r in sp.unique(["review_lang", "status", "stratum"]).iter_rows(named=True):
+            stratum_sizes[(r["review_lang"], r["status"], r["stratum"])] = int(r["stratum_size"])
     qs: dict[str, Any] = {}
-    for (lang, status), g in q.group_by("review_lang", "status"):
-        k = int((g["judge_label"] == ("good" if status == "kept" else "bad")).sum())
+    for (lang, status), g in sorted(
+        q.group_by("review_lang", "status"), key=lambda x: (str(x[0][0]), str(x[0][1]))
+    ):
+        positive = "good" if status == "kept" else "bad"
+        k = int((g["judge_label"] == positive).sum())
         n = int(g["judge_label"].is_not_null().sum())
-        qs.setdefault(lang, {})[status] = {"n": n, "judge_agrees_with_filter": round(k / n, 4) if n else None,
-                                           "ci95": wilson(k, n),
-                                           "categories": dict(g.group_by("judge_category").len().sort("len", descending=True).iter_rows())}  # fmt: skip
-        qs[lang][f"{status}_by_stratum"] = {
-            s: round(float((gg["judge_label"] == ("good" if status == "kept" else "bad")).mean() or 0), 3)
-            for (s,), gg in g.group_by("stratum")
+        by_stratum: dict[str, Any] = {}
+        pop_total = 0
+        weighted_num = 0.0
+        for (s,), gg in sorted(g.group_by("stratum"), key=lambda x: str(x[0][0])):
+            sk = int((gg["judge_label"] == positive).sum())
+            sn = int(gg["judge_label"].is_not_null().sum())
+            share = round(sk / sn, 4) if sn else 0.0
+            pop = stratum_sizes.get((str(lang), str(status), str(s)), 0)
+            pop_total += pop
+            weighted_num += share * pop
+            by_stratum[str(s)] = {
+                "n": sn,
+                positive: sk,
+                "share": share,
+                "ci95": wilson(sk, sn),
+                "population": pop,
+            }
+        weighted = round(weighted_num / pop_total, 4) if pop_total else None
+        qs.setdefault(str(lang), {})[str(status)] = {
+            "n": n,
+            "judge_agrees_with_filter": round(k / n, 4) if n else None,
+            "ci95": wilson(k, n),
+            "weighted_share": weighted,
+            "population": pop_total,
+            "categories": dict(g.group_by("judge_category").len().sort("len", descending=True).iter_rows()),
+            "by_stratum": by_stratum,
         }
+        qs[str(lang)][f"{status}_by_stratum"] = {s: v["share"] for s, v in by_stratum.items()}
+    for lang, lr in qs.items():
+        if "kept" in lr and "dropped" in lr and lr["kept"]["weighted_share"] is not None:
+            kept_pop = lr["kept"]["population"]
+            kept_good = lr["kept"]["weighted_share"]
+            lost = sum(v["population"] * (1.0 - v["share"]) for v in lr["dropped"]["by_stratum"].values())
+            good_total = kept_pop * kept_good + lost
+            lr["estimated_good_lost"] = round(lost / good_total, 4) if good_total else None
+            lr["estimated_false_accept"] = round(1.0 - kept_good, 4)
     res["quality"] = qs
     human = d / "labels.csv"
     if human.exists():
@@ -521,37 +967,108 @@ def report(params: dict[str, Any]) -> dict[str, Any]:
         }
     d = machine_dir("ner")
     n = pl.read_csv(d / LABELS, infer_schema_length=10000)
+    res["coverage"]["ner"] = {
+        "items": n.height,
+        "judged": int(n["judge_ok"].sum()),
+        "truncated_recovered": int(n["judge_truncated"].sum()) if "judge_truncated" in n.columns else 0,
+        "sanitized_entries": int(n["judge_sanitized"].sum()) if "judge_sanitized" in n.columns else 0,
+        "priority_1": int((n["priority"] == 1).sum()),
+        "machine_agree": int(n["machine_agree"].sum()),
+        "uncertainty": dict(n.group_by("uncertainty").len().iter_rows())
+        if "uncertainty" in n.columns
+        else {},
+    }
+    rng = np.random.default_rng(int(params["seed"]))
+    boot_n = int(params["evaluation"]["bootstrap_samples"])
     ns: dict[str, Any] = {}
-    for (lang,), g in n.group_by("lang"):
+    for (lang,), g in sorted(n.group_by("lang"), key=lambda x: str(x[0][0])):
         ents = int(g["entities"].cast(pl.Int64).sum())
-        wrong = int(
-            g.select(
-                pl.sum_horizontal(
-                    pl.col("judge_wrong_type", "judge_wrong_span", "judge_not_entity").fill_null(0)
-                )
+        wt = int(g["judge_wrong_type"].fill_null(0).sum())
+        ws = int(g["judge_wrong_span"].fill_null(0).sum())
+        ne = int(g["judge_not_entity"].fill_null(0).sum())
+        mi = int(g["judge_missed"].fill_null(0).sum())
+        wrong = wt + ws + ne
+        correct = max(0, ents - wrong)
+        gold = correct + mi + wt + ws
+        # Sentence-level bootstrap CI matching review_ner.py
+        arr_e = g["entities"].cast(pl.Int64).to_numpy()
+        arr_wt = g["judge_wrong_type"].fill_null(0).to_numpy()
+        arr_ws = g["judge_wrong_span"].fill_null(0).to_numpy()
+        arr_ne = g["judge_not_entity"].fill_null(0).to_numpy()
+        arr_mi = g["judge_missed"].fill_null(0).to_numpy()
+        bp, br = [], []
+        for _ in range(boot_n):
+            idx = rng.integers(0, g.height, g.height)
+            be = int(arr_e[idx].sum())
+            bwt, bws, bne, bmi = (
+                int(arr_wt[idx].sum()),
+                int(arr_ws[idx].sum()),
+                int(arr_ne[idx].sum()),
+                int(arr_mi[idx].sum()),
             )
-            .sum()
-            .item()
-        )
-        missed = int(g["judge_missed"].fill_null(0).sum())
-        ns[lang] = {"sentences": g.height, "entities": ents,
-                    "judge_precision": round(1 - wrong / ents, 4) if ents else None,
-                    "judge_missed_per_sentence": round(missed / g.height, 3),
-                    "judge_recall": round((ents - wrong) / (ents - wrong + missed), 4) if ents else None,
-                    "by_error": {k: int(g[f"judge_{k}"].fill_null(0).sum()) for k in ("wrong_type", "wrong_span", "not_entity", "missed")},
-                    "gliner_exact_share": round(int(g["gliner_exact"].sum()) / ents, 4) if ents else None,
-                    "sentences_with_gliner_only_span": int((g["gliner_only"].fill_null("") != "").sum()),
-                    "machine_agree": round(float(g["machine_agree"].mean() or 0), 4)}  # fmt: skip
+            bc = max(0, be - bwt - bws - bne)
+            bg = bc + bmi + bwt + bws
+            bp.append(bc / be if be else 0.0)
+            br.append(bc / bg if bg else 0.0)
+        ns[str(lang)] = {
+            "sentences": g.height,
+            "entities": ents,
+            "judge_precision": round(correct / ents, 4) if ents else None,
+            "judge_precision_ci95_bootstrap": [
+                round(float(np.quantile(bp, 0.025)), 4),
+                round(float(np.quantile(bp, 0.975)), 4),
+            ],
+            "judge_missed_per_sentence": round(mi / g.height, 3),
+            "judge_recall": round(correct / gold, 4) if gold else None,
+            "judge_recall_ci95_bootstrap": [
+                round(float(np.quantile(br, 0.025)), 4),
+                round(float(np.quantile(br, 0.975)), 4),
+            ],
+            "by_error": {"wrong_type": wt, "wrong_span": ws, "not_entity": ne, "missed": mi},
+            "sentences_without_errors": round(float((g["machine_errors"] == 0).mean() or 0), 4),
+            "gliner_exact_share": round(int(g["gliner_exact"].sum()) / ents, 4) if ents else None,
+            "sentences_with_gliner_only_span": int((g["gliner_only"].fill_null("") != "").sum()),
+            "machine_agree": round(float(g["machine_agree"].mean() or 0), 4),
+        }
     res["ner"] = ns
     d = machine_dir("eval")
     e = pl.read_csv(d / LABELS, infer_schema_length=10000)
+    res["coverage"]["eval"] = {
+        "items": e.height,
+        "judged": int(e["judge_verdict"].is_not_null().sum()),
+        "truncated_recovered": int(e["judge_truncated"].sum()) if "judge_truncated" in e.columns else 0,
+        "sanitized_noop_fixes": int(e["judge_sanitized"].sum()) if "judge_sanitized" in e.columns else 0,
+        "priority_1": int((e["priority"] == 1).sum()),
+        "machine_agree": int(e["machine_agree"].sum()),
+        "uncertainty": dict(e.group_by("uncertainty").len().iter_rows())
+        if "uncertainty" in e.columns
+        else {},
+    }
     es: dict[str, Any] = {}
-    for (kind, direction), g in e.group_by("kind", "direction"):
+    for (kind, direction), g in sorted(
+        e.group_by("kind", "direction"), key=lambda x: (str(x[0][0]), str(x[0][1]))
+    ):
         v = g["judge_verdict"].value_counts()
-        es[f"{kind}/{direction}"] = {"n": g.height, "verdicts": dict(v.iter_rows()),
-                                    "signal_ok": round(float(g["signal_ok"].mean() or 0), 4),
-                                    "machine_agree": round(float(g["machine_agree"].mean() or 0), 4),
-                                    "cos_source_p10": round(float(g["cos_source"].quantile(0.1) or 0), 3)}  # fmt: skip
+        chrf_vals = g["chrf_back"].drop_nulls()
+        entry: dict[str, Any] = {
+            "n": g.height,
+            "verdicts": dict(v.iter_rows()),
+            "signal_ok": round(float(g["signal_ok"].mean() or 0), 4),
+            "machine_agree": round(float(g["machine_agree"].mean() or 0), 4),
+            "digits_kept_rate": round(float(g["digits_kept"].mean() or 0), 4),
+            "cos_source_p10": round(float(g["cos_source"].quantile(0.1) or 0), 3),
+            "cos_source_p50": round(float(g["cos_source"].quantile(0.5) or 0), 3),
+        }
+        if chrf_vals.len() > 0:
+            entry["chrf_back_p10"] = round(float(chrf_vals.quantile(0.1) or 0), 2)
+            entry["chrf_back_p50"] = round(float(chrf_vals.quantile(0.5) or 0), 2)
+        if kind == "nli_translation":
+            en_ok = g.filter(pl.col("nli_en") == pl.col("label"))
+            entry["nli_kk_label_match"] = round(float((g["nli_kk"] == g["label"]).mean() or 0), 4)
+            entry["nli_kk_given_en_match"] = (
+                round(float((en_ok["nli_kk"] == en_ok["label"]).mean() or 0), 4) if en_ok.height else None
+            )
+        es[f"{kind}/{direction}"] = entry
     res["eval"] = es
     return res
 

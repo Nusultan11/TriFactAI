@@ -14,11 +14,16 @@ header h1 { font-size:16px; margin:0 12px 0 0; }
 input, select, textarea, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; }
 button { cursor:pointer; }
 button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
-main { max-width:980px; margin:0 auto; padding:16px; }
-.bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; flex:1 1 160px; }
+button.accept { background:var(--ok); color:#fff; border-color:var(--ok); }
+main { max-width:1120px; margin:0 auto; padding:16px; }
+.bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; flex:1 1 140px; }
 .bar > div { height:100%; background:var(--ok); }
 .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
-.meta { color:var(--muted); font-size:13px; display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px; }
+.meta { color:var(--muted); font-size:13px; display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:8px; }
+.badge { padding:1px 7px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid; }
+.unc-low { color:var(--ok); border-color:var(--ok); background:#15803d14; }
+.unc-medium { color:var(--warn); border-color:var(--warn); background:#b4530914; }
+.unc-high { color:var(--bad); border-color:var(--bad); background:#b91c1c14; }
 .text { white-space:pre-wrap; word-break:break-word; font-size:16px; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; }
 .pair { display:grid; grid-template-columns:1fr; gap:8px; }
 @media (min-width:760px) { .pair { grid-template-columns:1fr 1fr; } }
@@ -26,7 +31,7 @@ main { max-width:980px; margin:0 auto; padding:16px; }
 .ent { border-radius:4px; padding:0 3px; border:1px solid; }
 .PER { border-color:#9333ea; background:#9333ea22; } .ORG { border-color:#0891b2; background:#0891b222; } .LOC { border-color:#ca8a04; background:#ca8a0422; }
 .ent sub { font-size:10px; color:var(--muted); }
-.machine { margin-top:10px; border-left:3px solid var(--warn); padding:6px 10px; font-size:14px; background:var(--bg); border-radius:0 6px 6px 0; }
+.machine { margin-top:10px; border-left:3px solid var(--warn); padding:8px 12px; font-size:14px; background:var(--bg); border-radius:0 6px 6px 0; }
 .machine .tag { font-weight:600; }
 .choices { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
 .choices button.on { outline:2px solid var(--acc); background:var(--sel); }
@@ -35,18 +40,30 @@ main { max-width:980px; margin:0 auto; padding:16px; }
 textarea { width:100%; min-height:44px; }
 .counts input { width:64px; }
 .hint { color:var(--muted); font-size:13px; }
-.nav { display:flex; gap:8px; justify-content:space-between; flex-wrap:wrap; }
+.nav { display:flex; gap:8px; justify-content:space-between; flex-wrap:wrap; align-items:center; }
 .warn { color:var(--bad); font-weight:600; }
 kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:4px; padding:0 4px; font-size:12px; }
+table.list { width:100%; border-collapse:collapse; font-size:13px; }
+table.list th, table.list td { border-bottom:1px solid var(--line); padding:8px 6px; text-align:left; vertical-align:top; }
+table.list tr:hover { background:var(--sel); }
+.clip { max-width:340px; max-height:90px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
 </style>
 </head>
 <body>
 <header>
   <h1 id="title">Review</h1>
-  <input id="reviewer" placeholder="Ваше имя (обязательно)" size="22">
-  <select id="filter"><option value="all">все</option><option value="todo">неразмеченные</option><option value="p1">сначала спорные (priority 1)</option></select>
+  <input id="reviewer" placeholder="Ваше имя (обязательно)" size="20">
+  <select id="filter">
+    <option value="p1">сначала спорные (priority 1)</option>
+    <option value="todo">все неразмеченные</option>
+    <option value="todo_high">неразмеченные: высокая неопределённость</option>
+    <option value="todo_medium">неразмеченные: средняя неопределённость</option>
+    <option value="todo_low">неразмеченные: высокая уверенность (low)</option>
+    <option value="all">все элементы</option>
+  </select>
   <select id="lang"><option value="">все языки</option></select>
-  <label class="hint"><input type="checkbox" id="blind"> скрыть подсказку машины</label>
+  <select id="mode"><option value="card">Карточка</option><option value="table">Таблица (по 25)</option></select>
+  <label class="hint"><input type="checkbox" id="blind"> скрыть подсказку</label>
   <div class="bar"><div id="progress"></div></div>
   <span id="count" class="hint"></span>
   <button id="export" class="primary">Экспорт CSV</button>
@@ -65,7 +82,8 @@ const KEY = "trifact-review:" + D.sheet + ":" + D.version;
 let S = {};
 try { S = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { S = {}; }
 const items = D.items;
-let order = items.map((_, i) => i), pos = 0;
+const PAGE_SIZE = 25;
+let order = items.map((_, i) => i), pos = 0, page = 0;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
@@ -75,67 +93,152 @@ D.done = { quality: (s) => s.label === "good" || s.label === "bad",
            eval: (s) => ["ok", "fix", "drop"].includes(s.verdict) && (s.verdict !== "fix" || (s.fixed_text || s.fixed_source)),
            ner: (s) => s.checked === true }[D.kind];
 $("title").textContent = D.title;
-$("help").innerHTML = D.help;
+$("help").innerHTML = D.help + `<br><span class="hint">Горячие клавиши: <kbd>A</kbd> принять рекомендацию машины (после проверки), <kbd>J</kbd>/<kbd>K</kbd> навигация. Машинные оценки явно помечены и никогда не считаются человеческой проверкой без вашего подтверждения.</span>`;
 $("reviewer").value = S.__reviewer || "";
 $("reviewer").oninput = (e) => { S.__reviewer = e.target.value; save(); };
 $("blind").checked = !!S.__blind;
 $("blind").onchange = (e) => { S.__blind = e.target.checked; save(); render(); };
 [...new Set(items.map((x) => x.lang))].sort().forEach((l) => { const o = document.createElement("option"); o.value = l; o.textContent = l; $("lang").appendChild(o); });
+
 function reorder() {
   const f = $("filter").value, lg = $("lang").value;
-  order = items.map((_, i) => i).filter((i) => (!lg || items[i].lang === lg) && (f !== "todo" || !done(items[i])));
+  order = items.map((_, i) => i).filter((i) => {
+    const it = items[i], u = (it.m && it.m.uncertainty) || "medium";
+    if (lg && it.lang !== lg) return false;
+    if (f === "todo") return !done(it);
+    if (f === "todo_high") return !done(it) && u === "high";
+    if (f === "todo_medium") return !done(it) && u === "medium";
+    if (f === "todo_low") return !done(it) && u === "low";
+    return true;
+  });
   if (f === "p1") order.sort((a, b) => (items[a].m.priority || 2) - (items[b].m.priority || 2) || a - b);
   pos = Math.min(pos, Math.max(order.length - 1, 0));
+  page = Math.min(page, Math.max(Math.ceil(order.length / PAGE_SIZE) - 1, 0));
 }
-$("filter").onchange = () => { pos = 0; reorder(); render(); };
-$("lang").onchange = () => { pos = 0; reorder(); render(); };
+$("filter").onchange = () => { pos = 0; page = 0; reorder(); render(); };
+$("lang").onchange = () => { pos = 0; page = 0; reorder(); render(); };
+$("mode").onchange = () => { render(); };
+
 function marked(t) {
   return esc(t).replace(/\[([^\[\]|]+)\|(PER|ORG|LOC)\]/g, (_, s, ty) => `<span class="ent ${ty}">${s}<sub>${ty}</sub></span>`);
+}
+function uncBadge(m) {
+  if ($("blind").checked || !m || !m.uncertainty) return "";
+  const u = m.uncertainty;
+  const lbl = { low: "низкая неопред.", medium: "средняя неопред.", high: "высокая неопред." }[u] || u;
+  return `<span class="badge unc-${esc(u)}">${lbl}</span>${m.uncertainty_reasons ? `<span class="hint">(${esc(m.uncertainty_reasons)})</span>` : ""}`;
 }
 function machineBox(it) {
   if ($("blind").checked) return "";
   const m = it.m || {};
-  return `<div class="machine"><span class="tag">Подсказка машины</span> (${esc(D.labeler)}): ${D.machineHtml(m, it)}<br><span class="hint">Это не человеческая метка: решение принимаете вы.</span></div>`;
+  return `<div class="machine"><span class="tag">Рекомендация машины</span> (${esc(D.labeler)}): ${D.machineHtml(m, it)}<br><span class="hint">Это не человеческая метка: решение принимаете вы.</span></div>`;
 }
 D.machineHtml = {
-  quality: (m) => `<b>${esc(m.judge_label || "—")}</b> · ${esc(m.judge_category)} · ${esc(m.judge_reason)}<br>GlotLID: ${esc(m.glotlid_lang)} ${esc(m.glotlid_score)}; доля казахских букв ${esc(m.kk_letter_share)}`,
-  eval: (m) => `<b>${esc(m.judge_verdict || "—")}</b> · ${esc(m.judge_reason)}${m.judge_fixed_text ? `<br>вариант: <i>${esc(m.judge_fixed_text)}</i>` : ""}${m.judge_fixed_source ? `<br>посылка: <i>${esc(m.judge_fixed_source)}</i>` : ""}<br>bge-m3 cos ${esc(m.cos_source)}${m.cos_premise != null ? `, посылка ${esc(m.cos_premise)}` : ""}; chrF обратного перевода ${esc(m.chrf_back ?? "—")}; цифры совпали: ${m.digits_kept ? "да" : "нет"}${m.nli_kk ? `; NLI kk ${esc(m.nli_kk)} / en ${esc(m.nli_en)}` : ""}`,
-  ner: (m) => `ошибок по судье: ${esc(m.machine_errors ?? "—")} · ${esc(m.judge_reason)}${m.judge_wrong_type_items ? `<br>тип: ${esc(m.judge_wrong_type_items)}` : ""}${m.judge_wrong_span_items ? `<br>границы: ${esc(m.judge_wrong_span_items)}` : ""}${m.judge_not_entity_items ? `<br>не сущность: ${esc(m.judge_not_entity_items)}` : ""}${m.judge_missed_items ? `<br>пропущено: ${esc(m.judge_missed_items)}` : ""}<br>GLiNER: только у GLiNER — ${esc(m.gliner_only || "нет")}; другой тип — ${esc(m.gliner_type_diff || "нет")}; другие границы — ${esc(m.gliner_boundary_diff || "нет")}`,
+  quality: (m) => `<b>${esc(m.judge_label || "—")}</b> · ${esc(m.judge_category)} · ${esc(m.judge_reason)}<br>GlotLID: ${esc(m.glotlid_lang)} ${esc(m.glotlid_score)}; lid.176: ${esc(m.lid176_lang)} ${esc(m.lid176_score)}; доля каз. букв: ${esc(m.kk_letter_share)}`,
+  eval: (m) => `<b>${esc(m.judge_verdict || "—")}</b> · ${esc(m.judge_reason)}${m.judge_fixed_text ? `<br>исправление: <i>${esc(m.judge_fixed_text)}</i>` : ""}${m.judge_fixed_source ? `<br>испр. посылка: <i>${esc(m.judge_fixed_source)}</i>` : ""}<br>bge-m3 cos ${esc(m.cos_source)}${m.cos_premise !== "" && m.cos_premise != null ? `, посылка ${esc(m.cos_premise)}` : ""}; chrF ${esc(m.chrf_back !== "" && m.chrf_back != null ? m.chrf_back : "—")}; цифры: ${m.digits_kept ? "да" : "нет"}${m.nli_kk ? `; NLI kk ${esc(m.nli_kk)} / en ${esc(m.nli_en)}` : ""}`,
+  ner: (m) => `ошибок по судье: <b>${esc(m.machine_errors ?? "—")}</b> (тип ${esc(m.judge_wrong_type ?? 0)}, границы ${esc(m.judge_wrong_span ?? 0)}, не сущн. ${esc(m.judge_not_entity ?? 0)}, пропущ. ${esc(m.judge_missed ?? 0)}) · ${esc(m.judge_reason)}${m.judge_wrong_type_items ? `<br>тип: ${esc(m.judge_wrong_type_items)}` : ""}${m.judge_wrong_span_items ? `<br>границы: ${esc(m.judge_wrong_span_items)}` : ""}${m.judge_not_entity_items ? `<br>не сущность: ${esc(m.judge_not_entity_items)}` : ""}${m.judge_missed_items ? `<br>пропущено: ${esc(m.judge_missed_items)}` : ""}<br>GLiNER: только у GLiNER — ${esc(m.gliner_only || "нет")}; другой тип — ${esc(m.gliner_type_diff || "нет")}; другие границы — ${esc(m.gliner_boundary_diff || "нет")}`,
 }[D.kind];
+
+function acceptMachine(it, advance) {
+  if ($("blind").checked) return;
+  const m = it.m || {}, s = st(it);
+  if (D.kind === "quality") {
+    if (m.judge_label !== "good" && m.judge_label !== "bad") return;
+    s.label = m.judge_label;
+  } else if (D.kind === "eval") {
+    if (!["ok", "fix", "drop"].includes(m.judge_verdict)) return;
+    s.verdict = m.judge_verdict;
+    if (m.judge_verdict === "fix") {
+      s.fixed_text = m.judge_fixed_text || "";
+      s.fixed_source = m.judge_fixed_source || "";
+      s.took_machine_fix = true;
+    }
+  } else if (D.kind === "ner") {
+    s.wrong_type = Number(m.judge_wrong_type || 0);
+    s.wrong_span = Number(m.judge_wrong_span || 0);
+    s.not_entity = Number(m.judge_not_entity || 0);
+    s.missed = Number(m.judge_missed || 0);
+    s.checked = true;
+  }
+  touch(it);
+  if (advance && pos < order.length - 1) pos++;
+  render();
+}
+
 function choice(name, val, label, key, cur) { return `<button data-k="${name}" data-v="${val}" class="${cur === val ? "on" : ""}">${label} <kbd>${key}</kbd></button>`; }
 function body(it) {
-  const s = st(it), r = it.r;
+  const s = st(it), r = it.r, m = it.m || {};
+  const accBtn = !$("blind").checked ? `<button id="accept" class="accept">✓ Принять рекомендацию <kbd>A</kbd></button>` : "";
   if (D.kind === "quality") return `<div class="text">${esc(r.text)}</div>${machineBox(it)}
-    <div class="choices">${choice("label", "good", "good — естественный текст, годен для обучения", "G", s.label)}${choice("label", "bad", "bad — мусор, шаблон, не тот язык", "B", s.label)}</div>
+    <div class="choices">${accBtn}${choice("label", "good", "good — естественный текст", "G", s.label)}${choice("label", "bad", "bad — мусор / не тот язык", "B", s.label)}</div>
     <div class="row"><label>заметка</label><input data-f="note" value="${esc(s.note)}" style="flex:1"></div>`;
   if (D.kind === "eval") {
     const nli = r.kind === "nli_translation";
     return `${nli && r.en_premise ? `<div class="pair"><div><div class="lbl">EN посылка (оригинал)</div><div class="text">${esc(r.en_premise)}</div></div><div><div class="lbl">EN гипотеза (оригинал)</div><div class="text">${esc(r.en_hypothesis)}</div></div></div><p class="hint">Метка: <b>${esc(r.label)}</b></p>` : ""}
     <div class="pair"><div><div class="lbl">${nli ? "kk посылка (перевод)" : "исходный запрос"}</div><div class="text">${esc(r.source_text)}</div></div>
     <div><div class="lbl">${nli ? "kk гипотеза (перевод)" : "перевод (" + esc(r.direction.split("-")[0]) + ")"}</div><div class="text">${esc(r.candidate_text)}</div></div></div>${machineBox(it)}
-    <div class="choices">${choice("verdict", "ok", "ok", "O", s.verdict)}${choice("verdict", "fix", "fix — исправить", "F", s.verdict)}${choice("verdict", "drop", "drop — удалить", "D", s.verdict)}</div>
+    <div class="choices">${accBtn}${choice("verdict", "ok", "ok", "O", s.verdict)}${choice("verdict", "fix", "fix — исправить", "F", s.verdict)}${choice("verdict", "drop", "drop — удалить", "D", s.verdict)}</div>
     ${s.verdict === "fix" ? `<div class="row" style="display:block"><label>${nli ? "исправленная гипотеза (пусто — без изменений)" : "исправленный перевод"}</label><textarea data-f="fixed_text">${esc(s.fixed_text)}</textarea>
     ${nli ? `<label>исправленная посылка (пусто — без изменений)</label><textarea data-f="fixed_source">${esc(s.fixed_source)}</textarea>` : ""}
-    ${!$("blind").checked && (it.m.judge_fixed_text || it.m.judge_fixed_source) ? `<button id="takefix">взять вариант машины в поле (проверьте!)</button>` : ""}</div>` : ""}
+    ${!$("blind").checked && (m.judge_fixed_text || m.judge_fixed_source) ? `<button id="takefix">взять вариант машины в поле (проверьте!)</button>` : ""}</div>` : ""}
     <div class="row"><label>заметка</label><input data-f="note" value="${esc(s.note)}" style="flex:1"></div>`;
   }
   return `<div class="text">${marked(r.text)}</div><p class="hint">Размечено сущностей: ${esc(r.entities)}. Укажите число ошибок (0, если ошибок нет), затем «проверено» <kbd>Enter</kbd>.</p>${machineBox(it)}
     <div class="row counts">${["wrong_type:неверный тип", "wrong_span:неверные границы", "not_entity:не сущность", "missed:пропущено"].map((x) => { const [f, l] = x.split(":"); return `<label>${l}</label><input type="number" min="0" data-f="${f}" value="${esc(s[f] ?? 0)}">`; }).join("")}</div>
-    <div class="choices"><button data-k="checked" data-v="true" class="${s.checked ? "on" : ""}">проверено <kbd>Enter</kbd></button></div>
+    <div class="choices">${accBtn}<button data-k="checked" data-v="true" class="${s.checked ? "on" : ""}">проверено <kbd>Enter</kbd></button></div>
     <div class="row"><label>заметка</label><input data-f="note" value="${esc(s.note)}" style="flex:1"></div>`;
 }
+
+function renderTable() {
+  const start = page * PAGE_SIZE, slice = order.slice(start, start + PAGE_SIZE);
+  const pages = Math.max(1, Math.ceil(order.length / PAGE_SIZE));
+  $("pos").textContent = `стр. ${page + 1} / ${pages} (${order.length} эл.)`;
+  const rowsHtml = slice.map((idx, k) => {
+    const it = items[idx], m = it.m || {}, r = it.r;
+    const content = D.kind === "quality"
+      ? `<div class="clip">${esc((r.text || "").slice(0, 260))}</div>`
+      : D.kind === "ner"
+      ? `<div class="clip">${marked(r.text)}</div>`
+      : `<div class="clip"><b>Src:</b> ${esc(r.source_text)}<br><b>Cand:</b> ${esc(r.candidate_text)}${m.judge_fixed_text ? `<br><b>Fix:</b> <i>${esc(m.judge_fixed_text)}</i>` : ""}</div>`;
+    const rec = D.kind === "quality" ? `<b>${esc(m.judge_label)}</b> (${esc(m.judge_category)})`
+      : D.kind === "ner" ? `err=${esc(m.machine_errors)} (t:${esc(m.judge_wrong_type)} s:${esc(m.judge_wrong_span)} n:${esc(m.judge_not_entity)} m:${esc(m.judge_missed)})`
+      : `<b>${esc(m.judge_verdict)}</b>`;
+    return `<tr>
+      <td><a href="#" data-open="${start + k}">${esc(it.lang)}</a><br>${uncBadge(m)}</td>
+      <td>${content}</td>
+      <td>${rec}<br><span class="hint">${esc((m.judge_reason || "").slice(0, 140))}</span></td>
+      <td>${done(it) ? `<span style="color:var(--ok)">✓</span>` : `<button data-tacc="${idx}" class="accept">✓ Подтвердить</button>`}</td>
+    </tr>`;
+  }).join("");
+  const batchBtn = !$("blind").checked && slice.some((idx) => !done(items[idx]))
+    ? `<div style="margin-bottom:10px;display:flex;gap:10px;align-items:center;"><button id="accept-page" class="accept">✓ Я проверил(а) все строки на этой странице — подтвердить рекомендации (${slice.filter((i) => !done(items[i])).length})</button><span class="hint">Подтверждает только видимые на экране строки.</span></div>`
+    : "";
+  $("item").innerHTML = `<div class="card">${batchBtn}<table class="list"><thead><tr><th>Язык / Риск</th><th>Контент</th><th>Рекомендация и обоснование</th><th>Действие</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+  document.querySelectorAll("[data-open]").forEach((a) => a.onclick = (e) => { e.preventDefault(); pos = Number(a.dataset.open); $("mode").value = "card"; render(); });
+  document.querySelectorAll("[data-tacc]").forEach((b) => b.onclick = () => acceptMachine(items[Number(b.dataset.tacc)], false));
+  const ap = $("accept-page");
+  if (ap) ap.onclick = () => {
+    const who = ($("reviewer").value || "").trim();
+    if (!who) { alert("Сначала укажите ваше имя вверху страницы."); $("reviewer").focus(); return; }
+    for (const idx of slice) { if (!done(items[idx])) acceptMachine(items[idx], false); }
+    render();
+  };
+}
+
 function render() {
   const n = items.filter(done).length;
   $("progress").style.width = (100 * n / items.length) + "%";
   $("count").textContent = `${n} / ${items.length} размечено`;
   if (!order.length) { $("item").innerHTML = `<div class="card">Нет элементов под фильтр.</div>`; $("pos").textContent = ""; return; }
+  if ($("mode").value === "table") { renderTable(); return; }
   const it = items[order[pos]];
   $("pos").textContent = `${pos + 1} / ${order.length}`;
   const m = it.m || {};
-  $("item").innerHTML = `<div class="card"><div class="meta"><span>${esc(it.id)}</span><span>язык: ${esc(it.lang)}</span>${it.r.direction ? `<span>направление: ${esc(it.r.direction)}</span>` : ""}${it.r.stratum ? `<span>${esc(it.r.stratum)}</span>` : ""}${m.priority === 1 && !$("blind").checked ? `<span class="warn">спорный</span>` : ""}${done(it) ? `<span style="color:var(--ok)">✓ размечено</span>` : ""}</div>${body(it)}</div>`;
+  $("item").innerHTML = `<div class="card"><div class="meta"><span>${esc(it.id)}</span><span>язык: ${esc(it.lang)}</span>${it.r.direction ? `<span>направление: ${esc(it.r.direction)}</span>` : ""}${it.r.stratum ? `<span>${esc(it.r.stratum)}</span>` : ""}${uncBadge(m)}${done(it) ? `<span style="color:var(--ok)">✓ размечено</span>` : ""}</div>${body(it)}</div>`;
   document.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => set(it, b.dataset.k, b.dataset.v));
   document.querySelectorAll("[data-f]").forEach((el) => el.oninput = () => { st(it)[el.dataset.f] = el.type === "number" ? Number(el.value) : el.value; touch(it); });
-  const tf = $("takefix"); if (tf) tf.onclick = () => { const s = st(it); s.fixed_text = s.fixed_text || it.m.judge_fixed_text; s.fixed_source = s.fixed_source || it.m.judge_fixed_source; s.took_machine_fix = true; touch(it); render(); };
+  const tf = $("takefix"); if (tf) tf.onclick = () => { const s = st(it); s.fixed_text = s.fixed_text || m.judge_fixed_text; s.fixed_source = s.fixed_source || m.judge_fixed_source; s.took_machine_fix = true; touch(it); render(); };
+  const ac = $("accept"); if (ac) ac.onclick = () => acceptMachine(it, true);
 }
 function touch(it) { const s = st(it); s.assist = $("blind").checked ? "blind" : "machine_shown"; s.at = new Date().toISOString(); save(); }
 function set(it, k, v) {
@@ -147,17 +250,19 @@ function set(it, k, v) {
   render();
 }
 document.addEventListener("keydown", (e) => {
+  if ($("mode").value === "table") return;
   if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) { if (e.key === "Escape") document.activeElement.blur(); if (!(D.kind === "ner" && e.key === "Enter")) return; }
   const it = items[order[pos]]; if (!it) return;
   const k = e.key.toLowerCase();
   if (k === "j" || e.key === "ArrowRight") { if (pos < order.length - 1) pos++; render(); }
   else if (k === "k" || e.key === "ArrowLeft") { if (pos > 0) pos--; render(); }
+  else if (k === "a" && !$("blind").checked) acceptMachine(it, true);
   else if (D.kind === "quality" && (k === "g" || k === "b")) set(it, "label", k === "g" ? "good" : "bad");
   else if (D.kind === "eval" && "ofd".includes(k) && k) set(it, "verdict", {o: "ok", f: "fix", d: "drop"}[k]);
   else if (D.kind === "ner" && e.key === "Enter") { e.preventDefault(); set(it, "checked", "true"); }
 });
-$("prev").onclick = () => { if (pos > 0) pos--; render(); };
-$("next").onclick = () => { if (pos < order.length - 1) pos++; render(); };
+$("prev").onclick = () => { if ($("mode").value === "table") { if (page > 0) page--; } else if (pos > 0) pos--; render(); };
+$("next").onclick = () => { if ($("mode").value === "table") { if ((page + 1) * PAGE_SIZE < order.length) page++; } else if (pos < order.length - 1) pos++; render(); };
 function csvCell(v) { v = v == null ? "" : String(v); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
 $("export").onclick = () => {
   const who = ($("reviewer").value || "").trim();
@@ -169,7 +274,7 @@ $("export").onclick = () => {
     if (done(it)) D.fill(r, s, who);
     rows.push(D.columns.map((c) => csvCell(r[c])).join(","));
   }
-  const blob = new Blob(["﻿" + rows.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
+  const blob = new Blob(["\ufeff" + rows.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = D.export_name; a.click();
 };
 D.fill = {
@@ -179,7 +284,7 @@ D.fill = {
 }[D.kind];
 $("import").onchange = async (e) => {
   const f = e.target.files[0]; if (!f) return;
-  const text = (await f.text()).replace(/^﻿/, "");
+  const text = (await f.text()).replace(/^\ufeff/, "");
   const recs = parseCsv(text), head = recs.shift(), idc = head.indexOf(D.id_col);
   let n = 0;
   for (const rec of recs) {

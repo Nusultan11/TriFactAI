@@ -6,31 +6,26 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 
 | Field | Status |
 |---|---|
-| **Active stage** | Stage 1–3 cloud reconciliation complete (2026-11-25, `$0` USD). All executable technical stages (`wikitext` part 4, `synthetic`, `build_ner`, `build_pairs`, `build_sft`, `eval_leakage`, `task_eda`, full-scale `eda@{entities,raw,clean,curated}`, `corpus_stats`, and `eda_report`) completed, verified (<10 GiB RSS, 0 unintended eval leakage), and pushed to Drive DVC & `origin/main`. Ready for Stage 5 engineering; formal Stage 2–3 sign-off still awaits external human review and teacher GPU quota |
-| **Last completed stage** | Stage 1 — Data Platform & Acquisition (2026-11-20; `ruwiki` part 4 integrated & recovered 2026-11-23). Stage 4 — Document Processing Engine (2026-11-20, re-verified 2026-11-23) |
+| **Active stage** | Stage 1–3 engineering, QA audit, and machine-assisted review preparation complete (2026-11-25, `$0` USD). All 5,600/5,600 review items have complete sanitized machine assessments and consolidated review hub (`data/review/index.html` & Drive `workspace-data/human-review/index.html`). Stage 4 verified intact (`323/323` SHA-256, `203` tests pass). Ready for Stage 5 engineering; formal Stage 2–3 sign-off awaits only human confirmation |
+| **Last completed stage** | Stage 1 — Data Platform & Acquisition (2026-11-20; `ruwiki` part 4 integrated & recovered 2026-11-23). Stage 4 — Document Processing Engine (2026-11-20, re-verified 2026-11-25) |
 | **Remote repository** | `origin` → `https://github.com/Nusultan11/TriFactAI` (`main`) |
-| **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All **3,307 / 3,307 (100%)** DVC-cached objects across `dvc.lock`, `data/external.dvc`, `data/review.dvc`, and `data/stage3_teacher.dvc` verified on Drive (2026-11-25; the 6 uncached entries are `{cache: false}` metrics JSONs archived on Drive) |
+| **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All DVC-cached objects across `dvc.lock`, `data/external.dvc`, `data/review.dvc` (updated & synced 2026-11-25), and `data/stage3_teacher.dvc` verified on Drive |
 | **Raw layer** | 19 sources: 17 HF + Wikidata `20261116` (122,308,973 entities) + Wikipedia wikitext `20261101`; all 584 shards / 270,766,215 rows passed deep verification in Colab CPU (`stage-01-03-3a88f9d273da/raw-integrity.json`, 0 problems) |
 
 ## Open Blockers (User Action, Quota, or Budget Required)
 
-1. **Stage 3 human review (eval & silver NER):**
-   - `data/eval/review/sheet-01.csv` — 3,500 items (MT retrieval queries, `kk` NLI; `0 / 3,500` human-verified). ROADMAP 3.5 requires full human labeling; `retrieval` and `nli` remain `candidate` until `python -m trifact.data.build_eval freeze`.
-   - `data/review/ner_silver/to_label.csv` — 600 silver NER sentences (200/language, ADR-0015 noise audit).
-   - AI/LLM judgments do not substitute for human labels.
-2. **Stage 2 human review:**
-   - `data/review/quality_human/to_label.csv` — 1,500 stratified docs (500/language: 350 kept, 150 dropped). Save completed sheet as `labels.csv`, then run `python -m trifact.evaluation.review_quality score --review-dir data/review/quality_human --reviewer "<name>"`.
-   - Prior `data/review/quality` and 550 re-checked langid paragraphs were LLM-labeled (Claude, tagged in `reviewer`) and do not replace human review.
-3. **Interactive Colab Google Drive OAuth (cloud CPU stages):**
-   - `colab drivemount` requires interactive browser OAuth consent for the selected runtime. The verified SSH relay provides private access to Drive DVC objects at approximately 1 MiB/s, which would take more than a day to transfer the inputs for full-scale corpus EDA.
-4. **Kaggle GPU quota for synthetic teacher:**
-   - On 2026-11-23, `kaggle quota` reported `7.76 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`). NLI QA v4 outputs were recovered and verified as recorded below.
-   - Full synthetic targets in `datasets.md §6` require additional weekly quota or approved `params.yaml: cloud.budget_usd > 0`.
-5. **Colab GPU tier & budget:**
-   - Hosted CPU runtime (12.67 GB RAM, 107.72 GB disk) verified with Drive. Account has `0.00` compute units (NVIDIA L4 unavailable without paid units); `params.yaml: cloud.budget_usd: 0`. Recovery protocol: [ADR-0025](architecture/adr/0025-cloud-only-computing.md).
-6. **Optional MCP servers:**
+1. **Stage 2 & 3 human confirmation (consolidated package — 5,600 / 5,600 machine-prepared):**
+   - Open `data/review/index.html` (or Drive `workspace-data/human-review/index.html`) — single hub linking all three upgraded offline review apps with 1-key confirmation (`A`), uncertainty filters, and 25-row table review:
+     - **Stage 2 curation (`1,500` docs, `500/lang`):** export `data/review/quality_human/labels.csv`, then run `uv run --no-sync python -m trifact.evaluation.review_quality score --review-dir data/review/quality_human --reviewer "<name>"`.
+     - **Stage 3 silver NER (`600` sentences, `200/lang`):** export `data/review/ner_silver/labels.csv`, then run `uv run --no-sync python -m trifact.evaluation.review_ner score`.
+     - **Stage 3 eval MT & NLI (`3,500` items; `0 / 3,500` human-verified):** export `data/eval/review/sheet-01.csv`, then run `uv run --no-sync python -m trifact.data.build_eval freeze` to freeze `retrieval` and `nli`.
+   - Machine assessments are explicitly tagged `human: false` and never substitute for human labels (ADR-0022).
+2. **Synthetic QA/query volume deviation & cloud GPU quota:**
+   - Verified `2026-11-25`: `kaggle quota` reports `5.75 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`), `params.yaml: cloud.budget_usd: 0`, Colab compute units `0.00`.
+   - Retrieval total (`15.05 M`) and silver NER (`5.17 M`) meet ROADMAP targets; synthetic queries (`101,970` vs `3–5 M`) and synthetic QA (`11,015` / SFT `338,688` vs `1–2 M`) are structurally bounded by `$0` budget (~470 / ~2,220 2× T4 GPU-hours required). Remaining `5.75 h` is preserved for Stage 5 rather than spent on a `<1%` incremental run; scale-up requires approved `cloud.budget_usd > 0` if Stage 6–7 metrics show a data bottleneck.
+3. **Optional MCP servers:**
    - `github` MCP: invalid `Authorization` header (`GITHUB_PERSONAL_ACCESS_TOKEN`).
-   - `mlflow` MCP: `127.0.0.1:5000` refused connection (2026-11-22). Historical MLflow runs logged via local HTTP; shared cloud MLflow server remains to be qualified.
+   - `mlflow` MCP: `127.0.0.1:5000` returned HTTP 403/unreachable locally; cloud MLflow SQLite snapshots are archived on Drive.
 
 ## Downstream Notes (Carry Forward)
 
@@ -52,6 +47,18 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 - **Document processing (ADR-0021):** worker needs Tesseract 5 binary (`TRIFACT_TESSERACT` on Linux) and ~2.1 GB RAM/parser process with Docling; scans/tables take 2–9 s/page on CPU → separate load-test scenario in Stage 9. Verify synthetic benchmark transfer on `real_docs` (≥50 files, Stage 10).
 - `chunking.variants` are chosen in Stage 6; `chunk_corpus` currently chunks flat, while `DocumentChunker` respects sections.
 - `dvc.yaml` lists `build_eval` outputs individually (`data/eval/{ner,qa,retrieval,nli,review}`) because `data/eval/docproc` belongs to `build_docproc`.
+
+---
+
+## Stage 1–3 · Final QA, Machine-Assisted Review & Closure Audit (2026-11-25)
+
+- **5,600 / 5,600 machine-assisted review completed (`human: false`, `$0` USD):** Upgraded [prelabel.py](../src/trifact/evaluation/prelabel.py) to recover truncated teacher-judge JSONs (`143/143` NER + `95/95` eval), prefer revised JSON blocks, sanitize `366` invalid NER judge entries (non-core `EVENT`/`WORK`/`DATE` types, already-marked `missed`, same-type/same-span no-ops, double-counted spans), normalize `75` eval no-op `fix` verdicts to `ok`, and assign traceable `uncertainty` (`low`/`medium`/`high`) + `uncertainty_reasons` across all 3 packets ([prelabel.json](../reports/prelabel.json), [closure_audit.json](../reports/stage-01-03/closure_audit.json)).
+- **Upgraded consolidated review package:** Enhanced [review_app.html](../src/trifact/evaluation/review_app.html) and [review_app.py](../src/trifact/evaluation/review_app.py) with uncertainty badges/filters, 1-key recommendation confirmation (`A`), 25-row quick-review table mode (visible rows only, strict human reviewer name enforcement), and consolidated hub `data/review/index.html` synced to Drive (`workspace-data/human-review/index.html`) and DVC (`data/review.dvc`, 8 files pushed, `drive_desktop` in sync).
+- **Stage 2 curation audit (`1,500/1,500`, `human: false`):** Stratum-weighted kept precision `kk 91.52%` (CI `[0.8770, 0.9369]`), `ru 96.63%` (`[0.8705, 0.9321]`), `en 91.60%` (`[0.8010, 0.8772]`); false-accept `8.48% / 3.37% / 8.40%`. Estimated `good_lost`: `en 0.57%`, `ru 1.95%`, `kk 13.60%` — `kk` loss is driven by `3.54 M` `<40`-char `cc100`/`leipzig` `too_short` drops (intentionally excluded for RAG chunk viability). Added `preview_truncated_600c` warning on full-doc drop reasons. Decision: keep current Stage 2 thresholds pending human confirmation.
+- **Stage 3 silver NER audit (`600/600`, `human: false`):** `en` P `80.42%` `[0.7564, 0.8496]` / R `68.26%` `[0.6347, 0.7263]` (`missed=94`), `ru` P `81.44%` `[0.7625, 0.8622]` / R `70.45%` `[0.6547, 0.7519]` (`missed=97`), `kk` P `68.44%` `[0.6265, 0.7374]` / R `54.21%` `[0.4908, 0.5964]` (`missed=99`, `wrong_span=59` vs `12` en / `16` ru due to Kazakh agglutinative case suffixes on Wikipedia links). Stage 5 recommendations: keep silver→gold curriculum (`NER-2`), apply partial-annotation `-100` masking on unlabeled capitalized tokens, and filter punctuation-only silver spans (`[.|LOC]` artifact detected in `ru`).
+- **Stage 3 eval MT & NLI audit (`3,500/3,500`, `human: false`):** Sanitized verdicts: `2,145 ok` (`61.3%`), `1,355 fix` (`38.7%`, all pre-populated), `0 drop`; NLI `nli_kk_given_en_match = 0.9977`. `eval/ner` and `eval/qa` remain frozen & intact (`trifact.lake verify --layer eval`: 4/4 OK); `eval/retrieval` and `eval/nli` remain `candidate` (`0/3,500` human-verified) awaiting human confirmation and `build_eval freeze`. `eval_leakage` = 0 unintended overlaps (`2,431` allowed shared MIRACL passages).
+- **Synthetic volume & cloud quota audit:** Reconciled `docs/research/datasets.md §6` to verified counts (`5.17 M` silver NER, `15.05 M` retrieval pairs, `338.7k` SFT, `102.0k` synthetic queries, `11.0k` synthetic QA). Remaining Kaggle GPU quota (`5.75 / 30.00 h`, resets `2026-11-28 00:00 UTC`) is preserved for Stage 5 rather than spent on a `<1%` incremental synthetic run.
+- **Stage 4 & repo verification:** `data/eval/docproc/manifest.yaml` passed **323 / 323** SHA-256 checks (`0` mismatches); `ruff check`, `ruff format --check`, `mypy src/trifact/core`, and `pytest -q` (**203 passed, 1 skipped**, including new `tests/evaluation/test_prelabel_and_review.py`) all passed.
 
 ---
 

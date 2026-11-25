@@ -1,0 +1,350 @@
+{
+  "date": "2026-11-25",
+  "human_verified": false,
+  "formal_closure_status": "blocked_on_human_review",
+  "review_package": {
+    "total_items": 5600,
+    "machine_assessed": 5600,
+    "human_confirmed": 0,
+    "local_hub": "data/review/index.html",
+    "drive_hub": "workspace-data/human-review/index.html",
+    "coverage": {
+      "quality": {
+        "items": 1500,
+        "judged": 1500,
+        "priority_1": 420,
+        "machine_agree": 1428,
+        "uncertainty": {
+          "low": 1020,
+          "medium": 408,
+          "high": 72
+        }
+      },
+      "ner": {
+        "items": 600,
+        "judged": 600,
+        "truncated_recovered": 143,
+        "sanitized_entries": 366,
+        "priority_1": 526,
+        "machine_agree": 408,
+        "uncertainty": {
+          "low": 51,
+          "medium": 272,
+          "high": 277
+        }
+      },
+      "eval": {
+        "items": 3500,
+        "judged": 3500,
+        "truncated_recovered": 95,
+        "sanitized_noop_fixes": 75,
+        "priority_1": 1713,
+        "machine_agree": 2279,
+        "uncertainty": {
+          "high": 1267,
+          "low": 1604,
+          "medium": 629
+        }
+      }
+    }
+  },
+  "stage2_curation_audit": {
+    "human": false,
+    "summary_by_lang": {
+      "en": {
+        "kept_weighted_precision": 0.916,
+        "kept_sample_precision": 0.8429,
+        "kept_ci95": [
+          0.801,
+          0.8772
+        ],
+        "estimated_false_accept": 0.084,
+        "dropped_weighted_bad": 0.5631,
+        "dropped_ci95": [
+          0.5133,
+          0.6687
+        ],
+        "estimated_good_lost": 0.0057
+      },
+      "kk": {
+        "kept_weighted_precision": 0.9152,
+        "kept_sample_precision": 0.9114,
+        "kept_ci95": [
+          0.877,
+          0.9369
+        ],
+        "estimated_false_accept": 0.0848,
+        "dropped_weighted_bad": 0.1938,
+        "dropped_ci95": [
+          0.1554,
+          0.2856
+        ],
+        "estimated_good_lost": 0.136
+      },
+      "ru": {
+        "kept_weighted_precision": 0.9663,
+        "kept_sample_precision": 0.9057,
+        "kept_ci95": [
+          0.8705,
+          0.9321
+        ],
+        "estimated_false_accept": 0.0337,
+        "dropped_weighted_bad": 0.3834,
+        "dropped_ci95": [
+          0.269,
+          0.419
+        ],
+        "estimated_good_lost": 0.0195
+      }
+    },
+    "threshold_decision": "Keep current Stage 2 thresholds pending human confirmation: stratum-weighted kept precision is 91.52% (kk), 96.63% (ru), 91.60% (en). Estimated good_lost is 0.57% (en) and 1.95% (ru); kk good_lost (13.60%) is driven by 3.54M <40-char single-line cc100/leipzig drops (too_short), which are intentionally excluded for RAG chunk viability. 600-char preview truncation flagged for human reviewers."
+  },
+  "stage3_silver_ner_audit": {
+    "human": false,
+    "silver_sentences_total": 5165148,
+    "target_5m_met": true,
+    "by_lang": {
+      "en": {
+        "sentences": 200,
+        "entities": 337,
+        "judge_precision": 0.8042,
+        "judge_precision_ci95_bootstrap": [
+          0.7564,
+          0.8496
+        ],
+        "judge_missed_per_sentence": 0.475,
+        "judge_recall": 0.6809,
+        "judge_recall_ci95_bootstrap": [
+          0.634,
+          0.7245
+        ],
+        "by_error": {
+          "wrong_type": 20,
+          "wrong_span": 12,
+          "not_entity": 34,
+          "missed": 95
+        },
+        "sentences_without_errors": 0.42,
+        "gliner_exact_share": 0.7418,
+        "sentences_with_gliner_only_span": 131,
+        "machine_agree": 0.705
+      },
+      "kk": {
+        "sentences": 200,
+        "entities": 320,
+        "judge_precision": 0.6844,
+        "judge_precision_ci95_bootstrap": [
+          0.6265,
+          0.7374
+        ],
+        "judge_missed_per_sentence": 0.495,
+        "judge_recall": 0.5421,
+        "judge_recall_ci95_bootstrap": [
+          0.4908,
+          0.5964
+        ],
+        "by_error": {
+          "wrong_type": 27,
+          "wrong_span": 59,
+          "not_entity": 15,
+          "missed": 99
+        },
+        "sentences_without_errors": 0.32,
+        "gliner_exact_share": 0.6656,
+        "sentences_with_gliner_only_span": 69,
+        "machine_agree": 0.635
+      },
+      "ru": {
+        "sentences": 200,
+        "entities": 404,
+        "judge_precision": 0.8144,
+        "judge_precision_ci95_bootstrap": [
+          0.7625,
+          0.8622
+        ],
+        "judge_missed_per_sentence": 0.485,
+        "judge_recall": 0.7045,
+        "judge_recall_ci95_bootstrap": [
+          0.6547,
+          0.7519
+        ],
+        "by_error": {
+          "wrong_type": 25,
+          "wrong_span": 16,
+          "not_entity": 34,
+          "missed": 97
+        },
+        "sentences_without_errors": 0.405,
+        "gliner_exact_share": 0.755,
+        "sentences_with_gliner_only_span": 118,
+        "machine_agree": 0.7
+      }
+    },
+    "downstream_stage5_recommendations": [
+      "Use silver->gold curriculum (NER-2, 1-2 epochs silver then gold at lower LR) so gold KazNERD corrects kk suffix boundaries (wrong_span=59 in kk vs 12 en / 16 ru).",
+      "Apply partial-annotation loss masking (-100 on unlabeled capitalized tokens) to mitigate dominant false-O noise (~0.48 missed entities/sentence across all languages).",
+      "Filter punctuation-only silver spans (e.g. [.|LOC] artifact detected in ru) during NER data loading."
+    ]
+  },
+  "stage3_eval_mt_audit": {
+    "human": false,
+    "items": 3500,
+    "verdicts_total": {
+      "ok": 2145,
+      "fix": 1355,
+      "drop": 0
+    },
+    "noop_fixes_normalized": 75,
+    "truncated_recovered": 95,
+    "by_slice": {
+      "nli_translation/en-kk": {
+        "n": 500,
+        "verdicts": {
+          "ok": 175,
+          "fix": 325
+        },
+        "signal_ok": 0.898,
+        "machine_agree": 0.404,
+        "digits_kept_rate": 0.962,
+        "cos_source_p10": 0.766,
+        "cos_source_p50": 0.86,
+        "nli_kk_label_match": 0.918,
+        "nli_kk_given_en_match": 0.9977
+      },
+      "query_translation/en-kk": {
+        "n": 500,
+        "verdicts": {
+          "fix": 264,
+          "ok": 236
+        },
+        "signal_ok": 0.458,
+        "machine_agree": 0.578,
+        "digits_kept_rate": 0.968,
+        "cos_source_p10": 0.619,
+        "cos_source_p50": 0.746,
+        "chrf_back_p10": 35.69,
+        "chrf_back_p50": 53.87
+      },
+      "query_translation/en-ru": {
+        "n": 500,
+        "verdicts": {
+          "fix": 103,
+          "ok": 397
+        },
+        "signal_ok": 0.828,
+        "machine_agree": 0.758,
+        "digits_kept_rate": 0.994,
+        "cos_source_p10": 0.721,
+        "cos_source_p50": 0.834,
+        "chrf_back_p10": 40.49,
+        "chrf_back_p50": 65.21
+      },
+      "query_translation/kk-en": {
+        "n": 500,
+        "verdicts": {
+          "fix": 158,
+          "ok": 342
+        },
+        "signal_ok": 0.766,
+        "machine_agree": 0.706,
+        "digits_kept_rate": 0.998,
+        "cos_source_p10": 0.685,
+        "cos_source_p50": 0.829,
+        "chrf_back_p10": 41.84,
+        "chrf_back_p50": 70.87
+      },
+      "query_translation/kk-ru": {
+        "n": 500,
+        "verdicts": {
+          "fix": 134,
+          "ok": 366
+        },
+        "signal_ok": 0.942,
+        "machine_agree": 0.75,
+        "digits_kept_rate": 0.996,
+        "cos_source_p10": 0.798,
+        "cos_source_p50": 0.912,
+        "chrf_back_p10": 39.37,
+        "chrf_back_p50": 66.13
+      },
+      "query_translation/ru-en": {
+        "n": 500,
+        "verdicts": {
+          "ok": 373,
+          "fix": 127
+        },
+        "signal_ok": 0.848,
+        "machine_agree": 0.738,
+        "digits_kept_rate": 0.998,
+        "cos_source_p10": 0.727,
+        "cos_source_p50": 0.85,
+        "chrf_back_p10": 46.57,
+        "chrf_back_p50": 75.87
+      },
+      "query_translation/ru-kk": {
+        "n": 500,
+        "verdicts": {
+          "ok": 256,
+          "fix": 244
+        },
+        "signal_ok": 0.78,
+        "machine_agree": 0.624,
+        "digits_kept_rate": 1.0,
+        "cos_source_p10": 0.687,
+        "cos_source_p50": 0.834,
+        "chrf_back_p10": 39.16,
+        "chrf_back_p50": 59.75
+      }
+    },
+    "freeze_readiness": {
+      "ner": "frozen",
+      "qa": "frozen",
+      "retrieval": "candidate (awaiting 3,500 human confirmations via build_eval freeze)",
+      "nli": "candidate (awaiting 3,500 human confirmations via build_eval freeze)",
+      "eval_leakage_unintended_overlaps": 0
+    }
+  },
+  "synthetic_volume_and_cloud_assessment": {
+    "cloud_budget_usd": 0,
+    "kaggle_gpu_quota_remaining_h": 5.75,
+    "kaggle_gpu_quota_total_h": 30.0,
+    "kaggle_quota_reset_utc": "2026-11-28T00:00:00+00:00",
+    "colab_compute_units": 0.0,
+    "measured_volumes": {
+      "synthetic_queries": 101970,
+      "synthetic_queries_by_lang": {
+        "en": 33893,
+        "kk": 34123,
+        "ru": 33954
+      },
+      "synthetic_qa": 11015,
+      "synthetic_qa_by_lang": {
+        "en": 1722,
+        "kk": 7385,
+        "ru": 1908
+      },
+      "retrieval_pairs_total": 15052287,
+      "retrieval_kk_kk": 86566,
+      "sft_total": 338688,
+      "sft_by_lang": {
+        "en": 164377,
+        "kk": 101604,
+        "ru": 72707
+      }
+    },
+    "targets": {
+      "synthetic_queries": "3M-5M",
+      "synthetic_qa": "1M-2M",
+      "retrieval_pairs_total": "10M-20M (MET: 15.05M)",
+      "sft_total": "1M-2M (DEVIATION: 338.7k)"
+    },
+    "throughput_projection_2xT4": {
+      "queries_kept_per_h_est": 6400,
+      "qa_kept_per_h_est": 450,
+      "hours_needed_for_3m_queries": 470,
+      "hours_needed_for_1m_qa": 2220,
+      "incremental_yield_in_5h_remaining": "~32k queries (1.1% of gap) or ~2.2k QA (0.2% of gap)"
+    },
+    "decision": "Do not spend remaining 5.75h Kaggle GPU quota on a <1% incremental synthetic run that would trigger downstream rebuilds and starve Stage 5 NER training before the 2026-11-28 quota reset. Document deviation in PROGRESS.md and datasets.md per ROADMAP Stage 3."
+  }
+}
