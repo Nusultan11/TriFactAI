@@ -1,0 +1,87 @@
+{
+  "status": "passed",
+  "session": "57706a564d31",
+  "mlflow_snapshot": "/content/drive/MyDrive/TrifactAI/workspace-data/stage-01-03-reconcile/2026-11-23-cloud/eda-fresh/mlflow/57706a564d31-1795614037401597895.db",
+  "layers": {
+    "entities": {
+      "layer": "entities",
+      "seconds": 140.5,
+      "workers": 2,
+      "peak_rss_mb": 4043.1
+    },
+    "raw": {
+      "layer": "raw",
+      "seconds": 569.3,
+      "workers": 2,
+      "peak_rss_mb": 5668.4
+    },
+    "clean": {
+      "layer": "clean",
+      "seconds": 340.2,
+      "workers": 2,
+      "peak_rss_mb": 3098.9
+    },
+    "curated": {
+      "layer": "curated",
+      "seconds": 2233.9,
+      "workers": 2,
+      "peak_rss_mb": 10190.5
+    }
+  },
+  "corpus_stats": {
+    "seconds": 22226.5,
+    "partial": false,
+    "by_lang": [
+      {
+        "lang": "en",
+        "docs": 6362459,
+        "chars": 1788506450,
+        "words": -1202366075,
+        "chars_mean": 2981.3,
+        "chars_p05": 191.0,
+        "chars_p25": 528.0,
+        "chars_p50": 1339.0,
+        "chars_p75": 3145.0,
+        "chars_p95": 10640.0,
+        "mixed_lang_share": 0.003
+      },
+      {
+        "lang": "kk",
+        "docs": 19903223,
+        "chars": -949662715,
+        "words": 2100948186,
+        "chars_mean": 815.5,
+        "chars_p05": 46.0,
+        "chars_p25": 69.0,
+        "chars_p50": 122.0,
+        "chars_p75": 403.0,
+        "chars_p95": 3136.0,
+        "mixed_lang_share": 0.022
+      },
+      {
+        "lang": "ru",
+        "docs": 4549961,
+        "chars": -1776497289,
+        "words": 1525035524,
+        "chars_mean": 2441.4,
+        "chars_p05": 217.0,
+        "chars_p25": 744.0,
+        "chars_p50": 1340.0,
+        "chars_p75": 2435.0,
+        "chars_p95": 7070.0,
+        "mixed_lang_share": 0.0421
+      }
+    ],
+    "toxicity_model": "textdetox/bert-multilingual-toxicity-classifier",
+    "toxicity_docs_per_s": 1.1,
+    "fertility_models": [
+      "xlmr",
+      "qwen3",
+      "qwen3_5"
+    ]
+  },
+  "eda_report": {
+    "findings_count": 89,
+    "figures_count": 43
+  }
+}

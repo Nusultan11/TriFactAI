@@ -72,6 +72,7 @@ def js_divergence(p: list[float], q: list[float]) -> float:
 
 
 def _plt() -> Any:
+    os.environ["MPLBACKEND"] = "Agg"
     import matplotlib
 
     matplotlib.use("Agg")

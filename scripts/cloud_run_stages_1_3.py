@@ -521,6 +521,8 @@ def step_eda_rss_check(
         if not report_only:
             push_verified(uv, stage)
             if layer == "curated" and not (ROOT / "reports/corpus_stats.json").is_file():
+                for src in params["curation"]["sources"]:
+                    run(*uv, "dvc", "pull", f"data/raw/{src}/source.yaml", f"data/clean/{src}/dataset.yaml")
                 run(*uv, "dvc", "repro", "--single-item", "--force", "corpus_stats")
             if free_disk and not (layer == "entities" and "raw" in layers):
                 release_layer_inputs(layer)

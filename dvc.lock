@@ -1689,30 +1689,20 @@ stages:
     outs:
     - path: reports/corpus_stats.json
       hash: md5
-      md5: febb253185ed92b20c214fc8c7a2351b
-      size: 33101
+      md5: 20b3ad4d5cd045ea6332ab95f6571618
+      size: 33099
   eda@raw:
     cmd: python -m trifact.data.eda raw
     deps:
-    - path: data/clean
-      hash: md5
-      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
-      size: 25278751250
-      nfiles: 375
-    - path: data/curated
-      hash: md5
-      md5: 23aa79fb907edf0666a0a8bf92ff1708.dir
-      size: 47694948880
-      nfiles: 831
     - path: data/raw
       hash: md5
-      md5: 504ddd4b5534aabb680d6b8b27169535.dir
-      size: 48514916358
-      nfiles: 603
+      md5: 58c85d7659231b33a3398997b3c0f7d8.dir
+      size: 49430900075
+      nfiles: 606
     - path: src/trifact/data/eda.py
       hash: md5
-      md5: 66a8e1179627fc6d7eded8ddaa11c4e1
-      size: 33901
+      md5: 411fd6730d961cace398102d9b16c2f3
+      size: 36885
     params:
       params.yaml:
         curation.workers: 4
@@ -1720,30 +1710,20 @@ stages:
     outs:
     - path: reports/eda/raw.json
       hash: md5
-      md5: 49c73618be40962e2174cafac16ceee2
-      size: 2491317
+      md5: 0a21c18f7b53ae1eb3573cf05adf032f
+      size: 2491322
   eda@clean:
     cmd: python -m trifact.data.eda clean
     deps:
     - path: data/clean
       hash: md5
-      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
-      size: 25278751250
-      nfiles: 375
-    - path: data/curated
-      hash: md5
-      md5: 23aa79fb907edf0666a0a8bf92ff1708.dir
-      size: 47694948880
-      nfiles: 831
-    - path: data/raw
-      hash: md5
-      md5: 504ddd4b5534aabb680d6b8b27169535.dir
-      size: 48514916358
-      nfiles: 603
+      md5: b9496b5ef7c4263c48dc1394b231d03a.dir
+      size: 25256178185
+      nfiles: 368
     - path: src/trifact/data/eda.py
       hash: md5
-      md5: 66a8e1179627fc6d7eded8ddaa11c4e1
-      size: 33901
+      md5: 411fd6730d961cace398102d9b16c2f3
+      size: 36885
     params:
       params.yaml:
         curation.workers: 4
@@ -1751,30 +1731,20 @@ stages:
     outs:
     - path: reports/eda/clean.json
       hash: md5
-      md5: 6f53b3571342f92264cc12cc4ba152d0
-      size: 1385992
+      md5: c6fcc53025dcd8b0ab544eb0568a57e9
+      size: 1369765
   eda@curated:
     cmd: python -m trifact.data.eda curated
     deps:
-    - path: data/clean
-      hash: md5
-      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
-      size: 25278751250
-      nfiles: 375
     - path: data/curated
       hash: md5
-      md5: 23aa79fb907edf0666a0a8bf92ff1708.dir
-      size: 47694948880
-      nfiles: 831
-    - path: data/raw
-      hash: md5
-      md5: 504ddd4b5534aabb680d6b8b27169535.dir
-      size: 48514916358
-      nfiles: 603
+      md5: 4c5afb925437b94dbb9c4a8f9140763d.dir
+      size: 47634198031
+      nfiles: 808
     - path: src/trifact/data/eda.py
       hash: md5
-      md5: 66a8e1179627fc6d7eded8ddaa11c4e1
-      size: 33901
+      md5: 411fd6730d961cace398102d9b16c2f3
+      size: 36885
     params:
       params.yaml:
         curation.workers: 4
@@ -1782,30 +1752,20 @@ stages:
     outs:
     - path: reports/eda/curated.json
       hash: md5
-      md5: 9d59cd38673cd111e3587ecdb7367874
-      size: 876011
+      md5: baf629b43fa51fc12ea8f1e20edd77ef
+      size: 875614
   eda@entities:
     cmd: python -m trifact.data.eda entities
     deps:
-    - path: data/clean
+    - path: data/raw/wikidata
       hash: md5
-      md5: 1d15c10c3a8fcc3948415ab1b0e80bbb.dir
-      size: 25278751250
-      nfiles: 375
-    - path: data/curated
-      hash: md5
-      md5: 23aa79fb907edf0666a0a8bf92ff1708.dir
-      size: 47694948880
-      nfiles: 831
-    - path: data/raw
-      hash: md5
-      md5: 504ddd4b5534aabb680d6b8b27169535.dir
-      size: 48514916358
-      nfiles: 603
+      md5: 635d03e100853bce995796680357cac2.dir
+      size: 5289503895
+      nfiles: 212
     - path: src/trifact/data/eda.py
       hash: md5
-      md5: 66a8e1179627fc6d7eded8ddaa11c4e1
-      size: 33901
+      md5: 411fd6730d961cace398102d9b16c2f3
+      size: 36885
     params:
       params.yaml:
         curation.workers: 4
@@ -1813,57 +1773,57 @@ stages:
     outs:
     - path: reports/eda/entities.json
       hash: md5
-      md5: 1ac23745fca6a3d26ea75bde0f5344df
-      size: 16877
+      md5: fb6523786b4ee9e7540dc8a24d038a49
+      size: 16878
   eda_report:
     cmd: python -m trifact.data.eda_report
     deps:
     - path: reports/corpus_stats.json
       hash: md5
-      md5: 4b0749e1dda7fac15ea40b3861f6acb7
-      size: 18557
+      md5: 20b3ad4d5cd045ea6332ab95f6571618
+      size: 33099
     - path: reports/eda/clean.json
       hash: md5
-      md5: 6f53b3571342f92264cc12cc4ba152d0
-      size: 1385992
+      md5: c6fcc53025dcd8b0ab544eb0568a57e9
+      size: 1369765
     - path: reports/eda/curated.json
       hash: md5
-      md5: 9d59cd38673cd111e3587ecdb7367874
-      size: 876011
+      md5: baf629b43fa51fc12ea8f1e20edd77ef
+      size: 875614
     - path: reports/eda/entities.json
       hash: md5
-      md5: 1ac23745fca6a3d26ea75bde0f5344df
-      size: 16877
+      md5: fb6523786b4ee9e7540dc8a24d038a49
+      size: 16878
     - path: reports/eda/raw.json
       hash: md5
-      md5: 49c73618be40962e2174cafac16ceee2
-      size: 2491317
+      md5: 0a21c18f7b53ae1eb3573cf05adf032f
+      size: 2491322
     - path: reports/eda/task.json
       hash: md5
-      md5: 038da1a050dc62e2fb478374a4bbb64a
-      size: 69284
+      md5: b73f6c239f4a1f73e75e64c05fcab9ea
+      size: 69528
     - path: src/trifact/data/eda_report.py
       hash: md5
-      md5: 03e38a3ca870aa8cd95bb38e12288bd1
-      size: 24860
+      md5: 86af4cd98b525b2860bdcbe17a271f74
+      size: 25414
     - path: src/trifact/data/task_eda.py
       hash: md5
-      md5: 3f7ec810a20ed922eed40212066d46f8
-      size: 26378
+      md5: 2bf9fc4cc6db6c5c697802523dcbcc28
+      size: 27381
     outs:
     - path: reports/eda/figures
       hash: md5
-      md5: e710dbd862526d2e160b16e7a5ca9d38.dir
-      size: 1987615
+      md5: 7eb3f6701283dc05e40fc7d1694c1b21.dir
+      size: 2227539
       nfiles: 43
     - path: reports/eda/findings.json
       hash: md5
-      md5: e2c2e101eb96c46ba4c9087f9c90b069
-      size: 6349
+      md5: 3bf0b3a2599af677143f9495d34998e3
+      size: 6361
     - path: reports/eda/report.md
       hash: md5
-      md5: 34404ed3166fba8db521516e9483d7a9
-      size: 148670
+      md5: 4c5ce1e54cfdcf939b7ae7db53192599
+      size: 148501
   validate:
     cmd: python -m trifact.data.validate
     deps:
