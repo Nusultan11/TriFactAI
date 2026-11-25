@@ -6,20 +6,23 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 
 | Field | Status |
 |---|---|
-| **Active stage** | **Stages 1–3 formally closed (2026-11-25, `$0` USD) under [ADR-0026](architecture/adr/0026-calibrated-human-audit-validation-protocol.md)** with report-level human governance approval (`2026-11-25T21:33:32+05:00`). All 4 eval suites (`ner`, `qa`, `retrieval`, `nli`) frozen & SHA-256 verified (`verification_tier` strictly separates `human_verified` gold from `machine_cross_validated` MT). Stage 4 verified intact (`323/323` SHA-256, `204` tests pass). **Ready for Stage 5 (Extraction)** |
-| **Last completed stage** | Stages 1–3 — Data Platform, Curation & Task Datasets (closed 2026-11-25 under ADR-0026). Stage 4 — Document Processing Engine (2026-11-20, re-verified 2026-11-25) |
+| **Active stage** | **Stage 5 — Extraction: Implemented & Cloud-Validated (`2026-11-26`, `$0` USD on Colab Tesla T4; `5.25 h` Kaggle GPU quota preserved).** All modules (`stats.py`, `eval_ner.py`, `gate.py`, `dates.py`, `linking.py`, `ner.py`, `train_ner.py`, `annotate_corpus.py`), `NER-0`..`NER-5` + HPO + 3-seed comparisons, DATE eval, Wikidata Entity Linking eval, calibration, MLflow Registry (`trifact-ner@champion = NER-1`), and sharded `annotate_corpus` pilot completed. Remaining external boundaries: human-labeled per-language Entity Linking eval sets and full 59.6M-chunk cloud GPU batch annotation (~13.8 T4 GPU-hours). |
+| **Last completed stage** | Stages 1–3 (closed 2026-11-25 under ADR-0026); Stage 4 — Document Processing Engine (2026-11-20); Stage 5 — Extraction (code, `NER-0`..`NER-5`, calibration, gate, pilot annotation complete 2026-11-26) |
 | **Remote repository** | `origin` → `https://github.com/Nusultan11/TriFactAI` (`main`) |
 | **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All DVC-cached objects across `dvc.lock` (updated `build_eval` frozen outputs pushed 2026-11-25), `data/external.dvc`, `data/review.dvc`, and `data/stage3_teacher.dvc` verified in sync on Drive |
 | **Raw layer** | 19 sources: 17 HF + Wikidata `20261116` (122,308,973 entities) + Wikipedia wikitext `20261101`; all 584 shards / 270,766,215 rows passed deep verification in Colab CPU (`stage-01-03-3a88f9d273da/raw-integrity.json`, 0 problems) |
 
 ## Open Blockers (User Action, Quota, or Budget Required)
 
-1. **Synthetic QA/query volume deviation & cloud GPU quota (approved deviation):**
-   - Verified `2026-11-25`: `kaggle quota` reports `5.75 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`), `params.yaml: cloud.budget_usd: 0`, Colab compute units `0.00`.
-   - Retrieval total (`15.05 M`) and silver NER (`5.17 M`) meet ROADMAP targets; synthetic queries (`101,970` vs `3–5 M`) and synthetic QA (`11,015` / SFT `338,688` vs `1–2 M`) are approved deviations under `$0` budget. Remaining `5.75 h` is preserved for Stage 5 NER training (`NER-1`..`NER-4`).
-2. **Stage 7 precondition (future):**
+1. **Stage 5 external boundaries (`$0` USD budget & human annotation):**
+   - **Human-labeled Entity Linking reference sets:** Linking was evaluated on a 225/lang KB-title inflected benchmark (`human_verified: false`); per-language human-labeled linking sets remain required for human-verified `accuracy@1` / NIL claims.
+   - **Full-corpus `annotate_corpus` (59.63 M chunks):** Measured T4 fp16 pilot throughput is `1,203.2 chunks/s` (~13.8 T4 GPU-hours for all 59.63 M chunks), exceeding the remaining `5.25 / 30.00 h` free Kaggle GPU quota (resets `2026-11-28 00:00 UTC`) and single free Colab session limits under `cloud.budget_usd: 0`. Run full sharded annotation once Stage 6 finalizes the 35 M chunk subset (`RET-S`) or quota refreshes.
+2. **Synthetic QA/query volume deviation & cloud GPU quota (approved deviation):**
+   - Verified `2026-11-26`: `kaggle quota` reports `5.25 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`), `params.yaml: cloud.budget_usd: 0`, Colab compute units `0.00`.
+   - Retrieval total (`15.05 M`) and silver NER (`5.17 M`) meet ROADMAP targets; synthetic queries (`101,970` vs `3–5 M`) and synthetic QA (`11,015` / SFT `338,688` vs `1–2 M`) are approved deviations under `$0` budget.
+3. **Stage 7 precondition (future):**
    - Qwen3.5 bf16 LoRA requires Ampere+ GPU (`cloud.budget_usd > 0`, ADR-0012); without paid budget, Stage 7 runs zero-shot baselines (`GEN-0`, quantization, throughput) per ROADMAP 7.0.
-3. **Optional MCP servers:**
+4. **Optional MCP servers:**
    - `github` MCP: invalid `Authorization` header (`GITHUB_PERSONAL_ACCESS_TOKEN`).
    - `mlflow` MCP: `127.0.0.1:5000` unreachable locally; cloud MLflow SQLite snapshots are archived on Drive.
 
@@ -43,6 +46,32 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 - **Document processing (ADR-0021):** worker needs Tesseract 5 binary (`TRIFACT_TESSERACT` on Linux) and ~2.1 GB RAM/parser process with Docling; scans/tables take 2–9 s/page on CPU → separate load-test scenario in Stage 9. Verify synthetic benchmark transfer on `real_docs` (≥50 files, Stage 10).
 - `chunking.variants` are chosen in Stage 6; `chunk_corpus` currently chunks flat, while `DocumentChunker` respects sections.
 - `dvc.yaml` lists `build_eval` outputs individually (`data/eval/{ner,qa,retrieval,nli,review}`) because `data/eval/docproc` belongs to `build_docproc`.
+
+---
+
+## Stage 5 — Extraction: Implemented & Cloud-Validated (2026-11-26)
+
+- **Compute & Cost:** Executed all `NER-0`..`NER-5`, Optuna HPO, validation calibration, MLflow Registry, and sharded `annotate_corpus` pilot on free **Colab Tesla T4 (`15,360 MiB VRAM`, `$0` USD)**; runtime terminated immediately after artifact persistence (`5.25 / 30.00 h` Kaggle GPU quota untouched). Artifacts archived on Drive at `workspace-data/stage-05-extraction/` (`mlflow_stage5.db`, `optuna_ner.db`, JSON reports).
+- **5.1 Shared evaluation & gate ([stats.py](../src/trifact/evaluation/stats.py), [eval_ner.py](../src/trifact/evaluation/eval_ner.py), [gate.py](../src/trifact/evaluation/gate.py)):** Extracted `bootstrap_ci` from `eval_docproc` (0 regressions); implemented document-cluster (`doc_key`) paired bootstrap, joint seed+cluster multi-seed bootstrap, Holm–Bonferroni, equal-mass ECE/Brier, precision–coverage selection, per-example JSONL traces, `seqeval` strict IOB2 parity verification, unseen-entity F1, span error taxonomy, frozen-eval SHA-256 guard (`a133ea206a9748f1581904093a0ed4d9`), and MLflow Model Registry `challenger`/`champion` promotion + rollback.
+- **5.2 NER experiments (`NER-0`..`NER-4`, Colab Tesla T4, fp16 AMP, clean SHA `393015f`):**
+  - **Pre-run sanity check:** 64-example overfit loss `3.1541 → 0.3242` (30 steps).
+  - **Optuna HPO (6 trials × 2 ep, 12k/lang pilot, TPE + MedianPruner):** selected `lr=4.45e-5`, `warmup_ratio=0.064`, `weight_decay=0.0126`, `batch_size=32` (best val `kk` F1 `0.8458`, Trial 4 pruned).
+  - **Frozen test results (strict IOB2 entity F1; `NER-1..3` on full `56,985` sentences; `NER-0` on `3,000`-sent stratified slice; `NER-4` on `11,307` KazNERD `kk` test):**
+
+| Exp | Model & Regime | `kk` Strict F1 | `ru` Strict F1 | `en` Strict F1 | Notes / Gate |
+|---|---|---|---|---|---|
+| `NER-0` | GLiNER multi v2.1 (zero-shot, 1k/lang) | `0.2731` | `0.4295` | `0.5644` | `24.94 sents/s` T4; `kk` unsupported zero-shot |
+| `NER-1` | XLM-R base gold (15k/lang, 3 seeds `[42,43,44]`) | **`0.8468 ± 0.0056`** | `0.8360 ± 0.0018` | `0.8267 ± 0.0037` | Beats `NER-0` (`kk +61.7 pp`, CI `[+56.1,+67.4]`, `p=0.001`) → **Promoted (`champion` v1)** |
+| `NER-2` | XLM-R base silver→gold + `-100` cap mask (3 seeds) | `0.8536 ± 0.0067` | `0.8380 ± 0.0016` | `0.8286 ± 0.0010` | **Negative gate result vs `NER-1`:** `kk +0.68 pp` CI `[-0.96, +2.69]` (`p=0.243`) < `+3.0 pp` → **Rejected (`challenger` v2)** |
+| `NER-3` | XLM-R large gold (15k/lang, 2 ep, 13.95 GB VRAM) | `0.8429` `[0.806,0.866]` | **`0.8505`** | **`0.8422`** | Cloud ceiling: `+1.45/+1.55 pp` on `ru`/`en`, `68.5 samp/s` (~3× slower), `kk` unseen `0.6712` |
+| `NER-4` | XLM-R base `KazNERD-25` (25k `kk` train) | **25-cls `0.9241`** / core **`0.9116`** | — | — | `PER 0.967 / ORG 0.827 / LOC 0.931 / DATE 0.950`; unseen `0.7588` |
+
+- **5.3 DATE extraction ([dates.py](../src/trifact/extraction/dates.py), `reports/dates.json`):** Multilingual regex + optional `dateparser` ISO normalization with exact char offsets. Frozen KazNERD `kk` test (11,307 sents, 2,611 DATE spans): with relative expressions `strict P=0.7673 / R=0.3700 / F1=0.4992` (`partial F1=0.5605`, `ent_type F1=0.6217`); absolute-only `F1=0.1082` (KazNERD labels relative/spelled-out Kazakh dates; `NER-4` neural DATE achieves `0.9498`). Curated synthetic RU/EN reference cases (10 cases, non-benchmark): `1.000 / 1.000`.
+- **5.4 Entity Linking ([linking.py](../src/trifact/extraction/linking.py), `reports/linking.json`):** Built 251,011-entity / 377,525-alias SQLite B-tree KB index (`3.15 s`, `44.8 MB`). On inflected KB title benchmark (`225/lang`, `human_verified: false`): Kazakh morphological suffix stripping raised `kk` exact `recall@20` from `0.655 → 0.990` (**`+33.5 pp`**), full pipeline `recall@20 = 1.000`, `accuracy@1 = 1.000`, `nil_rate = 0.1111`, `tail_accuracy@1 = 1.000`. Human-labeled per-language linking sets remain an open external boundary.
+- **5.5 Calibration, `NER-5` optimization & promotion:**
+  - Validation-only temperature scaling on champion `NER-1`: `T = {kk: 1.2826, ru: 1.2777, en: 1.2832}`; recommended `min_precision=0.85` thresholds `{kk: 0.0, ru: 0.45, en: 0.50}`.
+  - **`NER-5` negative result (vocab trim 250k→65k + ONNX dynamic int8):** `kk` (`0.8974 → 0.9075`, pass) and `ru` (`0.7913 → 0.7944`, pass) satisfied `≤ 0.5 pp`, but **`en` dropped `2.97 pp` (`0.7538 → 0.7241`, FAILED gate)** with `1.2×` CPU speedup. Retained fp16/fp32 champion (`trifact-ner@champion = v1`, rollback to v1 verified in MLflow Registry).
+- **5.6 Sharded `annotate_corpus` pilot ([annotate_corpus.py](../src/trifact/batch/annotate_corpus.py)):** 3 shards × 500 multilingual chunks (`1,500` chunks): **GPU fp16 = `1,203.2 chunks/s`** (`1,653` mentions, `0` invalid offsets, `3/3` shards skipped on idempotent rerun); **CPU ONNX int8 = `15.73 chunks/s`**. Full 59.63 M-chunk corpus requires ~13.8 T4 GPU-hours (deferred to Stage 6 `RET-S` 35 M subset / quota refresh).
 
 ---
 
