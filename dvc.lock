@@ -2621,46 +2621,42 @@ stages:
     deps:
     - path: data/task/mt/qa
       hash: md5
-      md5: c5706c6a44464cd70a6b106a9f73ba30.dir
-      size: 63595715
-      nfiles: 5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
     - path: data/task/ner
       hash: md5
-      md5: 26a82965d014550a7e37e07f0dd84d5a.dir
-      size: 394222717
-      nfiles: 18
+      md5: 88896e796c59fcf026432832023f6a71.dir
+      size: 43429505
+      nfiles: 7
     - path: data/task/nli
       hash: md5
-      md5: 3b38c4f7b6cf55c73cce7ba703738d3c.dir
-      size: 99599887
-      nfiles: 11
-    - path: data/task/retrieval
-      hash: md5
-      md5: b193e36e4e4d6f2dbff43df02d97d4b9.dir
-      size: 2744637025
-      nfiles: 31
-    - path: data/task/sft
-      hash: md5
-      md5: d2af410a0bc7544a1f1b96600c32114b.dir
-      size: 587495015
-      nfiles: 8
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
     - path: data/task/splits
       hash: md5
-      md5: 43322d29ad096dbe5372761546e4e13e.dir
-      size: 163234637
-      nfiles: 5
+      md5: d751713988987e9331980363e24189ce.dir
+      size: 0
+      nfiles: 0
     - path: src/trifact/data/build_eval.py
       hash: md5
-      md5: 64cf4189911c24c1808d14e0e885457e
-      size: 24818
+      md5: a62f86306344e84babc0e802a87d8879
+      size: 38768
     params:
       params.yaml:
         evaluation:
           bootstrap_samples: 1000
           ci: 0.95
-          human_verified_min: 3000
+          human_verified_min: 3500
           review_per_kind: 500
           real_docs_min: 50
+          autonomous_validation:
+            protocol: ADR-0026
+            quality_items: 1500
+            ner_items: 600
+            eval_items: 3500
+            require_report_approval: true
         seed: 42
     outs:
     - path: data/eval/ner
@@ -2670,8 +2666,8 @@ stages:
       nfiles: 6
     - path: data/eval/nli
       hash: md5
-      md5: 40d56f14698d0d818b83ff5291db0628.dir
-      size: 728376
+      md5: d678fb4a779b0124ea398166d07223dd.dir
+      size: 580820
       nfiles: 6
     - path: data/eval/qa
       hash: md5
@@ -2680,8 +2676,8 @@ stages:
       nfiles: 6
     - path: data/eval/retrieval
       hash: md5
-      md5: 6a0aa883c6e9928c2e7f68a3eb5fb11a.dir
-      size: 19093284
+      md5: 1ed482113a8ba67a112cededf6df5d55.dir
+      size: 18595634
       nfiles: 8
     - path: data/eval/review
       hash: md5
@@ -2690,8 +2686,8 @@ stages:
       nfiles: 1
     - path: reports/eval.json
       hash: md5
-      md5: 5a2f4fb54b68212db367adfc31257284
-      size: 6199
+      md5: c301e25157b87c8ed0d13833c291de23
+      size: 596
   task_eda:
     cmd: python -m trifact.data.task_eda
     deps:

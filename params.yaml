@@ -449,6 +449,12 @@ evaluation:
   human_verified_min: 3500
   review_per_kind: 500      # MT-derived eval rows per direction / kind on the human review sheet
   real_docs_min: 50
+  autonomous_validation:    # ADR-0026: autonomous dual-signal machine cross-validation + report-level human governance
+    protocol: ADR-0026
+    quality_items: 1500
+    ner_items: 600
+    eval_items: 3500
+    require_report_approval: true   # governance sign-off at report level; human_verified stays 0 for machine-validated rows
 
 promotion:                  # ADR-0009, architecture §10
   ner_kk_f1_min_gain: 0.03

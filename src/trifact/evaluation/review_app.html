@@ -51,10 +51,13 @@ table.list tr:hover { background:var(--sel); }
 </head>
 <body>
 <header>
+  <a id="hublink" href="/" style="display:none;text-decoration:none;font-weight:600;color:var(--acc)">← Хаб</a>
   <h1 id="title">Review</h1>
   <input id="reviewer" placeholder="Ваше имя (обязательно)" size="20">
   <select id="filter">
-    <option value="p1">сначала спорные (priority 1)</option>
+    <option value="cal_todo">выборка калибровки ADR-0026 (осталось)</option>
+    <option value="cal_all">выборка калибровки ADR-0026 (все)</option>
+    <option value="p1">все 5 600: сначала спорные (priority 1)</option>
     <option value="todo">все неразмеченные</option>
     <option value="todo_high">неразмеченные: высокая неопределённость</option>
     <option value="todo_medium">неразмеченные: средняя неопределённость</option>
@@ -62,11 +65,13 @@ table.list tr:hover { background:var(--sel); }
     <option value="all">все элементы</option>
   </select>
   <select id="lang"><option value="">все языки</option></select>
-  <select id="mode"><option value="card">Карточка</option><option value="table">Таблица (по 25)</option></select>
+  <select id="mode"><option value="card">Карточка</option><option value="table">Таблица (25)</option><option value="table50">Таблица (50)</option><option value="table100">Таблица (100)</option></select>
   <label class="hint"><input type="checkbox" id="blind"> скрыть подсказку</label>
   <div class="bar"><div id="progress"></div></div>
   <span id="count" class="hint"></span>
-  <button id="export" class="primary">Экспорт CSV</button>
+  <span id="savestatus" class="hint" style="display:none"></span>
+  <button id="savebtn" class="primary" style="display:none">Сохранить</button>
+  <button id="export">Экспорт CSV</button>
   <label class="hint"><input type="file" id="import" accept=".csv" style="display:none"><span style="cursor:pointer;text-decoration:underline" onclick="document.getElementById('import').click()">загрузить CSV</span></label>
 </header>
 <main>
@@ -82,11 +87,51 @@ const KEY = "trifact-review:" + D.sheet + ":" + D.version;
 let S = {};
 try { S = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { S = {}; }
 const items = D.items;
-const PAGE_SIZE = 25;
+const IS_HTTP = location.protocol.startsWith("http");
+let pageSize = 25;
 let order = items.map((_, i) => i), pos = 0, page = 0;
+let saveTimer = null;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+  if (IS_HTTP) {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => syncServer(false), 600);
+  }
+}
+async function syncServer(explicit) {
+  if (!IS_HTTP) return;
+  const who = ($("reviewer").value || "").trim();
+  if (!who) {
+    if (explicit) { alert("Укажите ваше имя вверху страницы."); $("reviewer").focus(); }
+    else $("savestatus").textContent = "введите имя для автосохранения";
+    return;
+  }
+  if (/llm|claude|gpt|qwen|machine|auto|model/i.test(who)) {
+    if (explicit) alert("Имя проверяющего должно быть именем человека.");
+    return;
+  }
+  $("savestatus").textContent = "сохранение...";
+  try {
+    const res = await fetch("/api/save/" + D.sheet, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewer: who, state: S }),
+    });
+    const j = await res.json();
+    if (j.ok) $("savestatus").textContent = `✓ сохранено (${j.confirmed}/${j.total})`;
+    else $("savestatus").textContent = "ошибка: " + (j.error || "save");
+  } catch (e) {
+    $("savestatus").textContent = "ошибка связи с сервером";
+  }
+}
+if (IS_HTTP) {
+  $("hublink").style.display = "inline";
+  $("savestatus").style.display = "inline";
+  $("savebtn").style.display = "inline-block";
+  $("savebtn").onclick = () => syncServer(true);
+}
 function st(it) { return S[it.id] || (S[it.id] = {}); }
 function done(it) { const s = S[it.id]; return !!(s && D.done(s)); }
 D.done = { quality: (s) => s.label === "good" || s.label === "bad",
@@ -100,24 +145,38 @@ $("blind").checked = !!S.__blind;
 $("blind").onchange = (e) => { S.__blind = e.target.checked; save(); render(); };
 [...new Set(items.map((x) => x.lang))].sort().forEach((l) => { const o = document.createElement("option"); o.value = l; o.textContent = l; $("lang").appendChild(o); });
 
+function inCal(it) {
+  const v = it.m && it.m.in_calibration_sample;
+  return v === true || v === "true" || v === "True" || v === 1;
+}
 function reorder() {
   const f = $("filter").value, lg = $("lang").value;
   order = items.map((_, i) => i).filter((i) => {
     const it = items[i], u = (it.m && it.m.uncertainty) || "medium";
     if (lg && it.lang !== lg) return false;
+    if (f === "cal_todo") return inCal(it) && !done(it);
+    if (f === "cal_all") return inCal(it);
     if (f === "todo") return !done(it);
     if (f === "todo_high") return !done(it) && u === "high";
     if (f === "todo_medium") return !done(it) && u === "medium";
     if (f === "todo_low") return !done(it) && u === "low";
     return true;
   });
-  if (f === "p1") order.sort((a, b) => (items[a].m.priority || 2) - (items[b].m.priority || 2) || a - b);
+  if (f === "p1" || f === "cal_todo" || f === "cal_all") {
+    const rank = { high: 0, medium: 1, low: 2 };
+    order.sort((a, b) => (rank[items[a].m.uncertainty] ?? 1) - (rank[items[b].m.uncertainty] ?? 1) || a - b);
+  }
   pos = Math.min(pos, Math.max(order.length - 1, 0));
-  page = Math.min(page, Math.max(Math.ceil(order.length / PAGE_SIZE) - 1, 0));
+  page = Math.min(page, Math.max(Math.ceil(order.length / pageSize) - 1, 0));
 }
 $("filter").onchange = () => { pos = 0; page = 0; reorder(); render(); };
 $("lang").onchange = () => { pos = 0; page = 0; reorder(); render(); };
-$("mode").onchange = () => { render(); };
+$("mode").onchange = () => {
+  const m = $("mode").value;
+  pageSize = m === "table100" ? 100 : m === "table50" ? 50 : 25;
+  page = 0;
+  render();
+};
 
 function marked(t) {
   return esc(t).replace(/\[([^\[\]|]+)\|(PER|ORG|LOC)\]/g, (_, s, ty) => `<span class="ent ${ty}">${s}<sub>${ty}</sub></span>`);
@@ -189,9 +248,10 @@ function body(it) {
     <div class="row"><label>заметка</label><input data-f="note" value="${esc(s.note)}" style="flex:1"></div>`;
 }
 
+function isTableMode() { return $("mode").value.startsWith("table"); }
 function renderTable() {
-  const start = page * PAGE_SIZE, slice = order.slice(start, start + PAGE_SIZE);
-  const pages = Math.max(1, Math.ceil(order.length / PAGE_SIZE));
+  const start = page * pageSize, slice = order.slice(start, start + pageSize);
+  const pages = Math.max(1, Math.ceil(order.length / pageSize));
   $("pos").textContent = `стр. ${page + 1} / ${pages} (${order.length} эл.)`;
   const rowsHtml = slice.map((idx, k) => {
     const it = items[idx], m = it.m || {}, r = it.r;
@@ -226,11 +286,14 @@ function renderTable() {
 }
 
 function render() {
-  const n = items.filter(done).length;
-  $("progress").style.width = (100 * n / items.length) + "%";
-  $("count").textContent = `${n} / ${items.length} размечено`;
+  const calItems = items.filter(inCal);
+  const f = $("filter").value;
+  const scope = (f === "cal_todo" || f === "cal_all") && calItems.length ? calItems : items;
+  const n = scope.filter(done).length;
+  $("progress").style.width = (100 * n / Math.max(scope.length, 1)) + "%";
+  $("count").textContent = `${n} / ${scope.length} размечено`;
   if (!order.length) { $("item").innerHTML = `<div class="card">Нет элементов под фильтр.</div>`; $("pos").textContent = ""; return; }
-  if ($("mode").value === "table") { renderTable(); return; }
+  if (isTableMode()) { renderTable(); return; }
   const it = items[order[pos]];
   $("pos").textContent = `${pos + 1} / ${order.length}`;
   const m = it.m || {};
@@ -250,7 +313,7 @@ function set(it, k, v) {
   render();
 }
 document.addEventListener("keydown", (e) => {
-  if ($("mode").value === "table") return;
+  if (isTableMode()) return;
   if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) { if (e.key === "Escape") document.activeElement.blur(); if (!(D.kind === "ner" && e.key === "Enter")) return; }
   const it = items[order[pos]]; if (!it) return;
   const k = e.key.toLowerCase();
@@ -261,8 +324,8 @@ document.addEventListener("keydown", (e) => {
   else if (D.kind === "eval" && "ofd".includes(k) && k) set(it, "verdict", {o: "ok", f: "fix", d: "drop"}[k]);
   else if (D.kind === "ner" && e.key === "Enter") { e.preventDefault(); set(it, "checked", "true"); }
 });
-$("prev").onclick = () => { if ($("mode").value === "table") { if (page > 0) page--; } else if (pos > 0) pos--; render(); };
-$("next").onclick = () => { if ($("mode").value === "table") { if ((page + 1) * PAGE_SIZE < order.length) page++; } else if (pos < order.length - 1) pos++; render(); };
+$("prev").onclick = () => { if (isTableMode()) { if (page > 0) page--; } else if (pos > 0) pos--; render(); };
+$("next").onclick = () => { if (isTableMode()) { if ((page + 1) * pageSize < order.length) page++; } else if (pos < order.length - 1) pos++; render(); };
 function csvCell(v) { v = v == null ? "" : String(v); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; }
 $("export").onclick = () => {
   const who = ($("reviewer").value || "").trim();
@@ -312,6 +375,18 @@ function parseCsv(t) {
   return out.filter((r) => r.length > 1 || r[0]);
 }
 reorder(); render();
+if (IS_HTTP) {
+  fetch("/api/state/" + D.sheet).then((r) => r.json()).then((srv) => {
+    let changed = false;
+    for (const [k, v] of Object.entries(srv || {})) {
+      if (k === "__reviewer" && !S.__reviewer && v) { S.__reviewer = v; $("reviewer").value = v; changed = true; }
+      else if (!k.startsWith("__") && !S[k]) { S[k] = v; changed = true; }
+    }
+    if (changed) { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} reorder(); render(); }
+    const n = items.filter(done).length;
+    $("savestatus").textContent = n ? `✓ синхронизировано (${n}/${items.length})` : "готово к автосохранению";
+  }).catch(() => {});
+}
 </script>
 </body>
 </html>

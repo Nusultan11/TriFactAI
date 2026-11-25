@@ -172,13 +172,34 @@ def score(sample: pl.DataFrame, labels: pl.DataFrame) -> dict[str, Any]:
     return out
 
 
+def cohen_kappa(a: list[str], b: list[str]) -> float | None:
+    """Unweighted Cohen's kappa between two categorical label lists."""
+    n = len(a)
+    if n == 0:
+        return None
+    po = sum(1 for x, y in zip(a, b, strict=True) if x == y) / n
+    cats = sorted(set(a) | set(b))
+    pe = sum((a.count(c) / n) * (b.count(c) / n) for c in cats)
+    if pe >= 1.0:
+        return 1.0 if po == 1.0 else 0.0
+    return round((po - pe) / (1.0 - pe), 4)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["sample", "sheet", "score"])
     ap.add_argument("--clean", type=Path, help="clean layer directory (default <lake root>/clean)")
     ap.add_argument("--review-dir", type=Path, default=REVIEW, help="sample / labels directory")
-    ap.add_argument("--reviewer", default="Claude (LLM), not a human annotator",
-                    help="who labelled labels.csv; a human review must name the person")  # fmt: skip
+    ap.add_argument(
+        "--reviewer",
+        default="Claude (LLM), not a human annotator",
+        help="who labelled labels.csv; a human review must name the person",
+    )
+    ap.add_argument(
+        "--calibrated",
+        action="store_true",
+        help="ADR-0026 mode: score the stratified human calibration sample alongside the 1,500-doc machine audit",
+    )
     args = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
@@ -209,18 +230,65 @@ def main(argv: list[str] | None = None) -> int:
         print(sample.group_by("review_lang", "status").len().sort("review_lang", "status"))
         return 0
     sample = pl.read_parquet(review / "sample.parquet")
-    labels = pl.read_csv(review / "labels.csv", schema_overrides={"note": pl.String}).select(
-        "doc_id", "label", "note"
-    )
+    labels_raw = pl.read_csv(review / "labels.csv", schema_overrides={"note": pl.String})
+    if args.calibrated:
+        import json
+
+        cal_path = ROOT / "data" / "review" / "calibration_sample.json"
+        cal_ids = set(json.loads(cal_path.read_text(encoding="utf-8"))["ids"]["quality"])
+        labels = labels_raw.filter(pl.col("label").is_in(["good", "bad"])).select("doc_id", "label", "note")
+        missing_cal = cal_ids - set(labels["doc_id"].to_list())
+        if missing_cal:
+            raise ValueError(f"{len(missing_cal)} ADR-0026 calibration docs are not yet human-labeled")
+        sample = sample.filter(pl.col("doc_id").is_in(labels["doc_id"].to_list()))
+    else:
+        labels = labels_raw.select("doc_id", "label", "note")
     res = score(sample, labels)
-    res["clean"] = {s: DatasetManifest.read(clean / s).fingerprint for s in params["curation"]["sources"]}
+    if args.calibrated:
+        res["protocol"] = "ADR-0026"
+        res["human_audit_n"] = sample.height
+        mfile = review / "machine_labels.csv"
+        if mfile.is_file():
+            m = pl.read_csv(mfile, infer_schema_length=10000)
+            res["machine_audit_n"] = m.height
+            j = labels.join(m.select("doc_id", "review_lang", "judge_label"), on="doc_id")
+            hl, jl = j["label"].to_list(), j["judge_label"].to_list()
+            res["judge_calibration"] = {
+                "n": j.height,
+                "agreement": round(sum(1 for x, y in zip(hl, jl, strict=True) if x == y) / j.height, 4)
+                if j.height
+                else None,
+                "cohen_kappa": cohen_kappa(hl, jl),
+                "by_lang": {
+                    str(lg): {
+                        "n": g.height,
+                        "agreement": round(float((g["label"] == g["judge_label"]).mean() or 0), 4),
+                        "cohen_kappa": cohen_kappa(g["label"].to_list(), g["judge_label"].to_list()),
+                    }
+                    for (lg,), g in sorted(j.group_by("review_lang"), key=lambda x: str(x[0][0]))
+                },
+            }
+    if (clean / params["curation"]["sources"][0] / "dataset.yaml").is_file():
+        res["clean"] = {s: DatasetManifest.read(clean / s).fingerprint for s in params["curation"]["sources"]}
     res["reviewer"] = args.reviewer
     res["human"] = "LLM" not in args.reviewer
-    name = "quality_review.json" if review == REVIEW.resolve() else f"quality_review_{review.name}.json"
+    if args.calibrated:
+        name = "quality_review_calibrated.json"
+    else:
+        name = "quality_review.json" if review == REVIEW.resolve() else f"quality_review_{review.name}.json"
     write_report(ROOT / "reports" / name, res)
     for lang, r in res["by_lang"].items():
-        print(lang, "kept good", r["kept"]["weighted_share"], r["kept"]["ci95"], "dropped bad", r["dropped"]["share"],
-              r["dropped"]["ci95"], "good lost", r["good_lost"])  # fmt: skip
+        print(
+            lang,
+            "kept good",
+            r["kept"]["weighted_share"],
+            r["kept"]["ci95"],
+            "dropped bad",
+            r["dropped"]["share"],
+            r["dropped"]["ci95"],
+            "good lost",
+            r["good_lost"],
+        )
     metrics = {}
     for lang, r in res["by_lang"].items():
         metrics[f"{lang}_kept_precision"] = r["kept"]["weighted_share"]

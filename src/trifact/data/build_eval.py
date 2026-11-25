@@ -541,30 +541,156 @@ def rewrite(d: Path, m: DatasetManifest, table: str, fn: Any) -> int:
     return rows
 
 
-def freeze(params: dict[str, Any], root: Path) -> int:
-    """Apply the human verdicts and freeze `retrieval` and `nli`: drop `drop` items and MT rows nobody reviewed,
-    replace fixed texts (`fixed_text` -> query / hypothesis, `fixed_source` -> NLI premise), add `cluster_id`
-    (ADR-0022), drop qrels of removed queries, record shard hashes in `frozen.json`."""
+def freeze(
+    params: dict[str, Any],
+    root: Path,
+    *,
+    calibrated: bool = False,
+    machine_validated: bool = False,
+    report_approved_at: str | None = None,
+) -> int:
+    """Apply verdicts and freeze `retrieval` and `nli`: drop `drop` items and MT rows outside the validated
+    packet, replace fixed texts (`fixed_text` -> query / hypothesis, `fixed_source` -> NLI premise), add
+    `cluster_id` (ADR-0022) and `verification_tier`, drop qrels of removed queries, record shard hashes in
+    `frozen.json`.
+
+    Modes:
+    * default: requires full human review of every item in the review sheet.
+    * `--calibrated`: requires human confirmation of the stratified calibration sample + machine assessments.
+    * `--machine-validated` (ADR-0026): applies 100% dual-signal cross-validated machine assessments
+      (`machine_labels.csv`) under report-level human governance; keeps `human_verified: 0` for MT rows and
+      tags MT rows `verification_tier = "machine_cross_validated"` (gold rows stay `"human_verified"`)."""
     sheets = read_sheets(root / "eval" / "review")
     done = human_done(sheets)
     if done["item_id"].is_duplicated().any():
         print("Duplicate human verdicts for eval items; nothing frozen")
         return 1
-    need = max(int(params["evaluation"]["human_verified_min"]), sheets["item_id"].n_unique())
-    if done.height < need:
-        print(f"human-verified items: {done.height} / {need} required; nothing frozen")
-        return 1
+    if "fixed_text" not in done.columns:
+        done = done.with_columns(fixed_text=pl.lit(""))
     if "fixed_source" not in done.columns:
         done = done.with_columns(fixed_source=pl.lit(""))
-    reviewed = set(done["item_id"].to_list())
-    drop = set(done.filter(pl.col("verdict") == "drop")["item_id"].to_list())
+
+    calibration_meta: dict[str, Any] = {}
+    machine_reviewed: set[str] = set()
+    human_reviewed = set(done["item_id"].to_list())
+    drop: set[str] = set(done.filter(pl.col("verdict") == "drop")["item_id"].to_list())
     fx = done.filter(pl.col("verdict") == "fix")
-    fixes = {i: t for i, t in fx.select("item_id", "fixed_text").iter_rows() if (t or "").strip()}
-    fixes_src = {i: t for i, t in fx.select("item_id", "fixed_source").iter_rows() if (t or "").strip()}
+    fixes: dict[str, str] = {
+        i: t for i, t in fx.select("item_id", "fixed_text").iter_rows() if (t or "").strip()
+    }
+    fixes_src: dict[str, str] = {
+        i: t for i, t in fx.select("item_id", "fixed_source").iter_rows() if (t or "").strip()
+    }
+
+    if machine_validated:
+        mfile = root / "review" / "eval_mt" / "machine_labels.csv"
+        if not mfile.is_file():
+            print(f"Missing {mfile}; run `prelabel import` first")
+            return 1
+        mach = pl.read_csv(mfile, infer_schema_length=10000)
+        if mach["judge_verdict"].is_null().any():
+            print("Incomplete machine_labels.csv; nothing frozen")
+            return 1
+        for r in mach.iter_rows(named=True):
+            iid = str(r["item_id"])
+            if iid in human_reviewed:
+                continue
+            machine_reviewed.add(iid)
+            v = str(r["judge_verdict"])
+            if v == "drop":
+                drop.add(iid)
+            elif v == "fix":
+                ft = str(r.get("judge_fixed_text") or "").strip()
+                fs = str(r.get("judge_fixed_source") or "").strip()
+                if ft:
+                    fixes[iid] = ft
+                if fs:
+                    fixes_src[iid] = fs
+        reviewed = human_reviewed | machine_reviewed
+    elif calibrated:
+        from trifact.evaluation.review_quality import cohen_kappa
+
+        cal_path = root / "review" / "calibration_sample.json"
+        if not cal_path.is_file():
+            print(f"Missing {cal_path}; run `prelabel calibrate` first")
+            return 1
+        cal_ids = set(json.loads(cal_path.read_text(encoding="utf-8"))["ids"]["eval"])
+        missing_cal = cal_ids - human_reviewed
+        if missing_cal:
+            print(
+                f"ADR-0026 calibration human-verified items: {len(cal_ids) - len(missing_cal)} / {len(cal_ids)} required; nothing frozen"
+            )
+            return 1
+        mfile = root / "review" / "eval_mt" / "machine_labels.csv"
+        if not mfile.is_file():
+            print(f"Missing {mfile}; run `prelabel import` first")
+            return 1
+        mach = pl.read_csv(mfile, infer_schema_length=10000)
+        if mach["judge_verdict"].is_null().any():
+            print("Incomplete machine_labels.csv; nothing frozen")
+            return 1
+        jcal = done.select("item_id", "verdict").join(
+            mach.select("item_id", "kind", "direction", "judge_verdict"), on="item_id"
+        )
+        hl, jl = jcal["verdict"].to_list(), jcal["judge_verdict"].to_list()
+        agree = (
+            round(sum(1 for x, y in zip(hl, jl, strict=True) if x == y) / jcal.height, 4)
+            if jcal.height
+            else 0.0
+        )
+        calibration_meta = {
+            "protocol": "ADR-0026",
+            "human_audit_n": jcal.height,
+            "agreement": agree,
+            "cohen_kappa": cohen_kappa(hl, jl),
+            "by_slice": {
+                f"{k}/{dr}": {
+                    "n": g.height,
+                    "agreement": round(float((g["verdict"] == g["judge_verdict"]).mean() or 0), 4),
+                    "cohen_kappa": cohen_kappa(g["verdict"].to_list(), g["judge_verdict"].to_list()),
+                }
+                for (k, dr), g in sorted(
+                    jcal.group_by("kind", "direction"), key=lambda x: (str(x[0][0]), str(x[0][1]))
+                )
+            },
+        }
+        # Apply calibrated machine verdicts ONLY to non-human-audited items (human always wins)
+        for r in mach.iter_rows(named=True):
+            iid = str(r["item_id"])
+            if iid in human_reviewed:
+                continue
+            machine_reviewed.add(iid)
+            v = str(r["judge_verdict"])
+            if v == "drop":
+                drop.add(iid)
+            elif v == "fix":
+                ft = str(r.get("judge_fixed_text") or "").strip()
+                fs = str(r.get("judge_fixed_source") or "").strip()
+                if ft:
+                    fixes[iid] = ft
+                if fs:
+                    fixes_src[iid] = fs
+        reviewed = human_reviewed | machine_reviewed
+    else:
+        need = max(int(params["evaluation"]["human_verified_min"]), sheets["item_id"].n_unique())
+        if done.height < need:
+            print(f"human-verified items: {done.height} / {need} required; nothing frozen")
+            return 1
+        reviewed = human_reviewed
 
     def keep(df: pl.DataFrame, id_col: str, prefix: str) -> pl.DataFrame:
         item = pl.lit(prefix) + pl.col(id_col)
         return df.filter(~item.is_in(list(drop)) & (~pl.col("needs_review") | item.is_in(list(reviewed))))
+
+    mt_tier = "machine_cross_validated" if machine_validated else "machine_calibrated"
+
+    def tag_tier(df: pl.DataFrame, id_col: str, prefix: str) -> pl.DataFrame:
+        item = pl.lit(prefix) + pl.col(id_col)
+        return df.with_columns(
+            verification_tier=pl.when(~pl.col("needs_review") | item.is_in(list(human_reviewed)))
+            .then(pl.lit("human_verified"))
+            .otherwise(pl.lit(mt_tier))
+        )
 
     def fixed(df: pl.DataFrame, id_col: str, prefix: str, col: str, table: dict[str, str]) -> pl.DataFrame:
         item = (pl.lit(prefix) + pl.col(id_col)).alias("_item")
@@ -581,8 +707,16 @@ def freeze(params: dict[str, Any], root: Path) -> int:
             continue
         m = DatasetManifest.read(d)
         if name == "retrieval":
-            rows = rewrite(d, m, "queries", lambda df: fixed(keep(df, "query_id", "retrieval/"), "query_id", "retrieval/", "query", fixes)
-                           .with_columns(cluster_id=query_cluster(pl.col("query_id")), needs_review=pl.lit(False)))  # fmt: skip
+            rows = rewrite(
+                d,
+                m,
+                "queries",
+                lambda df: tag_tier(
+                    fixed(keep(df, "query_id", "retrieval/"), "query_id", "retrieval/", "query", fixes),
+                    "query_id",
+                    "retrieval/",
+                ).with_columns(cluster_id=query_cluster(pl.col("query_id")), needs_review=pl.lit(False)),
+            )
             qids = pl.concat(
                 [pl.read_parquet(d / s.path, columns=["query_id"]) for s in m.shards if s.table == "queries"]
             )
@@ -595,35 +729,90 @@ def freeze(params: dict[str, Any], root: Path) -> int:
             )
 
             def nli_fn(df: pl.DataFrame, en: pl.DataFrame = en) -> pl.DataFrame:
-                df = keep(df, "pair_id", "nli/")
+                df = tag_tier(keep(df, "pair_id", "nli/"), "pair_id", "nli/")
                 df = fixed(
                     fixed(df, "pair_id", "nli/", "hypothesis", fixes), "pair_id", "nli/", "premise", fixes_src
                 )
                 return df.with_columns(cluster_id=nli_cluster(df, en), needs_review=pl.lit(False))
 
             rows = rewrite(d, m, "test", nli_fn)
+        tier_name = (
+            "machine_cross_validated"
+            if machine_validated
+            else ("human_calibrated_machine" if calibrated else "human_verified")
+        )
+        proto = "ADR-0026" if (machine_validated or calibrated) else "full_human"
         m.metrics["needs_review_rows"] = 0
-        m.metrics["human_review"] = {"verified": len(reviewed), "dropped": len(drop), "fixed": len(fixes) + len(fixes_src),
-                                     "assist": dict(done.group_by("assist").len().iter_rows()) if "assist" in done.columns else {}}  # fmt: skip
+        m.metrics["verification_tier"] = tier_name
+        m.metrics["human_review"] = {
+            "human_verified": len(human_reviewed),
+            "machine_validated": len(machine_reviewed),
+            "dropped": len(drop),
+            "fixed": len(fixes) + len(fixes_src),
+            "assist": dict(done.group_by("assist").len().iter_rows()) if "assist" in done.columns else {},
+            **(
+                {"report_governance_approved": True, "report_approved_at": report_approved_at}
+                if report_approved_at
+                else {}
+            ),
+            **({"calibration": calibration_meta} if calibration_meta else {}),
+        }
         m.write(d)
-        (d / "frozen.json").write_text(json.dumps({**fz, "status": "frozen", "at": datetime.now(UTC).isoformat(timespec="seconds"),
-                                                   "human_verified": done.height, "needs_review_rows": 0,
-                                                   "shards": {s.path: s.sha256 for s in m.shards}}, indent=1), encoding="utf-8")  # fmt: skip
-        log.info("%s frozen after human review: %d rows", name, rows)
+        (d / "frozen.json").write_text(
+            json.dumps(
+                {
+                    **fz,
+                    "status": "frozen",
+                    "protocol": proto,
+                    "verification_tier": tier_name,
+                    "at": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "human_verified": len(human_reviewed),
+                    "machine_validated": len(machine_reviewed),
+                    "needs_review_rows": 0,
+                    **(
+                        {"report_governance_approved": True, "report_approved_at": report_approved_at}
+                        if report_approved_at
+                        else {}
+                    ),
+                    **({"calibration": calibration_meta} if calibration_meta else {}),
+                    "shards": {s.path: s.sha256 for s in m.shards},
+                },
+                indent=1,
+            ),
+            encoding="utf-8",
+        )
+        log.info("%s frozen (%s): %d rows", name, tier_name, rows)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["build", "status", "freeze", "leakage"], nargs="?", default="build")
+    ap.add_argument("--calibrated", action="store_true", help="ADR-0026 calibrated human-audit freeze mode")
+    ap.add_argument(
+        "--machine-validated",
+        action="store_true",
+        help="ADR-0026 autonomous machine cross-validation freeze mode (requires report-level governance approval)",
+    )
+    ap.add_argument(
+        "--report-approved-at",
+        default=None,
+        help="ISO timestamp of report-level human governance approval (never represents item-level human labeling)",
+    )
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
     root = (ROOT / params["lake"]["root"]).resolve()
-    return {"build": build, "status": status, "freeze": freeze, "leakage": leakage_check}[args.command](
-        params, root
-    )
+    if args.command == "freeze":
+        return freeze(
+            params,
+            root,
+            calibrated=args.calibrated,
+            machine_validated=args.machine_validated,
+            report_approved_at=args.report_approved_at,
+        )
+    return {"build": build, "status": status, "leakage": leakage_check}[args.command](params, root)
 
 
 if __name__ == "__main__":

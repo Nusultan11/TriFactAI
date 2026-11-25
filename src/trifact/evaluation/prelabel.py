@@ -422,6 +422,10 @@ def ner_signals() -> pl.DataFrame:
 
 CORE_TYPES = {"PER", "ORG", "LOC"}
 FULL_DOC_DROP_REASONS = {"dup_lines", "dup_ngrams", "bad_chars", "few_stopwords", "bullets", "ellipsis"}
+DISAMB_RE = re.compile(
+    r"may refer to:|can refer to:|может означать:|значения:|деген мағынаны білдіруі мүмкін|айрық бет",
+    re.IGNORECASE,
+)
 SIGNAL_COLS = {
     "quality": ["doc_id", "glotlid_lang", "glotlid_score", "lid176_lang", "lid176_score", "kk_letter_share"],
     "ner": [
@@ -468,13 +472,29 @@ def _strip_span_markup(s: str) -> str:
     return m.group(1).strip() if m else s.strip()
 
 
+def _norm_ws_punct(s: str) -> str:
+    """Normalize whitespace, punctuation, case, and Russian ё->е to detect trivial/no-op edits."""
+    s = (s or "").strip().lower().replace("ё", "е")
+    return re.sub(r"[\s\?\!\.,:;\"'«»\-–—]+", "", s)
+
+
+def _is_suffix_strip(surface: str, corrected: str, lang: str) -> bool:
+    """True if corrected strips a kk/ru case suffix from a single-word surface (violates ADR-0006)."""
+    if lang not in ("kk", "ru"):
+        return False
+    a, b = surface.strip(), corrected.strip()
+    return (
+        " " not in a and " " not in b and len(b) >= 3 and len(a) > len(b) and a.lower().startswith(b.lower())
+    )
+
+
 def _sanitize_ner_judge(
-    marked_text: str, d: dict[str, Any]
+    marked_text: str, d: dict[str, Any], lang: str = ""
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[str], list[dict[str, str]], int]:
     """Validate NER judge errors against marked spans and ADR-0006 core types (PER/ORG/LOC).
 
     Prevents non-core types (EVENT/WORK/DATE), already-marked spans in `missed`, no-op fixes,
-    and double-counting the same marked span across multiple error buckets.
+    kk/ru case-suffix stripping, whitespace-only diffs, and double-counting the same span.
     """
     plain, spans = plain_spans(marked_text)
     plain_low = plain.lower()
@@ -533,14 +553,20 @@ def _sanitize_ner_judge(
         else:
             wt_clean.append({"text": tx, "type": ty})
 
-    # 3. wrong_span
+    # 3. wrong_span (drop no-op, whitespace-only, and kk/ru case-suffix stripping)
     for x in as_list(d.get("wrong_span")):
         if not isinstance(x, dict):
             sanitized += 1
             continue
         tx = _strip_span_markup(str(x.get("text") or ""))
         co = _strip_span_markup(str(x.get("correct") or ""))
-        if not tx or not co or tx.lower() == co.lower():
+        if (
+            not tx
+            or not co
+            or tx.lower() == co.lower()
+            or re.sub(r"\s+", "", tx).lower() == re.sub(r"\s+", "", co).lower()
+            or _is_suffix_strip(tx, co, lang)
+        ):
             sanitized += 1
             continue
         ok, _ = consume_marked(tx)
@@ -588,10 +614,57 @@ def import_quality(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
                 "judge_language": str(d.get("language") or ""),
                 "judge_reason": str(d.get("reason") or ""),
                 "judge_truncated": bool(d.get("_truncated", False)),
+                "is_disamb_list": bool(DISAMB_RE.search(text)),
                 "text_chars": len(text),
             }
         )
     j = df.drop("text").join(pl.DataFrame(rows), on="doc_id").join(sig, on="doc_id", how="left")
+    # Cross-validation overrides:
+    # 1. Both independent langids (GlotLID and lid.176) >= 0.85 agree doc is NOT in review_lang -> bad (wrong_language).
+    # 2. Rubric consistency: list_table or Wikipedia disambiguation lists without prose cannot be labeled 'good' -> bad.
+    both_wrong_lang = (
+        (pl.col("judge_label") == "good")
+        & (pl.col("glotlid_lang") != pl.col("review_lang"))
+        & (pl.col("glotlid_score") >= 0.85)
+        & (pl.col("lid176_lang") != pl.col("review_lang"))
+        & (pl.col("lid176_score") >= 0.85)
+    )
+    rubric_list_table = (pl.col("judge_label") == "good") & (
+        (pl.col("judge_category") == "list_table") | pl.col("is_disamb_list")
+    )
+    j = j.with_columns(
+        xval_override=both_wrong_lang.fill_null(False),
+        xval_list_table_override=rubric_list_table.fill_null(False),
+        judge_label=pl.when(both_wrong_lang | rubric_list_table)
+        .then(pl.lit("bad"))
+        .otherwise(pl.col("judge_label")),
+        judge_category=pl.when(both_wrong_lang)
+        .then(pl.lit("wrong_language"))
+        .when(rubric_list_table)
+        .then(pl.lit("list_table"))
+        .otherwise(pl.col("judge_category")),
+        judge_reason=pl.when(both_wrong_lang)
+        .then(
+            pl.concat_str(
+                pl.lit("[xval: GlotLID="),
+                pl.col("glotlid_lang").fill_null(""),
+                pl.lit(" & lid.176="),
+                pl.col("lid176_lang").fill_null(""),
+                pl.lit(" >=0.85 != "),
+                pl.col("review_lang"),
+                pl.lit("] "),
+                pl.col("judge_reason").fill_null(""),
+            )
+        )
+        .when(rubric_list_table)
+        .then(
+            pl.concat_str(
+                pl.lit("[xval: rubric list_table/disambiguation override -> bad] "),
+                pl.col("judge_reason").fill_null(""),
+            )
+        )
+        .otherwise(pl.col("judge_reason")),
+    )
     sig_ok = (pl.col("glotlid_lang") == pl.col("review_lang")) & (pl.col("glotlid_score") >= 0.5)
     kk_doubt = (pl.col("review_lang") == "kk") & (pl.col("kk_letter_share") < 0.05)
     j = j.with_columns(
@@ -616,6 +689,10 @@ def import_quality(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
             reasons.append("judge_missing")
         if r["judge_truncated"]:
             reasons.append("judge_truncated")
+        if r.get("xval_override"):
+            reasons.append("xval_both_langids_override")
+        if r.get("xval_list_table_override"):
+            reasons.append("xval_list_table_override")
         if not r["machine_agree"]:
             reasons.append("signal_disagrees")
         if r["filter_disagree"]:
@@ -673,7 +750,7 @@ def import_ner(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
                 }
             )
             continue
-        wt, ws, ne, mi, san = _sanitize_ner_judge(r["text"], d)
+        wt, ws, ne, mi, san = _sanitize_ner_judge(r["text"], d, lang=r["lang"])
         fmt = lambda xs, k: "; ".join(
             f"{x.get('text', '')}->{x.get(k, '')}" if isinstance(x, dict) else str(x) for x in xs
         )
@@ -757,13 +834,18 @@ def import_eval(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
         ft = str(d.get("fixed_text") or d.get("fixed_hypothesis") or "").strip()
         fs = str(d.get("fixed_premise") or "").strip()
         san = False
+        fix_drops_digits = False
         if v == "fix":
             if r["kind"] == "query_translation":
-                if not ft or ft == (r["candidate_text"] or "").strip():
+                if not ft or _norm_ws_punct(ft) == _norm_ws_punct(r["candidate_text"] or ""):
                     v, ft, san = "ok", "", True
+                elif digits(r["source_text"] or "") == digits(r["candidate_text"] or "") and digits(
+                    r["source_text"] or ""
+                ) != digits(ft):
+                    fix_drops_digits = True
             else:
-                ft_same = not ft or ft == (r["candidate_text"] or "").strip()
-                fs_same = not fs or fs == (r["source_text"] or "").strip()
+                ft_same = not ft or _norm_ws_punct(ft) == _norm_ws_punct(r["candidate_text"] or "")
+                fs_same = not fs or _norm_ws_punct(fs) == _norm_ws_punct(r["source_text"] or "")
                 if ft_same and fs_same:
                     v, ft, fs, san = "ok", "", "", True
         rows.append(
@@ -775,6 +857,7 @@ def import_eval(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
                 "judge_reason": str(d.get("reason") or ""),
                 "judge_truncated": bool(d.get("_truncated", False)),
                 "judge_sanitized": san,
+                "fix_drops_digits": fix_drops_digits,
             }
         )
     sig_clean = sig.drop("kind") if "kind" in sig.columns else sig
@@ -815,11 +898,18 @@ def import_eval(ans: dict[str, str], sig: pl.DataFrame) -> pl.DataFrame:
             reasons.append("low_chrf_back")
         if r["digits_kept"] is False:
             reasons.append("digits_mismatch")
+        if r.get("fix_drops_digits"):
+            reasons.append("xval_fix_drops_digits")
         if r["kind"] == "nli_translation" and r["nli_en"] == r["label"] and r["nli_kk"] != r["label"]:
             reasons.append("nli_label_mismatch")
         if r["judge_verdict"] in ("fix", "drop"):
             reasons.append(f"verdict_{r['judge_verdict']}")
-        if r["judge_verdict"] is None or not r["machine_agree"] or r["judge_truncated"]:
+        if (
+            r["judge_verdict"] is None
+            or not r["machine_agree"]
+            or r["judge_truncated"]
+            or r.get("fix_drops_digits")
+        ):
             lvl = "high"
         elif r["judge_verdict"] in ("fix", "drop") or r["judge_sanitized"] or "low_chrf_back" in reasons:
             lvl = "medium"
@@ -913,6 +1003,8 @@ def report(params: dict[str, Any]) -> dict[str, Any]:
         sp = pl.read_parquet(sample_path, columns=["review_lang", "status", "stratum", "stratum_size"])
         for r in sp.unique(["review_lang", "status", "stratum"]).iter_rows(named=True):
             stratum_sizes[(r["review_lang"], r["status"], r["stratum"])] = int(r["stratum_size"])
+    q_rng = np.random.default_rng(int(params["seed"]))
+    q_boot_n = int(params["evaluation"]["bootstrap_samples"])
     qs: dict[str, Any] = {}
     for (lang, status), g in sorted(
         q.group_by("review_lang", "status"), key=lambda x: (str(x[0][0]), str(x[0][1]))
@@ -923,6 +1015,7 @@ def report(params: dict[str, Any]) -> dict[str, Any]:
         by_stratum: dict[str, Any] = {}
         pop_total = 0
         weighted_num = 0.0
+        strat_arrs: list[tuple[int, np.ndarray]] = []
         for (s,), gg in sorted(g.group_by("stratum"), key=lambda x: str(x[0][0])):
             sk = int((gg["judge_label"] == positive).sum())
             sn = int(gg["judge_label"].is_not_null().sum())
@@ -930,6 +1023,8 @@ def report(params: dict[str, Any]) -> dict[str, Any]:
             pop = stratum_sizes.get((str(lang), str(status), str(s)), 0)
             pop_total += pop
             weighted_num += share * pop
+            if pop > 0 and sn > 0:
+                strat_arrs.append((pop, (gg["judge_label"] == positive).to_numpy().astype(np.float64)))
             by_stratum[str(s)] = {
                 "n": sn,
                 positive: sk,
@@ -938,11 +1033,23 @@ def report(params: dict[str, Any]) -> dict[str, Any]:
                 "population": pop,
             }
         weighted = round(weighted_num / pop_total, 4) if pop_total else None
+        weighted_ci95 = None
+        if pop_total > 0 and strat_arrs:
+            bvals = np.zeros(q_boot_n, dtype=np.float64)
+            for pop, arr in strat_arrs:
+                w = pop / pop_total
+                idx = q_rng.integers(0, len(arr), size=(q_boot_n, len(arr)))
+                bvals += w * arr[idx].mean(axis=1)
+            weighted_ci95 = [
+                round(float(np.quantile(bvals, 0.025)), 4),
+                round(float(np.quantile(bvals, 0.975)), 4),
+            ]
         qs.setdefault(str(lang), {})[str(status)] = {
             "n": n,
             "judge_agrees_with_filter": round(k / n, 4) if n else None,
             "ci95": wilson(k, n),
             "weighted_share": weighted,
+            "weighted_ci95_bootstrap": weighted_ci95,
             "population": pop_total,
             "categories": dict(g.group_by("judge_category").len().sort("len", descending=True).iter_rows()),
             "by_stratum": by_stratum,
@@ -1073,9 +1180,127 @@ def report(params: dict[str, Any]) -> dict[str, Any]:
     return res
 
 
+CALIBRATION_MANIFEST = ROOT / "data" / "review" / "calibration_sample.json"
+
+
+def _pick_by_uncertainty(df: pl.DataFrame, id_col: str, quotas: dict[str, int], seed: int) -> list[str]:
+    """Deterministically pick IDs stratified by uncertainty tier (high -> medium -> low), topping up if short."""
+    ranked = df.with_columns(_h=pl.col(id_col).hash(seed=seed)).sort("_h")
+    picked: list[str] = []
+    seen: set[str] = set()
+    target = sum(quotas.values())
+    for tier in ("high", "medium", "low"):
+        want = quotas.get(tier, 0)
+        if want <= 0:
+            continue
+        sub = ranked.filter(pl.col("uncertainty") == tier)[id_col].to_list()
+        for x in sub:
+            if len(picked) >= target or want <= 0:
+                break
+            if x not in seen:
+                picked.append(x)
+                seen.add(x)
+                want -= 1
+    if len(picked) < target:
+        for tier in ("high", "medium", "low"):
+            for x in ranked.filter(pl.col("uncertainty") == tier)[id_col].to_list():
+                if len(picked) >= target:
+                    break
+                if x not in seen:
+                    picked.append(x)
+                    seen.add(x)
+    return picked
+
+
+def build_calibration_sample(params: dict[str, Any]) -> dict[str, Any]:
+    """Select the ADR-0026 deterministic stratified human calibration sample (90 + 60 + 180 = 330 items).
+
+    Marks `in_calibration_sample` inside each sheet's `machine_labels.csv` and writes
+    `data/review/calibration_sample.json`.
+    """
+    seed = int(params["seed"])
+    cfg = params["evaluation"]["calibration_audit"]
+    q_per_lang = int(cfg["quality_per_lang"])
+    n_per_lang = int(cfg["ner_per_lang"])
+    e_ret_dir = int(cfg["eval_retrieval_per_dir"])
+    e_nli = int(cfg["eval_nli_kk"])
+
+    selected: dict[str, list[str]] = {"quality": [], "ner": [], "eval": []}
+    breakdown: dict[str, dict[str, int]] = {"quality": {}, "ner": {}, "eval": {}}
+
+    # 1. Quality: q_per_lang per lang (half kept, half dropped), oversampling high/medium uncertainty
+    qd = machine_dir("quality")
+    q = pl.read_csv(qd / LABELS, infer_schema_length=10000)
+    half_k = q_per_lang // 2
+    half_d = q_per_lang - half_k
+    for lang in ("kk", "ru", "en"):
+        for status, n_want in (("kept", half_k), ("dropped", half_d)):
+            sub = q.filter((pl.col("review_lang") == lang) & (pl.col("status") == status))
+            hi = min(6, n_want)
+            med = min(5, max(0, n_want - hi))
+            lo = max(0, n_want - hi - med)
+            ids = _pick_by_uncertainty(sub, "doc_id", {"high": hi, "medium": med, "low": lo}, seed)
+            selected["quality"].extend(ids)
+            breakdown["quality"][f"{lang}/{status}"] = len(ids)
+    q_set = set(selected["quality"])
+    q = q.with_columns(in_calibration_sample=pl.col("doc_id").is_in(list(q_set)))
+    q.write_csv(qd / LABELS)
+
+    # 2. Silver NER: n_per_lang per lang (8 high / 7 medium / 5 low for n=20)
+    nd = machine_dir("ner")
+    n = pl.read_csv(nd / LABELS, infer_schema_length=10000)
+    for lang in ("kk", "ru", "en"):
+        sub = n.filter(pl.col("lang") == lang)
+        hi = round(n_per_lang * 0.4)
+        med = round(n_per_lang * 0.35)
+        lo = max(0, n_per_lang - hi - med)
+        ids = _pick_by_uncertainty(sub, "sent_id", {"high": hi, "medium": med, "low": lo}, seed)
+        selected["ner"].extend(ids)
+        breakdown["ner"][lang] = len(ids)
+    n_set = set(selected["ner"])
+    n = n.with_columns(in_calibration_sample=pl.col("sent_id").is_in(list(n_set)))
+    n.write_csv(nd / LABELS)
+
+    # 3. Eval MT & NLI: e_ret_dir per retrieval direction + e_nli for kk NLI
+    ed = machine_dir("eval")
+    e = pl.read_csv(ed / LABELS, infer_schema_length=10000)
+    for direction in ("en-kk", "en-ru", "kk-en", "kk-ru", "ru-en", "ru-kk"):
+        sub = e.filter((pl.col("kind") == "query_translation") & (pl.col("direction") == direction))
+        hi = round(e_ret_dir * 0.4)
+        med = round(e_ret_dir * 0.32)
+        lo = max(0, e_ret_dir - hi - med)
+        ids = _pick_by_uncertainty(sub, "item_id", {"high": hi, "medium": med, "low": lo}, seed)
+        selected["eval"].extend(ids)
+        breakdown["eval"][f"query_translation/{direction}"] = len(ids)
+    sub_nli = e.filter(pl.col("kind") == "nli_translation")
+    hi_n = round(e_nli * 0.4)
+    med_n = round(e_nli * 0.33)
+    lo_n = max(0, e_nli - hi_n - med_n)
+    ids_nli = _pick_by_uncertainty(sub_nli, "item_id", {"high": hi_n, "medium": med_n, "low": lo_n}, seed)
+    selected["eval"].extend(ids_nli)
+    breakdown["eval"]["nli_translation/en-kk"] = len(ids_nli)
+    e_set = set(selected["eval"])
+    e = e.with_columns(in_calibration_sample=pl.col("item_id").is_in(list(e_set)))
+    e.write_csv(ed / LABELS)
+
+    manifest = {
+        "protocol": "ADR-0026",
+        "seed": seed,
+        "totals": {k: len(v) for k, v in selected.items()},
+        "total_items": sum(len(v) for v in selected.values()),
+        "breakdown": breakdown,
+        "ids": selected,
+    }
+    CALIBRATION_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
+    CALIBRATION_MANIFEST.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return manifest
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["prompts", "signals", "import", "report"])
+    ap.add_argument("command", choices=["prompts", "signals", "import", "calibrate", "report"])
     ap.add_argument("--out", type=Path, help="prompts: directory for prompts-judge.parquet")
     ap.add_argument("--teacher-out", type=Path, help="import: downloaded Kaggle teacher output")
     ap.add_argument("--sheet", choices=list(SHEETS), action="append", help="signals: only these sheets")
@@ -1104,6 +1329,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "import":
         s = import_all(args.teacher_out, params)
         print(json.dumps(s))
+        return 0
+    if args.command == "calibrate":
+        m = build_calibration_sample(params)
+        print(json.dumps({k: v for k, v in m.items() if k != "ids"}, indent=2, ensure_ascii=False))
         return 0
     res = report(params)
     res["seconds"] = round(time.perf_counter() - t0, 1)

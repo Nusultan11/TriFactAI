@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from trifact.evaluation.prelabel import _sanitize_ner_judge, parse_json
+from trifact.evaluation.prelabel import _is_suffix_strip, _norm_ws_punct, _sanitize_ner_judge, parse_json
 from trifact.evaluation.review_app import build_hub
+from trifact.evaluation.review_quality import cohen_kappa
+from trifact.evaluation.review_server import valid_reviewer
 
 
 def test_parse_json_prefers_last_top_level_and_recovers_truncated() -> None:
@@ -99,3 +101,16 @@ def test_build_hub_generates_consolidated_index(tmp_path: Path) -> None:
     assert "eval_mt/review.html" in html
     assert "не являются человеческой проверкой" in html
     assert json.dumps("ok")  # sanity
+
+
+def test_cross_validation_helpers_and_reviewer_guard() -> None:
+    assert _is_suffix_strip("Ресейдегі", "Ресей", "kk") is True
+    assert _is_suffix_strip("Франциядағы", "Франция", "kk") is True
+    assert _is_suffix_strip("Babylonia", "Babylon", "en") is False
+    assert _norm_ws_punct("Как называется твёрдая кора?") == _norm_ws_punct("как называется твердая кора")
+    assert valid_reviewer("Nursultan") is True
+    assert valid_reviewer("") is False
+    assert valid_reviewer("Qwen3.5") is False
+    assert valid_reviewer("auto-labeler") is False
+    assert cohen_kappa(["good", "good", "bad", "bad"], ["good", "good", "bad", "bad"]) == 1.0
+    assert cohen_kappa(["good", "bad", "good", "bad"], ["good", "good", "bad", "bad"]) == 0.0

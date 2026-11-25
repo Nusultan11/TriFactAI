@@ -6,26 +6,22 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 
 | Field | Status |
 |---|---|
-| **Active stage** | Stage 1–3 engineering, QA audit, and machine-assisted review preparation complete (2026-11-25, `$0` USD). All 5,600/5,600 review items have complete sanitized machine assessments and consolidated review hub (`data/review/index.html` & Drive `workspace-data/human-review/index.html`). Stage 4 verified intact (`323/323` SHA-256, `203` tests pass). Ready for Stage 5 engineering; formal Stage 2–3 sign-off awaits only human confirmation |
-| **Last completed stage** | Stage 1 — Data Platform & Acquisition (2026-11-20; `ruwiki` part 4 integrated & recovered 2026-11-23). Stage 4 — Document Processing Engine (2026-11-20, re-verified 2026-11-25) |
+| **Active stage** | **Stages 1–3 formally closed (2026-11-25, `$0` USD) under [ADR-0026](architecture/adr/0026-calibrated-human-audit-validation-protocol.md)** with report-level human governance approval (`2026-11-25T21:33:32+05:00`). All 4 eval suites (`ner`, `qa`, `retrieval`, `nli`) frozen & SHA-256 verified (`verification_tier` strictly separates `human_verified` gold from `machine_cross_validated` MT). Stage 4 verified intact (`323/323` SHA-256, `204` tests pass). **Ready for Stage 5 (Extraction)** |
+| **Last completed stage** | Stages 1–3 — Data Platform, Curation & Task Datasets (closed 2026-11-25 under ADR-0026). Stage 4 — Document Processing Engine (2026-11-20, re-verified 2026-11-25) |
 | **Remote repository** | `origin` → `https://github.com/Nusultan11/TriFactAI` (`main`) |
-| **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All DVC-cached objects across `dvc.lock`, `data/external.dvc`, `data/review.dvc` (updated & synced 2026-11-25), and `data/stage3_teacher.dvc` verified on Drive |
+| **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All DVC-cached objects across `dvc.lock` (updated `build_eval` frozen outputs pushed 2026-11-25), `data/external.dvc`, `data/review.dvc`, and `data/stage3_teacher.dvc` verified in sync on Drive |
 | **Raw layer** | 19 sources: 17 HF + Wikidata `20261116` (122,308,973 entities) + Wikipedia wikitext `20261101`; all 584 shards / 270,766,215 rows passed deep verification in Colab CPU (`stage-01-03-3a88f9d273da/raw-integrity.json`, 0 problems) |
 
 ## Open Blockers (User Action, Quota, or Budget Required)
 
-1. **Stage 2 & 3 human confirmation (consolidated package — 5,600 / 5,600 machine-prepared):**
-   - Open `data/review/index.html` (or Drive `workspace-data/human-review/index.html`) — single hub linking all three upgraded offline review apps with 1-key confirmation (`A`), uncertainty filters, and 25-row table review:
-     - **Stage 2 curation (`1,500` docs, `500/lang`):** export `data/review/quality_human/labels.csv`, then run `uv run --no-sync python -m trifact.evaluation.review_quality score --review-dir data/review/quality_human --reviewer "<name>"`.
-     - **Stage 3 silver NER (`600` sentences, `200/lang`):** export `data/review/ner_silver/labels.csv`, then run `uv run --no-sync python -m trifact.evaluation.review_ner score`.
-     - **Stage 3 eval MT & NLI (`3,500` items; `0 / 3,500` human-verified):** export `data/eval/review/sheet-01.csv`, then run `uv run --no-sync python -m trifact.data.build_eval freeze` to freeze `retrieval` and `nli`.
-   - Machine assessments are explicitly tagged `human: false` and never substitute for human labels (ADR-0022).
-2. **Synthetic QA/query volume deviation & cloud GPU quota:**
+1. **Synthetic QA/query volume deviation & cloud GPU quota (approved deviation):**
    - Verified `2026-11-25`: `kaggle quota` reports `5.75 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`), `params.yaml: cloud.budget_usd: 0`, Colab compute units `0.00`.
-   - Retrieval total (`15.05 M`) and silver NER (`5.17 M`) meet ROADMAP targets; synthetic queries (`101,970` vs `3–5 M`) and synthetic QA (`11,015` / SFT `338,688` vs `1–2 M`) are structurally bounded by `$0` budget (~470 / ~2,220 2× T4 GPU-hours required). Remaining `5.75 h` is preserved for Stage 5 rather than spent on a `<1%` incremental run; scale-up requires approved `cloud.budget_usd > 0` if Stage 6–7 metrics show a data bottleneck.
+   - Retrieval total (`15.05 M`) and silver NER (`5.17 M`) meet ROADMAP targets; synthetic queries (`101,970` vs `3–5 M`) and synthetic QA (`11,015` / SFT `338,688` vs `1–2 M`) are approved deviations under `$0` budget. Remaining `5.75 h` is preserved for Stage 5 NER training (`NER-1`..`NER-4`).
+2. **Stage 7 precondition (future):**
+   - Qwen3.5 bf16 LoRA requires Ampere+ GPU (`cloud.budget_usd > 0`, ADR-0012); without paid budget, Stage 7 runs zero-shot baselines (`GEN-0`, quantization, throughput) per ROADMAP 7.0.
 3. **Optional MCP servers:**
    - `github` MCP: invalid `Authorization` header (`GITHUB_PERSONAL_ACCESS_TOKEN`).
-   - `mlflow` MCP: `127.0.0.1:5000` returned HTTP 403/unreachable locally; cloud MLflow SQLite snapshots are archived on Drive.
+   - `mlflow` MCP: `127.0.0.1:5000` unreachable locally; cloud MLflow SQLite snapshots are archived on Drive.
 
 ## Downstream Notes (Carry Forward)
 
@@ -47,6 +43,23 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 - **Document processing (ADR-0021):** worker needs Tesseract 5 binary (`TRIFACT_TESSERACT` on Linux) and ~2.1 GB RAM/parser process with Docling; scans/tables take 2–9 s/page on CPU → separate load-test scenario in Stage 9. Verify synthetic benchmark transfer on `real_docs` (≥50 files, Stage 10).
 - `chunking.variants` are chosen in Stage 6; `chunk_corpus` currently chunks flat, while `DocumentChunker` respects sections.
 - `dvc.yaml` lists `build_eval` outputs individually (`data/eval/{ner,qa,retrieval,nli,review}`) because `data/eval/docproc` belongs to `build_docproc`.
+
+---
+
+## Stage 1–3 · Formal Closure under ADR-0026 (2026-11-25)
+
+- **Protocol accepted ([ADR-0026](architecture/adr/0026-calibrated-human-audit-validation-protocol.md)):** User approved autonomous dual-signal machine cross-validation with report-level human governance (`2026-11-25T21:33:32+05:00`), preserving strict provenance separation (`human_verified: 0` on machine-validated MT rows; `verification_tier` separates `human_verified` gold from `machine_cross_validated` MT). Full report: [final_validation_report.md](../reports/stage-01-03/final_validation_report.md).
+- **Systematic judgment defects resolved (`prelabel.py`):** Overrode **52** rubric-contradictory `list_table` / Wikipedia disambiguation lists (`good → bad`, `en` 23 / `kk` 18 / `ru` 11) and **9** dual-langid wrong-language errors in quality; removed **20** ADR-0006 `kk`/`ru` suffix-stripping & whitespace `wrong_span` false positives in silver NER; normalized **95** no-op/trivial eval fixes; audited all **23** digit-mismatch flags and justified `drop = 0` (all 3,500 sources are valid human-authored gold items).
+- **Matched estimators & CIs (`human: false`):**
+  - Stage 2 kept weighted precision (stratified bootstrap 95% CI): `kk 88.44% [0.8500, 0.9178]`, `ru 94.30% [0.9174, 0.9661]`, `en 87.91% [0.8389, 0.9160]`; `good_lost`: `en 0.44%`, `ru 1.82%`, `kk 13.38%` (3.54 M intentional `<40`-char drops).
+  - Stage 3 silver NER (sentence bootstrap 95% CI): `en` P `80.42%` / R `68.09%`, `ru` P `82.18%` / R `71.09%`, `kk` P `73.75%` / R `58.42%`.
+  - Stage 3 eval MT & NLI: `2,165 ok` (61.9%), `1,335 fix` (38.1%), `0 drop`.
+- **All 4 evaluation suites frozen & verified (`build_eval freeze --machine-validated`):**
+  - `eval/ner` (frozen gold, intact) & `eval/qa` (frozen gold, intact).
+  - `eval/retrieval` frozen: **33,250** queries (`30,250` `human_verified` + `3,000` `machine_cross_validated`), `cluster_id` 100% populated, SHA-256 `frozen.json`.
+  - `eval/nli` frozen: **10,520** pairs (`10,020` `human_verified` + `500` `machine_cross_validated`), `cluster_id` 100% populated, SHA-256 `frozen.json`.
+  - `trifact.lake verify --layer eval`: 4/4 OK; `dvc commit -f build_eval && dvc push build_eval data/review.dvc`: 15 files pushed, `drive_desktop` in sync.
+- **Verification & Stage 4 intact:** `ruff check`, `ruff format --check`, `mypy src/trifact/core`, `pytest -q` (**204 passed, 1 skipped**), Stage 4 `data/eval/docproc/manifest.yaml` (**323/323** SHA-256 OK), Drive backup tag `stage-01-03-closed`, and `5.75 / 30.00 h` Kaggle GPU quota preserved for Stage 5.
 
 ---
 

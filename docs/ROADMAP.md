@@ -64,7 +64,7 @@ One stage = one milestone ([AGENTS.md](../AGENTS.md)). A stage closes only when 
    - **Decisions:** every finding maps to a concrete action in `PROGRESS.md` and numeric values in `params.yaml`.
 7. Data card (`card.md`) for every curated dataset.
 
-**Done when:** Curated layer is built, drop rates per reason are reported, human review (≥500 docs/language) validates filters, full `raw` and `curated` EDA covers all 2.6 items and is logged in MLflow (tables + figures), and every finding has a recorded decision.
+**Done when:** Curated layer is built, drop rates per reason are reported, filters are validated (full human review or autonomous dual-signal machine cross-validation with report-level human governance per [ADR-0026](architecture/adr/0026-calibrated-human-audit-validation-protocol.md), reporting per-language Wilson 95% CIs, disagreements, and `human: false` provenance), full `raw` and `curated` EDA covers all 2.6 items and is logged in MLflow (tables + figures), and every finding has a recorded decision.
 
 ## Stage 3 — Task Datasets: Gold, Silver, Synthetic
 
@@ -72,7 +72,7 @@ One stage = one milestone ([AGENTS.md](../AGENTS.md)). A stage closes only when 
 2. **Retrieval:** build pairs from public sets + KazParC; generate synthetic teacher queries with round-trip filtering; mine hard negatives.
 3. **Grounded QA (SFT):** teacher synthetic QA (answerable, cross-lingual, unanswerable) with ADR-0015 filters.
 4. **NLI:** XNLI `ru`/`en` + filtered `kk` MT.
-5. **Eval:** build and freeze per ADR-0007 across all 9 language directions, 3,500 human-verified items, SHA-256 hashes in manifest; human audit of 600 silver NER sentences.
+5. **Eval:** build and freeze per ADR-0007 and [ADR-0026](architecture/adr/0026-calibrated-human-audit-validation-protocol.md) across all 9 language directions, with SHA-256 hashes in manifest (3,500 dual-signal cross-validated MT items with report-level human governance and explicit `human_verified` vs. `machine_cross_validated` row provenance); silver NER noise audit (600 cross-validated sentences with per-language bootstrap CIs).
 6. Fix cloud generation budget and cost in `params.yaml` before launch.
 7. **Full task-set EDA** across `language × source × split × origin` (`gold`, `silver`, `synthetic`, `mt`, `eval`):
    - **NER:** label distribution, span lengths/density, nested/overlapping spans, schema violations, silver vs. gold type confusion.

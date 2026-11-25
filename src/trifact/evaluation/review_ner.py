@@ -36,15 +36,28 @@ COUNTS = ["wrong_type", "wrong_span", "not_entity", "missed"]
 MODEL_NAMES = re.compile(r"llm|claude|gpt|qwen|machine|auto|model", re.IGNORECASE)
 
 
-def load(path: Any) -> pl.DataFrame:
+def load(path: Any, *, calibrated: bool = False) -> pl.DataFrame:
     df = pl.read_csv(path, infer_schema_length=0, encoding="utf8-lossy")
     missing = [c for c in ["sent_id", "lang", "entities", *COUNTS, "reviewer"] if c not in df.columns]
     if missing:
         raise ValueError(f"labels.csv lacks columns {missing}")
     df = df.with_columns(pl.col(["entities", *COUNTS]).str.strip_chars().replace("", None).cast(pl.Int64))
-    todo = df.filter(pl.col("reviewer").fill_null("").str.strip_chars() == "")
-    if todo.height:
-        raise ValueError(f"{todo.height} sentences have no reviewer")
+    if calibrated:
+        import json
+
+        cal_ids = set(
+            json.loads((ROOT / "data" / "review" / "calibration_sample.json").read_text(encoding="utf-8"))[
+                "ids"
+            ]["ner"]
+        )
+        df = df.filter(pl.col("reviewer").fill_null("").str.strip_chars() != "")
+        missing_cal = cal_ids - set(df["sent_id"].to_list())
+        if missing_cal:
+            raise ValueError(f"{len(missing_cal)} ADR-0026 calibration NER sentences have no reviewer")
+    else:
+        todo = df.filter(pl.col("reviewer").fill_null("").str.strip_chars() == "")
+        if todo.height:
+            raise ValueError(f"{todo.height} sentences have no reviewer")
     models = df.filter(pl.col("reviewer").str.contains(MODEL_NAMES.pattern))
     if models.height:
         raise ValueError(
@@ -90,13 +103,37 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["score"])
     ap.add_argument("--labels", default=str(REVIEW / "labels.csv"))
+    ap.add_argument("--calibrated", action="store_true", help="ADR-0026 calibrated human audit mode")
     args = ap.parse_args(argv)
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     params = load_params()
-    df = load(args.labels)
+    df = load(args.labels, calibrated=args.calibrated)
     res = score(df, int(params["evaluation"]["bootstrap_samples"]), int(params["seed"]))
     res["reviewers"] = sorted(df["reviewer"].unique().to_list())
     res["human"] = True
+    if args.calibrated:
+        from trifact.evaluation.review_quality import cohen_kappa
+
+        res["protocol"] = "ADR-0026"
+        res["human_audit_n"] = df.height
+        mfile = REVIEW / "machine_labels.csv"
+        if mfile.is_file():
+            m = pl.read_csv(mfile, infer_schema_length=10000)
+            res["machine_audit_n"] = m.height
+            j = df.with_columns(human_has_err=(pl.sum_horizontal(COUNTS) > 0).cast(pl.String)).join(
+                m.select("sent_id", judge_has_err=(pl.col("machine_errors") > 0).cast(pl.String)),
+                on="sent_id",
+            )
+            hl, jl = j["human_has_err"].to_list(), j["judge_has_err"].to_list()
+            res["judge_calibration"] = {
+                "n": j.height,
+                "error_presence_agreement": round(
+                    sum(1 for x, y in zip(hl, jl, strict=True) if x == y) / j.height, 4
+                )
+                if j.height
+                else None,
+                "cohen_kappa": cohen_kappa(hl, jl),
+            }
     if "assist" in df.columns:
         res["assist"] = dict(df.group_by("assist").len().iter_rows())
     write_report(ROOT / "reports" / "ner_silver_review.json", res)

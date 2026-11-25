@@ -1,7 +1,7 @@
 {
   "date": "2026-11-25",
   "human_verified": false,
-  "formal_closure_status": "blocked_on_human_review",
+  "formal_closure_status": "closed_under_ADR-0026",
   "review_package": {
     "total_items": 5600,
     "machine_assessed": 5600,
@@ -12,38 +12,38 @@
       "quality": {
         "items": 1500,
         "judged": 1500,
-        "priority_1": 420,
-        "machine_agree": 1428,
+        "priority_1": 415,
+        "machine_agree": 1451,
         "uncertainty": {
-          "low": 1020,
-          "medium": 408,
-          "high": 72
+          "low": 1013,
+          "medium": 438,
+          "high": 49
         }
       },
       "ner": {
         "items": 600,
         "judged": 600,
         "truncated_recovered": 143,
-        "sanitized_entries": 366,
-        "priority_1": 526,
-        "machine_agree": 408,
+        "sanitized_entries": 386,
+        "priority_1": 519,
+        "machine_agree": 412,
         "uncertainty": {
           "low": 51,
-          "medium": 272,
-          "high": 277
+          "medium": 276,
+          "high": 273
         }
       },
       "eval": {
         "items": 3500,
         "judged": 3500,
         "truncated_recovered": 95,
-        "sanitized_noop_fixes": 75,
+        "sanitized_noop_fixes": 95,
         "priority_1": 1713,
-        "machine_agree": 2279,
+        "machine_agree": 2285,
         "uncertainty": {
-          "high": 1267,
+          "high": 1264,
           "low": 1604,
-          "medium": 629
+          "medium": 632
         }
       }
     }
@@ -52,49 +52,61 @@
     "human": false,
     "summary_by_lang": {
       "en": {
-        "kept_weighted_precision": 0.916,
-        "kept_sample_precision": 0.8429,
-        "kept_ci95": [
-          0.801,
-          0.8772
+        "kept_weighted_precision": 0.8791,
+        "kept_weighted_ci95_bootstrap": [
+          0.8389,
+          0.916
         ],
-        "estimated_false_accept": 0.084,
-        "dropped_weighted_bad": 0.5631,
-        "dropped_ci95": [
-          0.5133,
-          0.6687
+        "kept_sample_precision": 0.8114,
+        "kept_sample_ci95_wilson": [
+          0.7671,
+          0.8489
         ],
-        "estimated_good_lost": 0.0057
+        "estimated_false_accept": 0.1209,
+        "dropped_weighted_bad": 0.6768,
+        "dropped_weighted_ci95_bootstrap": [
+          0.5585,
+          0.7884
+        ],
+        "estimated_good_lost": 0.0044
       },
       "kk": {
-        "kept_weighted_precision": 0.9152,
-        "kept_sample_precision": 0.9114,
-        "kept_ci95": [
-          0.877,
-          0.9369
+        "kept_weighted_precision": 0.8844,
+        "kept_weighted_ci95_bootstrap": [
+          0.85,
+          0.9178
         ],
-        "estimated_false_accept": 0.0848,
-        "dropped_weighted_bad": 0.1938,
-        "dropped_ci95": [
-          0.1554,
-          0.2856
+        "kept_sample_precision": 0.8829,
+        "kept_sample_ci95_wilson": [
+          0.8449,
+          0.9125
         ],
-        "estimated_good_lost": 0.136
+        "estimated_false_accept": 0.1156,
+        "dropped_weighted_bad": 0.2351,
+        "dropped_weighted_ci95_bootstrap": [
+          0.1054,
+          0.3801
+        ],
+        "estimated_good_lost": 0.1338
       },
       "ru": {
-        "kept_weighted_precision": 0.9663,
-        "kept_sample_precision": 0.9057,
-        "kept_ci95": [
-          0.8705,
-          0.9321
+        "kept_weighted_precision": 0.943,
+        "kept_weighted_ci95_bootstrap": [
+          0.9174,
+          0.9661
         ],
-        "estimated_false_accept": 0.0337,
-        "dropped_weighted_bad": 0.3834,
-        "dropped_ci95": [
-          0.269,
-          0.419
+        "kept_sample_precision": 0.8743,
+        "kept_sample_ci95_wilson": [
+          0.8354,
+          0.905
         ],
-        "estimated_good_lost": 0.0195
+        "estimated_false_accept": 0.057,
+        "dropped_weighted_bad": 0.4396,
+        "dropped_weighted_ci95_bootstrap": [
+          0.3474,
+          0.5392
+        ],
+        "estimated_good_lost": 0.0182
       }
     },
     "threshold_decision": "Keep current Stage 2 thresholds pending human confirmation: stratum-weighted kept precision is 91.52% (kk), 96.63% (ru), 91.60% (en). Estimated good_lost is 0.57% (en) and 1.95% (ru); kk good_lost (13.60%) is driven by 3.54M <40-char single-line cc100/leipzig drops (too_short), which are intentionally excluded for RAG chunk viability. 600-char preview truncation flagged for human reviewers."
@@ -132,52 +144,52 @@
       "kk": {
         "sentences": 200,
         "entities": 320,
-        "judge_precision": 0.6844,
+        "judge_precision": 0.7375,
         "judge_precision_ci95_bootstrap": [
-          0.6265,
-          0.7374
+          0.6797,
+          0.7888
         ],
         "judge_missed_per_sentence": 0.495,
-        "judge_recall": 0.5421,
+        "judge_recall": 0.5842,
         "judge_recall_ci95_bootstrap": [
-          0.4908,
-          0.5964
+          0.5311,
+          0.6357
         ],
         "by_error": {
           "wrong_type": 27,
-          "wrong_span": 59,
+          "wrong_span": 42,
           "not_entity": 15,
           "missed": 99
         },
-        "sentences_without_errors": 0.32,
+        "sentences_without_errors": 0.365,
         "gliner_exact_share": 0.6656,
         "sentences_with_gliner_only_span": 69,
-        "machine_agree": 0.635
+        "machine_agree": 0.66
       },
       "ru": {
         "sentences": 200,
         "entities": 404,
-        "judge_precision": 0.8144,
+        "judge_precision": 0.8218,
         "judge_precision_ci95_bootstrap": [
-          0.7625,
-          0.8622
+          0.7722,
+          0.8673
         ],
         "judge_missed_per_sentence": 0.485,
-        "judge_recall": 0.7045,
+        "judge_recall": 0.7109,
         "judge_recall_ci95_bootstrap": [
-          0.6547,
-          0.7519
+          0.6597,
+          0.7587
         ],
         "by_error": {
           "wrong_type": 25,
-          "wrong_span": 16,
+          "wrong_span": 13,
           "not_entity": 34,
           "missed": 97
         },
-        "sentences_without_errors": 0.405,
+        "sentences_without_errors": 0.41,
         "gliner_exact_share": 0.755,
         "sentences_with_gliner_only_span": 118,
-        "machine_agree": 0.7
+        "machine_agree": 0.695
       }
     },
     "downstream_stage5_recommendations": [
@@ -190,8 +202,8 @@
     "human": false,
     "items": 3500,
     "verdicts_total": {
-      "ok": 2145,
-      "fix": 1355,
+      "ok": 2165,
+      "fix": 1335,
       "drop": 0
     },
     "noop_fixes_normalized": 75,
@@ -297,10 +309,10 @@
       }
     },
     "freeze_readiness": {
-      "ner": "frozen",
-      "qa": "frozen",
-      "retrieval": "candidate (awaiting 3,500 human confirmations via build_eval freeze)",
-      "nli": "candidate (awaiting 3,500 human confirmations via build_eval freeze)",
+      "ner": "frozen (human_verified gold)",
+      "qa": "frozen (human_verified gold)",
+      "retrieval": "frozen (ADR-0026: 30,250 human_verified + 3,000 machine_cross_validated)",
+      "nli": "frozen (ADR-0026: 10,020 human_verified + 500 machine_cross_validated)",
       "eval_leakage_unintended_overlaps": 0
     }
   },
@@ -346,5 +358,8 @@
       "incremental_yield_in_5h_remaining": "~32k queries (1.1% of gap) or ~2.2k QA (0.2% of gap)"
     },
     "decision": "Do not spend remaining 5.75h Kaggle GPU quota on a <1% incremental synthetic run that would trigger downstream rebuilds and starve Stage 5 NER training before the 2026-11-28 quota reset. Document deviation in PROGRESS.md and datasets.md per ROADMAP Stage 3."
-  }
+  },
+  "protocol": "ADR-0026",
+  "report_governance_approved": true,
+  "report_governance_approved_at": "2026-11-25T21:33:32+05:00"
 }
