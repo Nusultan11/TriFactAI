@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import random
 import statistics
 import sys
 import time
@@ -30,6 +29,7 @@ from typing import Any
 import yaml
 
 from trifact.core.params import ROOT, load_params
+from trifact.evaluation.stats import bootstrap_ci
 from trifact.ingestion.normalize import normalize_text
 from trifact.ingestion.parser import ParsedDoc, ParseError
 from trifact.lake.stats import ResourceMonitor, git_sha, log_mlflow
@@ -267,16 +267,6 @@ def run_config(name: str, golds: list[dict[str, Any]], dp: dict[str, Any], suite
 
 METRICS = ("cer", "wer", "order", "block_recall", "page_acc", "head_p", "head_r", "head_f1", "head_level_acc",
            "table_r", "table_p", "table_cell_f1", "table_shape_acc")  # fmt: skip
-
-
-def bootstrap_ci(xs: list[float], n: int, ci: float, seed: int) -> tuple[float, float]:
-    if len(xs) < 2:
-        return (xs[0], xs[0]) if xs else (0.0, 0.0)
-    rng = random.Random(seed)
-    means = sorted(statistics.fmean(rng.choices(xs, k=len(xs))) for _ in range(n))
-    lo = means[int((1 - ci) / 2 * n)]
-    hi = means[min(int((1 + ci) / 2 * n), n - 1)]
-    return lo, hi
 
 
 def aggregate(rows: list[dict[str, Any]], ev: dict[str, Any], seed: int) -> dict[str, Any]:
