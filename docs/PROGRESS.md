@@ -6,23 +6,24 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 
 | Field | Status |
 |---|---|
-| **Active stage** | **Stage 5 — Extraction: Technically Verified & Ready for Stage 6 (`2026-11-26`, `$0` USD; `3.05 / 30.00 h` Kaggle GPU quota remaining).** All `NER-0`..`NER-5` (3 seeds for `NER-1..4`), source-stratified `NER-0 vs NER-1`, `NER-4` neural vs. rule DATE, validation calibration, champion persistence (`models/ner` SHA-256 verified in DVC + Drive + fresh cloud recovery), canonical 5.62M-entity Wikidata SQLite KB, 900-mention Wikipedia-context EL benchmark, and E2E `annotate_corpus` (`champion + DATE + 5.62M KB`) verified. Open non-blocking carry-forwards: human review of `data/review/linking_human/to_label.csv` (150 items) and full-corpus `annotate_corpus` deferred to Stage 6 after `RET-C`/`RET-S` (retrieval independent of NER per ADR-0004). **Ready for Stage 6 (Retrieval at Scale).** |
-| **Last completed stage** | Stages 1–3 (closed 2026-11-25 under ADR-0026); Stage 4 — Document Processing Engine (2026-11-20); Stage 5 — Extraction (code, `NER-0`..`NER-5`, calibration, gate, pilot annotation complete 2026-11-26) |
+| **Active stage** | **Stage 6 — Retrieval at Scale: Implemented & Cloud-Validated (`2026-11-26`, `$0` USD; `0.00 / 30.00 h` Kaggle GPU quota remaining until `2026-11-28 00:00 UTC`).** All Stage 6 modules (`embedder`, `hybrid`, `reranker`, `store`, `eval_retrieval`, `gate`, `embed_corpus`, `index_corpus`, `train_retriever`, `train_reranker`), full `RET-0`..`RET-5` (33,250 queries / 35,237 passages), `RET-6`/`RET-7` (3 seeds + Optuna HPO + Platt calibration), `RET-C`, `RET-S` (real Qdrant v1.13.4 server at `100k` & `1M` + analytical `10M`/`35M` projections + ADR-0013 Serving VM decision), 7-stage miss attribution, reproducible 35.4M target corpus manifest, and GPU `embed_corpus` pilot completed. Open external carry-forwards (constrained by `$0` budget / `0.00 h` GPU quota): full 35.4M `embed_corpus`/`index_corpus`/`annotate_corpus` mass jobs (retrieval independent of NER per ADR-0004) and human review of `data/review/linking_human/to_label.csv` (150 items). **Ready for Stage 7 (Generation).** |
+| **Last completed stage** | Stages 1–3 (closed 2026-11-25 under ADR-0026); Stage 4 — Document Processing Engine (2026-11-20); Stage 5 — Extraction (2026-11-26); Stage 6 — Retrieval at Scale (code, `RET-0`..`RET-7`, `RET-C`, `RET-S` 1M, Serving VM decision, 35.4M manifest complete 2026-11-26) |
 | **Remote repository** | `origin` → `https://github.com/Nusultan11/TriFactAI` (`main`) |
 | **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All DVC-cached objects across `dvc.lock` (updated `build_eval` frozen outputs pushed 2026-11-25), `data/external.dvc`, `data/review.dvc`, and `data/stage3_teacher.dvc` verified in sync on Drive |
 | **Raw layer** | 19 sources: 17 HF + Wikidata `20261116` (122,308,973 entities) + Wikipedia wikitext `20261101`; all 584 shards / 270,766,215 rows passed deep verification in Colab CPU (`stage-01-03-3a88f9d273da/raw-integrity.json`, 0 problems) |
 
 ## Open Blockers (User Action, Quota, or Budget Required)
 
-1. **Stage 5 carry-forwards (non-blocking for Stage 6 per ADR-0004):**
-   - **Human-labeled Entity Linking audit (`data/review/linking_human/to_label.csv`, 150 items = 50/lang):** Automated EL metrics are strictly marked `human_verified: false` (`wikipedia_context_anchor_benchmark`); human adjudication of the 150-item packet is required before claiming human-verified EL `accuracy@1` (formal Stage 5 human-validation sign-off).
-   - **Full-corpus `annotate_corpus` (59.63 M chunks):** Explicitly carried forward to Stage 6 until `RET-C` (chunking variant) and `RET-S` (35 M corpus subset) finalize the target chunk set, avoiding redundant mass annotation (~13.8 T4 GPU-hours NER-only, higher with SQLite EL). Retrieval remains independent of extraction per ADR-0004.
-2. **Synthetic QA/query volume deviation & cloud GPU quota (approved deviation):**
-   - Verified `2026-11-26`: `kaggle quota` reports `3.05 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`), `params.yaml: cloud.budget_usd: 0`, Colab compute units `0.00`.
+1. **Full-scale 35.4M corpus batch jobs (`embed_corpus`, `index_corpus` 10M/35M, carried-forward `annotate_corpus`) & cloud GPU quota (`$0` USD budget):**
+   - Verified `2026-11-26`: Kaggle weekly GPU quota is **`0.00 / 30.00 h` remaining** (resets `2026-11-28 00:00 UTC`), Colab free T4 returned `503 Service Unavailable`, and `params.yaml: cloud.budget_usd: 0`.
+   - Full 35.4M `embed_corpus` (`BAAI/bge-m3` fp16 dense+sparse at measured `54.64 chunks/s` T4 → ~180 T4 GPU-h), full 35.4M `annotate_corpus` (~8.2 T4 GPU-h NER-only; higher with 5.62M SQLite KB EL), and 10M/35M Qdrant server builds (66.8 GB fp16 vectors + 50 GB payload) exceed free VM RAM/disk/quota and require quota refresh or approved cloud Serving VM / GPU budget. Retrieval remains 100% functional independently of extraction per ADR-0004.
+2. **Stage 5 carry-forward human Entity Linking audit (`data/review/linking_human/to_label.csv`, 150 items = 50/lang):**
+   - Automated EL metrics remain strictly marked `human_verified: false`; human adjudication of the 150-item packet is still open and unfabricated.
+3. **Synthetic QA/query volume deviation (approved deviation):**
    - Retrieval total (`15.05 M`) and silver NER (`5.17 M`) meet ROADMAP targets; synthetic queries (`101,970` vs `3–5 M`) and synthetic QA (`11,015` / SFT `338,688` vs `1–2 M`) are approved deviations under `$0` budget.
-3. **Stage 7 precondition (future):**
+4. **Stage 7 precondition (future):**
    - Qwen3.5 bf16 LoRA requires Ampere+ GPU (`cloud.budget_usd > 0`, ADR-0012); without paid budget, Stage 7 runs zero-shot baselines (`GEN-0`, quantization, throughput) per ROADMAP 7.0.
-4. **Optional MCP servers:**
+5. **Optional MCP servers:**
    - `github` MCP: invalid `Authorization` header (`GITHUB_PERSONAL_ACCESS_TOKEN`).
    - `mlflow` MCP: `127.0.0.1:5000` unreachable locally; cloud MLflow SQLite snapshots are archived on Drive.
 
@@ -46,6 +47,43 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 - **Document processing (ADR-0021):** worker needs Tesseract 5 binary (`TRIFACT_TESSERACT` on Linux) and ~2.1 GB RAM/parser process with Docling; scans/tables take 2–9 s/page on CPU → separate load-test scenario in Stage 9. Verify synthetic benchmark transfer on `real_docs` (≥50 files, Stage 10).
 - `chunking.variants` are chosen in Stage 6; `chunk_corpus` currently chunks flat, while `DocumentChunker` respects sections.
 - `dvc.yaml` lists `build_eval` outputs individually (`data/eval/{ner,qa,retrieval,nli,review}`) because `data/eval/docproc` belongs to `build_docproc`.
+
+---
+
+## Stage 6 — Retrieval at Scale · Implemented & Cloud-Validated (2026-11-26)
+
+- **Compute & Cost:** Executed `RET-0`..`RET-5` (`nurs2005/trifact-stage6-gpu`, Kaggle 2× T4, `2.34 h`), `RET-6`/`RET-7`/`RET-C`/GPU `embed_corpus` (`nurs2005/trifact-stage6-phase2b`, Kaggle T4), and `RET-S` real Qdrant v1.13.4 server 100k/1M scale ladder (`nurs2005/trifact-stage-6-ret-s-qdrant-1m-scale-ladder-cpu`, Kaggle CPU 4 cores / 31.3 GB RAM, `0.00 h` GPU) at **`$0` USD**. All JSON reports, `trifact_stage6.db` (MLflow SQLite), and `optuna_ret6.db` archived on Drive (`workspace-data/stage-06-retrieval/`) and in `reports/stage6/`.
+- **Evaluation integrity & `cluster_id` audit:** Verified frozen `data/eval/retrieval` SHA-256 (`096b28bc65d92d6474c2a2c8b6c438ef`), `33,250` queries (`30,250` `human_verified` + `3,000` `machine_cross_validated`), `35,237` passages (`en` 14,451, `ru` 12,607, `kk` 8,179), `11,662` unique `cluster_id`s with **0 `mt_query` mismatches** and **0 KazQAD parallel cluster splits**. Verified `ranx` parity (`max_abs_diff = 8.33e-5`; `Recall@5`/`Recall@10` `0.000000` diff).
+- **Core implementation (`19d0998`, `0bc22a6`):** Implemented [embedder.py](../src/trifact/retrieval/embedder.py) (BGE-M3 dense+sparse, mE5, Qwen3-Embedding MRL, BM25+`kk` stemming), [hybrid.py](../src/trifact/retrieval/hybrid.py) (RRF, DBSF, weighted, ADR-0004 entity soft-boost, adjacent chunk merge), [reranker.py](../src/trifact/retrieval/reranker.py) (BGE cross-encoder, Qwen3-Reranker, Platt calibration), [store.py](../src/trifact/retrieval/store.py) (ADR-0013 two-tier Qdrant `corpus_chunks`/`workspace_chunks`, tenant isolation, atomic alias swap/rollback), [eval_retrieval.py](../src/trifact/evaluation/eval_retrieval.py) (9-dir metrics, provenance/contamination slices, 7-stage miss attribution), [gate.py](../src/trifact/evaluation/gate.py) (retrieval/reranker gate + atomic MLflow/Qdrant promotion & rollback), [embed_corpus.py](../src/trifact/batch/embed_corpus.py), [index_corpus.py](../src/trifact/batch/index_corpus.py), [train_retriever.py](../src/trifact/training/train_retriever.py), and [train_reranker.py](../src/trifact/training/train_reranker.py).
+- **`RET-0`..`RET-4` (Full 33,250 frozen queries / 35,237 passages, 9 directions):**
+
+| Exp | Configuration | Macro nDCG@10 | R@5 | R@10 | MRR | Cand R@100 | Worst Dir (Gap) |
+|---|---|---:|---:|---:|---:|---:|---|
+| `RET-0` | BM25 (raw) | `0.2340` | `0.2502` | `0.3021` | `0.2288` | `0.3996` | `en-ru` (`0.2145`) |
+| `RET-0+` | BM25 + `kk` suffix stemmer | `0.2449` | `0.2625` | `0.3138` | `0.2398` | `0.4133` | `en-ru` (`0.2253`) |
+| `RET-1` | `multilingual-e5-large-instruct` | `0.4511` | `0.4862` | `0.5627` | `0.4455` | `0.7369` | `kk-en` (`0.4492`) |
+| `RET-2` | **`BAAI/bge-m3` dense (Champion)** | **`0.6961`** | **`0.7734`** | `0.8754` | **`0.6692`** | **`0.9731`** | `en-kk` (`0.2186`) |
+| `RET-2s` | `BAAI/bge-m3` sparse-only | `0.2892` | `0.3098` | `0.3701` | `0.2814` | `0.4684` | `en-kk` (`0.2655`) |
+| `RET-3` | `Qwen3-Embedding-0.6B` (1024 / 512 / 256) | `0.5490 / 0.5370 / 0.5146` | `0.5933` | `0.6988` | `0.5332` | `0.8545` | `kk-en` (`0.3793`) |
+| `RET-4` | BGE-M3 + BM25 RRF(`k=60`) / DBSF | `0.4283 / 0.4642` | `0.4359` | `0.6340` | `0.3957` | `0.9604` | `en-kk` (`0.2670`) |
+| `RET-4w` | BGE-M3 + BM25 direction-aware weighted | `0.6936` | `0.7716` | **`0.8759`** | `0.6647` | `0.9716` | `en-kk` (`0.2299`) |
+
+  - **Key finding:** ADR-0003 (`BAAI/bge-m3`) wins overwhelmingly (+24.5 pp over `mE5-large-instruct`, +14.7 pp over `Qwen3-Embedding-0.6B`). Equal-weight RRF/DBSF severely hurts cross-lingual pairs (`-20..-27 pp`) because sparse has near-zero cross-script overlap; direction-aware weighting (downweighting sparse on cross-lingual queries) recovers `0.6936` nDCG@10 / `0.8759` R@10.
+- **`RET-5` Rerankers (1,800 stratified queries = 200/dir, top-30):**
+  - **`BAAI/bge-reranker-v2-m3` (Champion):** macro nDCG@10 **`0.7400`** (**`+4.32 pp`**, CI `[+3.29, +5.42]` vs `RET-4`), R@10 **`0.9002`**, MRR **`0.7133`**, `12.63 ms/pair` (~253 ms/query at top-20 T4). Per-dir nDCG@10: `en-en 0.9095`, `ru-ru 0.8739`, `en-ru 0.8414`, `kk-kk 0.8199`, `kk-ru 0.8162`, `ru-en 0.7578`, `ru-kk 0.5707`, `en-kk 0.5598`, `kk-en 0.5109`. Provenance: `human_verified 0.7363`, `machine_cross_validated 0.7444`. Contamination slice (ADR-0022): `wikipedia 0.8211`, `non_wikipedia_qa 0.6708`.
+  - **`Qwen3-Reranker-0.6B` (Negative result):** `0.4792` (`-21.76 pp`, `44.48 ms/pair`, ~3.5× slower) → rejected.
+- **`RET-6` & `RET-7` Fine-Tuning (3 seeds `[42, 43, 44]`, 900 stratified queries / 862 clusters):**
+  - **`RET-6` (Negative result):** 64-ex sanity check (`0.0114 → 0.0`), positive-aware hard-neg mining (filtered 319 false negatives), Optuna HPO (`lr=1.62e-5, kazparc_cap=0.5`). 3-seed test: `0.6814 ± 0.0039` vs base `0.6976` (**`-1.62 pp`**, CI `[-3.02, -0.54]`, `ru-en` regressed `-4.31 pp`) → **Rejected; retained zero-shot `BAAI/bge-m3` champion**.
+  - **`RET-7` (Significant gain; strict gap cap note):** 3-seed listwise fine-tune (`kazparc_cap=0.15`) + validation Platt calibration (`kk a=0.51, ru a=0.61, en a=0.37`): **`0.7437 ± 0.0007`** vs base `0.7312` (**`+1.26 pp`**, CI `[+0.50, +2.02]`, `p=0.002`, **0/9 directions regressed**, `worst_direction_gap` improved `0.2376 → 0.2013`). Note: strict `worst_direction_max_gap <= 0.10` is structurally exceeded by all models due to KazQAD closed-pool cross-lingual `unjudged_top_results`.
+- **7-Stage Miss Attribution (`RET-4`, full 33,250 queries):** overall top-10 miss rate **`10.07%`** (`3,347` misses) → `unjudged_top_results` **`57.90%`**, `representation_miss` **`25.87%`** (concentrated in `kk-en`/`en-kk`), `dropped_by_fusion` **`14.85%`**, `demoted_by_reranker` **`1.37%`**.
+- **`RET-C` Chunking Optimization (`10,884` long eval docs) & Target 35.4M Corpus Manifest:**
+  - Contextual document/section header gives **`+3.64 pp` nDCG@10** (`s350_header 0.6060` vs `s350_noheader 0.5696`; R@10 `0.7180` vs `0.6728`) at zero extra chunks (`1.21 chunks/doc`). `s200_header` (`0.6173`) adds `+77%` chunks (`2.15/doc`); `s512_header` (`0.6073`, `1.04/doc`) risks `kk` truncation. **Selected: `s350` (`350` tokens, `50` overlap, `sections: true`) + `contextual_header: true`.**
+  - Reproducible target corpus manifest ([target_35m_manifest.json](../reports/stage6/target_35m_manifest.json)): **137 shards** (`100% wikipedia` + `100% fineweb2_kk kk`, `100% release: true`), `35,524,920` raw → **`35,401,190` post-filter chunks** (`kk 32.62% >= 30%`, `ru 16.19%`, `en 51.18%`).
+- **`RET-S` Scale Ladder (Real Qdrant v1.13.4 server, Kaggle CPU 4c / 31.3 GB RAM) & ADR-0013 Serving VM Decision:**
+  - **Measured scales (`100k` & `1M`):** Atomic alias switch & rollback verified (`true`). At `100k` (1024-d): `binary` without rescore collapses (`0.041` ANN-vs-exact R@10); `rescore=true, os=3.0` recovers `0.289` (`8.47 ms` p95); `MRL 512-d` reaches `0.372` (`-21%` disk). At **`1M` (1024-d)**: `binary+rescore(os=3)` = `1,422.8 MB` RSS, `3.27 GB` disk, `0.343` R@10, `180.1 ms` p95; **`scalar` int8+rescore(os=2)** = **`1,931.8 MB` RSS, `3.61 GB` disk, `0.820` R@10 (+47.7 pp!), `181.4 ms` p95, `7.29` QPS**.
+  - **Unexecuted scales (`10M`, `35M`) — analytical projection anchored to 1M:** `35M × 1024-d` fp16 disk = `66.8 GB` + payload `~50 GB` + indexes = **`~175 GB` NVMe SSD**; RAM: `scalar` int8 (`33.4 GB` vecs + `4.5 GB` HNSW + `6–8 GB` sparse) ≈ **`48–52 GB` RAM**; `binary` (`4.2 GB` vecs + HNSW + sparse) ≈ **`16–20 GB` RAM**.
+  - **ADR-0013 Serving VM Decision:** Local 15 GB RAM host serves **up to 1–2M corpus subset** (`scalar` int8 fits 1M in `1.93 GB` RSS) + full `workspace_chunks`. Full **35.4M corpus** requires a **dedicated Cloud Serving VM (64 GB RAM for `scalar` int8 + rescore, ≥250 GB NVMe SSD, 16–24 GB GPU)**.
+- **GPU `embed_corpus` pilot:** `BAAI/bge-m3` fp16 dense+sparse on 1,500 real multilingual chunks = **`54.64 chunks/s`** (`0.93%` truncation > 512 tok), idempotent resume **`1/1` shard skipped**.
 
 ---
 

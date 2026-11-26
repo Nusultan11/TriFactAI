@@ -1,0 +1,1148 @@
+{
+  "name": "target_35m_corpus_manifest",
+  "source_manifest": "data/task/chunks/dataset.yaml",
+  "source_fingerprint": "2367306e7e53b958dbe98b245bdd4605",
+  "chunking_config": {
+    "variant": "s350",
+    "max_tokens": 350,
+    "overlap_tokens": 50,
+    "sections": true,
+    "contextual_header": true
+  },
+  "selection_criteria": {
+    "included_sources": [
+      "wikipedia (kk, ru, en)",
+      "fineweb2_kk (kk)"
+    ],
+    "excluded_sources": [
+      "multidomain_kk (release: false, third-party text)",
+      "fineweb2_kk non-kk leakage shards (ru/en)"
+    ],
+    "downstream_filters": {
+      "kk_min_kk_letter_share": 0.05,
+      "pii_mask": [
+        "iin",
+        "email"
+      ]
+    },
+    "release_eligible": true,
+    "meets_min_kk_share_0_30": true
+  },
+  "n_shards": 137,
+  "raw_chunks_total": 35524920,
+  "estimated_post_downstream_filter_chunks": 35401190,
+  "by_source_lang": {
+    "fineweb2_kk/kk": 11342062,
+    "wikipedia/en": 18120051,
+    "wikipedia/kk": 330581,
+    "wikipedia/ru": 5732226
+  },
+  "by_lang_raw": {
+    "en": 18120051,
+    "kk": 11672643,
+    "ru": 5732226
+  },
+  "by_lang_share_post_filter": {
+    "kk": 0.3262,
+    "ru": 0.1619,
+    "en": 0.5118
+  },
+  "shards": [
+    {
+      "path": "fineweb2_kk/kk/part-00011-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 109743,
+      "bytes": 64937878,
+      "sha256": "cfc183c023d3c9c849135bfe63476cb795e8f237216eac63d04db66276a10daa"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00012-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 906141,
+      "bytes": 533601444,
+      "sha256": "91e7de1d97a34867d667e78f84022cad3018278f5b0c9341dcada3ad6c2e9535"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00013-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 920965,
+      "bytes": 543470334,
+      "sha256": "c5f58402f7df4c6d0babc5e1bced839e8b729d664f383254f67fce359dc10d8e"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00014-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 912681,
+      "bytes": 538273767,
+      "sha256": "efa645d238bac0a15c5484dca27ff736e40c690e9b144680090490a834a82416"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00015-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 900673,
+      "bytes": 531844999,
+      "sha256": "f904743f81d53242ddcec685465306e5dd2953c5ea14a1d3e594002ea90b71d1"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00016-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 922593,
+      "bytes": 544504932,
+      "sha256": "008747f7c0e4aebd3a7f6a1198f857e37d2f2d51e9244b6d2f6a9260598a352c"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00017-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 6071,
+      "bytes": 3592801,
+      "sha256": "2a35ab63f40446178d9bef2732d0d6bc1834ea44c402aaaca62176dbcbd8c859"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00018-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 919932,
+      "bytes": 543272551,
+      "sha256": "6e92c75f7da9484c31ccddde3eb3fd2c611c3d7498484ee30071166e7a6fd7fe"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00019-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 908350,
+      "bytes": 536188314,
+      "sha256": "8669631e44c90eedc5d2a5dd9cf7fd5bba9f42b85fac83826870b03eb83e78c0"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00020-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 905366,
+      "bytes": 534464274,
+      "sha256": "ffd07d02ceac357a70c071a2e765a8012f16a56b45c10a68531d4f1c4c8f77dd"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00021-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 735459,
+      "bytes": 434033631,
+      "sha256": "ddd7422ca7964711ca6d3f8cc554e2981b61bb0568ef5dafdf2ab073b98c03da"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00022-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 894573,
+      "bytes": 527826784,
+      "sha256": "19e996f1edd5a55113758fe82d61a6b4c9160ff8298ec34ccae146606bd4e96b"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00023-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 902455,
+      "bytes": 532780666,
+      "sha256": "86a60f64d3231de7484deb880dd1c244cacec79f6491b20f5640744951ce3703"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00024-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 902259,
+      "bytes": 532357939,
+      "sha256": "3d90e485961732a70cd6d9de2ce6474b7c71538eb6b2f7e4fef692b0d2823fa8"
+    },
+    {
+      "path": "fineweb2_kk/kk/part-00025-00.parquet",
+      "source": "fineweb2_kk",
+      "lang": "kk",
+      "rows": 494801,
+      "bytes": 291689372,
+      "sha256": "6f2a9771bb5831ed73c064c22ed8ccf5b4115314807e4fe55af43337d036a590"
+    },
+    {
+      "path": "wikipedia/en/part-00136-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 610,
+      "bytes": 243270,
+      "sha256": "094dc5f730217632500e47dabf1e13c44cffdea51eaa3fe6761568064adfcc38"
+    },
+    {
+      "path": "wikipedia/en/part-00137-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 142,
+      "bytes": 86858,
+      "sha256": "8e3ed2d260fc2c70a079ed2d707ce302b4dfa4225fafdcb58cb35dfcbc7aa7b0"
+    },
+    {
+      "path": "wikipedia/en/part-00138-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 214,
+      "bytes": 111205,
+      "sha256": "a35e0251031ced8aa7d52560729b6885783e1d5cc5933821b9d3d36ff2961525"
+    },
+    {
+      "path": "wikipedia/en/part-00139-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 177,
+      "bytes": 100420,
+      "sha256": "2fbc9d20caac0423d6c245feb7f346138ecabdea0b3d239ada3c4155b7578c12"
+    },
+    {
+      "path": "wikipedia/en/part-00140-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 541,
+      "bytes": 232114,
+      "sha256": "30575b2f153dcf62326cd0f6351b86ae27afae6197d1fad33e4d2f294c4324a7"
+    },
+    {
+      "path": "wikipedia/en/part-00141-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 757,
+      "bytes": 339754,
+      "sha256": "9c4925bf90e10e533e77caba2ba64ba1f798b7009771eea2f27cc0d1d207a66c"
+    },
+    {
+      "path": "wikipedia/en/part-00142-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 735,
+      "bytes": 305315,
+      "sha256": "3ea6c6f2266c2d42cd852609eb49e377daa35109754c79f2721ee8bac9144d38"
+    },
+    {
+      "path": "wikipedia/en/part-00143-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 441,
+      "bytes": 196682,
+      "sha256": "6a614f7e0dcc1ff4cb4a5a98df9a0f6d1c9b82b08b26ab62199bff94c5bc34d4"
+    },
+    {
+      "path": "wikipedia/en/part-00144-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 316,
+      "bytes": 162594,
+      "sha256": "cd52a0ba703fef033aa9a7691352907ba0ee2d45fa02cba2ef73d1b1733a6a65"
+    },
+    {
+      "path": "wikipedia/en/part-00145-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 546,
+      "bytes": 242780,
+      "sha256": "54753b4db7c80b2e0fe8db4afe75e989d8fd8da3ba92176c09eadfd87fe35aee"
+    },
+    {
+      "path": "wikipedia/en/part-00146-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 309,
+      "bytes": 146656,
+      "sha256": "81bfc9ff1c1a54848c42bd6a0e4b876563232490b0a1c667bf16ce3f3113a98d"
+    },
+    {
+      "path": "wikipedia/en/part-00147-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 371,
+      "bytes": 160350,
+      "sha256": "207c5c377b3620674ea09b627f086a45a7bd3af01293d91e8f5ad67a288c61af"
+    },
+    {
+      "path": "wikipedia/en/part-00148-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 166,
+      "bytes": 91266,
+      "sha256": "555a3623d27aeb3bda2330812c7ea0c58b5de4e22b93bbc376e16f047bc3d301"
+    },
+    {
+      "path": "wikipedia/en/part-00149-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 325,
+      "bytes": 166757,
+      "sha256": "aae59c50a1d2e8732487131315117343ef72add44320cbff94d05fc77efbb0df"
+    },
+    {
+      "path": "wikipedia/en/part-00150-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 422,
+      "bytes": 151960,
+      "sha256": "3a2e26f2edaeebc2590f55f0b9a20e66ec582cabc2041140989fb4a5b4c05b58"
+    },
+    {
+      "path": "wikipedia/en/part-00151-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 1063,
+      "bytes": 369229,
+      "sha256": "fd39a332d0744fa84dcc60cdf57b8dc3a3729d93fa3a5ff0c629389a30666c01"
+    },
+    {
+      "path": "wikipedia/en/part-00152-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 630,
+      "bytes": 307894,
+      "sha256": "30c4f8c4f5daab38ce073777d5068d988daaca42b8ce68b22e884379733b1d37"
+    },
+    {
+      "path": "wikipedia/en/part-00153-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 581,
+      "bytes": 239174,
+      "sha256": "9cf52d4fa2047711e52d22fcea53ae59ccfe5b0a1584267d4ce2d51fa2f6ae4f"
+    },
+    {
+      "path": "wikipedia/en/part-00154-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 310,
+      "bytes": 166864,
+      "sha256": "f6c7e5db8634f4240b9b3be08a70c84535696723cd0f4676081682fc9575283f"
+    },
+    {
+      "path": "wikipedia/en/part-00155-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 843,
+      "bytes": 298439,
+      "sha256": "766ec5140bec92c5a8deb1c5d783ffbf2b6bac3db58df200fe8b6d18974868c1"
+    },
+    {
+      "path": "wikipedia/en/part-00156-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 402,
+      "bytes": 178754,
+      "sha256": "94204899757787a56d06618df3b2488bfb5a8ec889c27be4b6997aa910336fb5"
+    },
+    {
+      "path": "wikipedia/en/part-00157-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 714,
+      "bytes": 254970,
+      "sha256": "69905a594ed237a95e3f5a71e635dadec928360a711f5af2a99ae130a7248640"
+    },
+    {
+      "path": "wikipedia/en/part-00158-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 607019,
+      "bytes": 300621998,
+      "sha256": "285eee852c03275b8705ef5cefa9d4653672283785f83e776f176041e01988cd"
+    },
+    {
+      "path": "wikipedia/en/part-00159-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 522784,
+      "bytes": 253768206,
+      "sha256": "548e24a054b8b29cf642b9136bb6f8c0fddb9d52552bbd929210bff863ae432e"
+    },
+    {
+      "path": "wikipedia/en/part-00160-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 490851,
+      "bytes": 237484012,
+      "sha256": "b02b2d4d266f5612aed3f3e2835d713b3036acb67ccedfc30f9d43b3c7247961"
+    },
+    {
+      "path": "wikipedia/en/part-00161-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 494998,
+      "bytes": 237639583,
+      "sha256": "b56981379ae5dd33f8ea2c542328778dae88b5e9fadb4078823f120dffcef007"
+    },
+    {
+      "path": "wikipedia/en/part-00162-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 463736,
+      "bytes": 221713748,
+      "sha256": "88930ec37ec3a80b35a2761b4d6744ecac88aac0d27c76e3e090875523a3eb31"
+    },
+    {
+      "path": "wikipedia/en/part-00163-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 393183,
+      "bytes": 174273203,
+      "sha256": "1987e1a752a841eaceab938ad82c757b258a45804e2d5d743fee8a925eda7ce3"
+    },
+    {
+      "path": "wikipedia/en/part-00164-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 416062,
+      "bytes": 190881992,
+      "sha256": "33880bdaf5de8e476b647897d8dc2b26eb593cd66754ee818487a4f0f3147a0f"
+    },
+    {
+      "path": "wikipedia/en/part-00165-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 375359,
+      "bytes": 164046561,
+      "sha256": "b5dd5f1c30e9c0b208df787eabebe0684c5fcb6a25cf97b9ccc9c83065319a27"
+    },
+    {
+      "path": "wikipedia/en/part-00166-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 392992,
+      "bytes": 178094817,
+      "sha256": "251bc89ce3ed15f0bd31db885aeb5d4cec93e21b05fc360274e24f8e9a03abc8"
+    },
+    {
+      "path": "wikipedia/en/part-00167-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 374010,
+      "bytes": 163832909,
+      "sha256": "32e5c66837dd884393cda0681c9b0cd88baf35ff21a1bccdcc845a09d320ce2a"
+    },
+    {
+      "path": "wikipedia/en/part-00168-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 379897,
+      "bytes": 167910358,
+      "sha256": "554e63d2e5414b42bd63e89ecb68f773edcb35f4f2b363bab6df412bc27d2312"
+    },
+    {
+      "path": "wikipedia/en/part-00169-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 374550,
+      "bytes": 166390739,
+      "sha256": "101d953ed6da49f5fd4d93e702d914e9432737d983e1a597ca96fe341b5a8c91"
+    },
+    {
+      "path": "wikipedia/en/part-00170-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 382087,
+      "bytes": 172030874,
+      "sha256": "1ed3560f5879007330396fe5136be23f31b9fcd0ca6649842cc648a7b536592e"
+    },
+    {
+      "path": "wikipedia/en/part-00171-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 384754,
+      "bytes": 173457218,
+      "sha256": "2d7fd03ba2f470bcab43d4dcc93a85b38ed0cc7d40e6f63100d1c5a2bb067d01"
+    },
+    {
+      "path": "wikipedia/en/part-00172-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 364344,
+      "bytes": 160306299,
+      "sha256": "516997d07ec2d76084af9fd8bfb49c44a5ca5710aa0e35a6c7889070f068af0f"
+    },
+    {
+      "path": "wikipedia/en/part-00173-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 377726,
+      "bytes": 169215355,
+      "sha256": "cd7790e8382af14521d8d93ba03b59d08f2297fb64c7074abc45df3b9e1c232e"
+    },
+    {
+      "path": "wikipedia/en/part-00174-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 759832,
+      "bytes": 352818686,
+      "sha256": "dcf613dc6e95a599a2843a9c939f1b0e27b5e884e39f5b3615a1eceb84254020"
+    },
+    {
+      "path": "wikipedia/en/part-00175-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 373032,
+      "bytes": 165709480,
+      "sha256": "2605907d931ce4087c7d10f6cbad642ce800e25b3702c29933de94a8fa33fc21"
+    },
+    {
+      "path": "wikipedia/en/part-00176-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 371475,
+      "bytes": 166303403,
+      "sha256": "48bad28f69dafc958c672ae16e5c7942fa1c20dabf51dbe60a0468257087a0e9"
+    },
+    {
+      "path": "wikipedia/en/part-00177-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 334183,
+      "bytes": 140135270,
+      "sha256": "8c5538f53ea4f043c94a1700cb0d505c3ca483aa3fe884a557c6f96fdfb2bf4a"
+    },
+    {
+      "path": "wikipedia/en/part-00178-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 366680,
+      "bytes": 162000929,
+      "sha256": "471848c9457e9e86127772bacace8b45e3318a7b1cadf6b01c359cc38ac4730b"
+    },
+    {
+      "path": "wikipedia/en/part-00179-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 352824,
+      "bytes": 152936680,
+      "sha256": "309b665aed5bfbd54760d3cb7b1edb81d5374aec9f06e2448d78f923c174447f"
+    },
+    {
+      "path": "wikipedia/en/part-00180-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 336798,
+      "bytes": 144038466,
+      "sha256": "0046bce043b71ded7ee1b2edaf0b4544d9dce81d920177d572e687c57d184873"
+    },
+    {
+      "path": "wikipedia/en/part-00181-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 348695,
+      "bytes": 151776618,
+      "sha256": "59aa1d4e9b5beccc3ae3d588ddcc7760f05ba09368ec556e34c2fd5cb51ad66d"
+    },
+    {
+      "path": "wikipedia/en/part-00182-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 356012,
+      "bytes": 158103293,
+      "sha256": "65805d1f85df4b45d89b2d42d149a05fe3e587b1ad8849b51ce18a428388421b"
+    },
+    {
+      "path": "wikipedia/en/part-00183-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 354750,
+      "bytes": 157884302,
+      "sha256": "445f616e8cab6d8779567afd7caa63454dbfec10d59623f1515eb72c1dec12d7"
+    },
+    {
+      "path": "wikipedia/en/part-00184-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 340240,
+      "bytes": 148324841,
+      "sha256": "11ca51abb2093e79eb067df25e7b75fcfddd137ac0a5a8d4766626e820567330"
+    },
+    {
+      "path": "wikipedia/en/part-00185-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 348623,
+      "bytes": 152434081,
+      "sha256": "b2086cd6a6a22819c72bed25aa976a2d8a45343078483cdcc3c08204c58f397b"
+    },
+    {
+      "path": "wikipedia/en/part-00186-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 322691,
+      "bytes": 134004724,
+      "sha256": "cd99ee4e53b2bbf35bb9ebea5f05b50606eddcf1da94038510ad9ad48b4acfd1"
+    },
+    {
+      "path": "wikipedia/en/part-00187-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 354781,
+      "bytes": 155054768,
+      "sha256": "2657e2e8db203a4024ba78c53a44c780cf5060c579ea62b1eacbb6389406f6dc"
+    },
+    {
+      "path": "wikipedia/en/part-00188-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 339447,
+      "bytes": 145994741,
+      "sha256": "f1f8798784445dd558aaf34addd3708fd048dbd09f124ba3083ff8efc7d07631"
+    },
+    {
+      "path": "wikipedia/en/part-00189-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 351678,
+      "bytes": 153013425,
+      "sha256": "af5c634f8e955a833313faf295de41653a085c13803825d172b1addeafa14997"
+    },
+    {
+      "path": "wikipedia/en/part-00190-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 352345,
+      "bytes": 153083514,
+      "sha256": "3163881c5a0b6930e3f540221f1c59ea107a77af7835e98edb0fe263c62fd6e9"
+    },
+    {
+      "path": "wikipedia/en/part-00191-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 336392,
+      "bytes": 143444869,
+      "sha256": "2a50d0e8058dc5a3cdd5ea43d24828ca9e66f5eb38a72673c8d8c6a31985edb7"
+    },
+    {
+      "path": "wikipedia/en/part-00192-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 354253,
+      "bytes": 156113563,
+      "sha256": "d2dc5e007d997b4806216249e65595ae830f8680f19a6a8a27246693fd3ca94b"
+    },
+    {
+      "path": "wikipedia/en/part-00193-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 358562,
+      "bytes": 160360688,
+      "sha256": "49d1cbd15e82e292c62fac3af783167561209a34922d48c05a791ed7f6ac370e"
+    },
+    {
+      "path": "wikipedia/en/part-00194-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 878228,
+      "bytes": 438138428,
+      "sha256": "7b068e6e36049e55a2d9ee5ae1274add126be97508af5cf6ccb72ee1f06077a4"
+    },
+    {
+      "path": "wikipedia/en/part-00195-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 961854,
+      "bytes": 487714934,
+      "sha256": "ddd2f037293ccbb6ae38800b726bf45ca000adb83f1692b09d218243816ba0ef"
+    },
+    {
+      "path": "wikipedia/en/part-00196-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 773088,
+      "bytes": 390343769,
+      "sha256": "94297c35a62fb24c2264193c64bc1fd0d36575428ed61a994bd785b81f7303ec"
+    },
+    {
+      "path": "wikipedia/en/part-00197-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 672043,
+      "bytes": 337038734,
+      "sha256": "a46e8966f20a80da4d00c41a79acf9e993877e78458061626d12a574cd4c9734"
+    },
+    {
+      "path": "wikipedia/en/part-00198-00.parquet",
+      "source": "wikipedia",
+      "lang": "en",
+      "rows": 616578,
+      "bytes": 305535198,
+      "sha256": "b1ebba801b43cc7b045255f2ba8c509cfae32d180fa381ed7d70e60d3ce814f1"
+    },
+    {
+      "path": "wikipedia/kk/part-00199-00.parquet",
+      "source": "wikipedia",
+      "lang": "kk",
+      "rows": 330544,
+      "bytes": 109471640,
+      "sha256": "e341c1c49027e7f5c3f73c5245e01f72d5b11a9502c089d8ec3c99fa7308cb5e"
+    },
+    {
+      "path": "wikipedia/kk/part-00200-00.parquet",
+      "source": "wikipedia",
+      "lang": "kk",
+      "rows": 4,
+      "bytes": 14461,
+      "sha256": "9bf3f04dca35fed5f026df4a0267e7b5ef062ef97674a944bbb1805b9164d8dc"
+    },
+    {
+      "path": "wikipedia/kk/part-00201-00.parquet",
+      "source": "wikipedia",
+      "lang": "kk",
+      "rows": 2,
+      "bytes": 11453,
+      "sha256": "2cf6265e9ab5903d544aceb1e5649abc0e5dcc31a2838a3d4bed2725a02d498c"
+    },
+    {
+      "path": "wikipedia/kk/part-00202-00.parquet",
+      "source": "wikipedia",
+      "lang": "kk",
+      "rows": 31,
+      "bytes": 29889,
+      "sha256": "f00e1b48720b1398936e75eb0fc8667c85a6db9c5032347b9609b6c824bc8e44"
+    },
+    {
+      "path": "wikipedia/ru/part-00203-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 713,
+      "bytes": 300811,
+      "sha256": "32dc1f11af978fc04ad5499d1d1b4b86be9b526ed56849ddba804ec7ec1e8aaf"
+    },
+    {
+      "path": "wikipedia/ru/part-00204-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 602234,
+      "bytes": 362965496,
+      "sha256": "0d1e9e0b6dbd889ad63ea81085481a28dade8790e198dd218dc32cc21ae49eb6"
+    },
+    {
+      "path": "wikipedia/ru/part-00205-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 348428,
+      "bytes": 195927712,
+      "sha256": "fbd1e87af0b051283d13ee61599e9a03b036566a46338b8605be9c2ed787d8d2"
+    },
+    {
+      "path": "wikipedia/ru/part-00206-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 297347,
+      "bytes": 162261697,
+      "sha256": "abdc1427da4f5589904254b7f41145e39ea5f1b934baa8b9d5a481a9ff6fb600"
+    },
+    {
+      "path": "wikipedia/ru/part-00207-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 330819,
+      "bytes": 191423682,
+      "sha256": "f366b6e514d0577d1f2c0f7f2b3d92a5b9d598ed438ff8054a308371353184cd"
+    },
+    {
+      "path": "wikipedia/ru/part-00208-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 287032,
+      "bytes": 161941173,
+      "sha256": "2e7d0e907b062007386cb02c745caa77ba61114dc9ef34dcce3a9373fd85ea4d"
+    },
+    {
+      "path": "wikipedia/ru/part-00209-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 260891,
+      "bytes": 143491222,
+      "sha256": "f0d00122ff8be9fa980c88d85935ccb94caa3e20ce975b597a793e13b9c0d09b"
+    },
+    {
+      "path": "wikipedia/ru/part-00210-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 239777,
+      "bytes": 126555928,
+      "sha256": "af9896764202c2b88c5d835927b3a36e724ac402627bcdae6a9c7a621644e972"
+    },
+    {
+      "path": "wikipedia/ru/part-00211-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 219573,
+      "bytes": 110732206,
+      "sha256": "5ce012f36f44cb6d4b5d7c80233703fe9c64a837ce93cd241b2469c9d34382c3"
+    },
+    {
+      "path": "wikipedia/ru/part-00212-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 247946,
+      "bytes": 135384032,
+      "sha256": "cbc4b4ea0155e23d7a791cba83f082f6e3bbfe067c00b0b396512141d269942e"
+    },
+    {
+      "path": "wikipedia/ru/part-00213-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 221092,
+      "bytes": 114674696,
+      "sha256": "68c72da3ebc4ef0c9fe5075343a1cfd7fc0d9d406b8b2e30ebdf301cb75ef4dc"
+    },
+    {
+      "path": "wikipedia/ru/part-00214-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 222352,
+      "bytes": 116330166,
+      "sha256": "504e40dee056f005b47bad2726924a936baac8495d6d6b94e08a2bf3268991a7"
+    },
+    {
+      "path": "wikipedia/ru/part-00215-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 242089,
+      "bytes": 130592458,
+      "sha256": "a242ce2b66691082a4d82b500145735aec6377fa169ebd8be6c48a0135d70153"
+    },
+    {
+      "path": "wikipedia/ru/part-00216-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 240119,
+      "bytes": 127111231,
+      "sha256": "f576c83abf04da8a7d4cdd7b90f3400287eaa9c5b746534053aab0caff067f62"
+    },
+    {
+      "path": "wikipedia/ru/part-00217-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 248047,
+      "bytes": 134244813,
+      "sha256": "1315a3caf82d19dbaef5aebddfa1c346f253f5f9a8f9392ee2faca7f6ff0fc34"
+    },
+    {
+      "path": "wikipedia/ru/part-00218-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 253959,
+      "bytes": 140493070,
+      "sha256": "9e0a0802b9c03a0875f99a12a1679323986916fe4512d7ef726cb8fa8eb425f4"
+    },
+    {
+      "path": "wikipedia/ru/part-00219-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 257067,
+      "bytes": 143419606,
+      "sha256": "4b3107d7984aff1f5fa836d8eee01fbd228caad89b9ef7f1601971b7c5545bd8"
+    },
+    {
+      "path": "wikipedia/ru/part-00220-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 266283,
+      "bytes": 149825333,
+      "sha256": "0661b968ba1b722e0e434eb4fa3da0e2324b07b2b5a7dfd3c2d7a6dcc512e28f"
+    },
+    {
+      "path": "wikipedia/ru/part-00221-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 247927,
+      "bytes": 136103628,
+      "sha256": "e28fb053984174e2784ed0639f3bbdac521f14a2aeca0ea0fd09270c51476482"
+    },
+    {
+      "path": "wikipedia/ru/part-00222-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 249439,
+      "bytes": 135312172,
+      "sha256": "801fa89966bb9c23b2f9952d75ba8b1d42fefd0275e1bf4b142eb6bb6c01d0ae"
+    },
+    {
+      "path": "wikipedia/ru/part-00223-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 226121,
+      "bytes": 119757620,
+      "sha256": "558c8b755e1b722d8aa4d6045844670ed88405a775edb3524f4dffcd27c560fa"
+    },
+    {
+      "path": "wikipedia/ru/part-00224-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 222329,
+      "bytes": 116877372,
+      "sha256": "e340b29c88c3bb452a0905000de08f41b58a174f69eb7ff113d2dcee616de5c1"
+    },
+    {
+      "path": "wikipedia/ru/part-00225-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 4,
+      "bytes": 11383,
+      "sha256": "84d32d8a1ada376b0d46ae3f1fd07b5f662b7f220619919c6fc9cac5bcd65eeb"
+    },
+    {
+      "path": "wikipedia/ru/part-00226-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 4,
+      "bytes": 9663,
+      "sha256": "4eec358dc304c14565987cbbd3e2d5ed943fa6ed5e80ec9f704a691f2e32e73f"
+    },
+    {
+      "path": "wikipedia/ru/part-00227-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 40,
+      "bytes": 31395,
+      "sha256": "d5d4c5d3620e0b29d750c953fa457526b07a9d537cbd1e58135fed037d93f27b"
+    },
+    {
+      "path": "wikipedia/ru/part-00228-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 4,
+      "bytes": 11763,
+      "sha256": "d97408e964965565cea3da1f0129b573e7a58c7cc82834cd780300a3a10f460d"
+    },
+    {
+      "path": "wikipedia/ru/part-00229-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 7,
+      "bytes": 14147,
+      "sha256": "da8434dc1467d303feb3ebf5d71dc81dabb56b09bd2d37e16330e9f5d37a1b9a"
+    },
+    {
+      "path": "wikipedia/ru/part-00230-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 7,
+      "bytes": 14027,
+      "sha256": "bdf7a4d12bd1e0963365aa0609d452a5aff1ff83101232f8ad242eada7361fe8"
+    },
+    {
+      "path": "wikipedia/ru/part-00231-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 2,
+      "bytes": 10456,
+      "sha256": "a30090aeed9791bfaeb2cdedf4559c575a299a7720d799c9c2994948b0243d71"
+    },
+    {
+      "path": "wikipedia/ru/part-00232-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 5,
+      "bytes": 12891,
+      "sha256": "89fd263c8bba01aeb83f8a4c9a2bc7643ce4baea5ebf609c33b555ea4a54a492"
+    },
+    {
+      "path": "wikipedia/ru/part-00233-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 7,
+      "bytes": 10313,
+      "sha256": "941eefe1cec1d1002308191c674d68a0dd8fffd5e9d29cfebc92b86dfa855dad"
+    },
+    {
+      "path": "wikipedia/ru/part-00234-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 9,
+      "bytes": 13509,
+      "sha256": "d6bab8365c92596c385e330c02725436bc4f0c7a6488f9b64f0e23c607a47413"
+    },
+    {
+      "path": "wikipedia/ru/part-00235-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 19,
+      "bytes": 16599,
+      "sha256": "5eaee48ed765bcb0459b872d33e3a16ccbd4e9aad4b0543f4ffe23d750031168"
+    },
+    {
+      "path": "wikipedia/ru/part-00236-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 11,
+      "bytes": 14235,
+      "sha256": "cb90a48777e21a389a353d5af3fc8e8c92a904f537912b48aec6515b77d1541c"
+    },
+    {
+      "path": "wikipedia/ru/part-00237-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 5,
+      "bytes": 11380,
+      "sha256": "a356985845cd0282deccbcc9aa2fae2dc14b0e203a9184df5cf1b59192b84835"
+    },
+    {
+      "path": "wikipedia/ru/part-00238-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 38,
+      "bytes": 28642,
+      "sha256": "24ad569167cc9740775fff2074310adff99a925f47b1a142c303a178dd3c7e85"
+    },
+    {
+      "path": "wikipedia/ru/part-00239-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 74,
+      "bytes": 29752,
+      "sha256": "a57da59b3fa21a3eb09a08bcebf859fad8c5a42e9d7e8d21427d4d58f81bc269"
+    },
+    {
+      "path": "wikipedia/ru/part-00240-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 11,
+      "bytes": 14099,
+      "sha256": "65d3606841eeaaa8b54b8830dbb2ebef43f89abaff400dfd67d8080636f51c89"
+    },
+    {
+      "path": "wikipedia/ru/part-00241-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 17,
+      "bytes": 17362,
+      "sha256": "c031c11f663c24037eb00828f695f323e5195cd8f6852df9f59841eb8848fdde"
+    },
+    {
+      "path": "wikipedia/ru/part-00242-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 2,
+      "bytes": 8066,
+      "sha256": "b45af67d5f19c82f272e8cda5685f1aa4c731c1c85c2b4e9e6121b33a4692c03"
+    },
+    {
+      "path": "wikipedia/ru/part-00243-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 43,
+      "bytes": 23780,
+      "sha256": "e27dea369b96a3dfc975210faf6a8a24fd3f15fffbb354aae174511329b6cb62"
+    },
+    {
+      "path": "wikipedia/ru/part-00244-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 47,
+      "bytes": 27443,
+      "sha256": "006227168246f98a9eafc75db28d03c41db2f6a68397e94b6bd9d0d2b3a2512b"
+    },
+    {
+      "path": "wikipedia/ru/part-00245-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 6,
+      "bytes": 11706,
+      "sha256": "0df1bbe1211b7a0a649425710a5a8a4115df6657c73e8fa2733a131ee5f40e47"
+    },
+    {
+      "path": "wikipedia/ru/part-00246-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 7,
+      "bytes": 12558,
+      "sha256": "3fce0cb711e2b1217b9bc7b0a9415fd37d5001a777b4af8f9f4e9b0d48a8fd33"
+    },
+    {
+      "path": "wikipedia/ru/part-00247-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 15,
+      "bytes": 13540,
+      "sha256": "66a2d05364565c79cab82267048fd5858e6e71ae2e2247ce0003c9917c6c5887"
+    },
+    {
+      "path": "wikipedia/ru/part-00248-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 12,
+      "bytes": 14885,
+      "sha256": "e5e6334efc089c9db624576a895404455a56ff010ff3928fe8e9932893f61351"
+    },
+    {
+      "path": "wikipedia/ru/part-00249-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 85,
+      "bytes": 43922,
+      "sha256": "440f2312e67f42f266c3bef6c939866eec3543fc54bfcedcc83a253a34d44bd8"
+    },
+    {
+      "path": "wikipedia/ru/part-00250-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 84,
+      "bytes": 47525,
+      "sha256": "16e85c9ce4f6b2b83cbdb1fb48021c9f391a7aaf6bf5953efa347be1d1adc6f4"
+    },
+    {
+      "path": "wikipedia/ru/part-00251-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 7,
+      "bytes": 13025,
+      "sha256": "49e53e248988e199b41437bea55c3a7de5a5218e665f2d19fef85d62974fc63d"
+    },
+    {
+      "path": "wikipedia/ru/part-00252-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 13,
+      "bytes": 14388,
+      "sha256": "a457af7e5e7573608e9ec69126939a97337f22ab950e9ad6c7ace2e4fabdea2f"
+    },
+    {
+      "path": "wikipedia/ru/part-00253-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 6,
+      "bytes": 12943,
+      "sha256": "062902b0302072bb2dbdb19ce17361e2d8b6df50d4f22683eca75d674cd355bc"
+    },
+    {
+      "path": "wikipedia/ru/part-00254-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 8,
+      "bytes": 14830,
+      "sha256": "42df23fae7f242d59bc675e02f7278f255be3c94191b77ac01c92ecb2088eb95"
+    },
+    {
+      "path": "wikipedia/ru/part-00255-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 21,
+      "bytes": 21419,
+      "sha256": "cdfcd2e99b7ffafa6a0aff4f925c4e926ac6119871cbe72418f8127e8fb0c721"
+    },
+    {
+      "path": "wikipedia/ru/part-00256-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 16,
+      "bytes": 12552,
+      "sha256": "84f7cacb873f204fd7e49d7970782c4ac6a2b998216fb56dbefbbcfb7c0e7f20"
+    },
+    {
+      "path": "wikipedia/ru/part-00257-00.parquet",
+      "source": "wikipedia",
+      "lang": "ru",
+      "rows": 6,
+      "bytes": 13317,
+      "sha256": "1065e84e24e54ef9134abdff2d0ea5207512c2430d393213b54f70e48d901d5c"
+    }
+  ]
+}

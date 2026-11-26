@@ -394,12 +394,13 @@ retrieval:
   rrf_k: 60
   context_k: 8
   hard_negatives_per_query: 4
-  corpus_index:             # ADR-0013
+  corpus_index:             # ADR-0013 (RET-S measured 1M: scalar int8 0.82 R@10 vs 0.34 binary)
     vectors_on_disk: true
     datatype: float16
-    quantization: binary    # none | scalar | binary | turbo — RET-S
+    quantization: scalar    # none | scalar | binary | turbo — RET-S winner (scalar int8 + rescore)
     rescore: true
-    oversampling: 3.0
+    oversampling: 2.0
+    contextual_header: true # RET-C winner (+3.64 pp nDCG@10 at zero extra chunks)
     hnsw: {m: 16, ef_construct: 128, on_disk: false}
     mrl_dim: null           # Qwen3-Embedding only: 256 | 512 | 1024
 

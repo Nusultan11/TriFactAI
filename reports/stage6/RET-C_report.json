@@ -1,0 +1,97 @@
+{
+  "s350_header": {
+    "variant": "s350",
+    "max_tokens": 350,
+    "overlap_tokens": 50,
+    "contextual_header": true,
+    "n_docs": 10883,
+    "n_chunks": 13204,
+    "chunks_per_doc": 1.213,
+    "macro": {
+      "recall@5": 0.658731,
+      "recall@10": 0.717973,
+      "ndcg@10": 0.605983,
+      "mrr": 0.69791,
+      "candidate_recall@50": 0.75592,
+      "candidate_recall@100": 0.765109,
+      "judged@10": 0.241944
+    },
+    "worst_direction_gap": 0.098201
+  },
+  "s350_noheader": {
+    "variant": "s350",
+    "max_tokens": 350,
+    "overlap_tokens": 50,
+    "contextual_header": false,
+    "n_docs": 10883,
+    "n_chunks": 13204,
+    "chunks_per_doc": 1.213,
+    "macro": {
+      "recall@5": 0.612976,
+      "recall@10": 0.672838,
+      "ndcg@10": 0.569639,
+      "mrr": 0.66997,
+      "candidate_recall@50": 0.734654,
+      "candidate_recall@100": 0.752592,
+      "judged@10": 0.228889
+    },
+    "worst_direction_gap": 0.121219
+  },
+  "s200_header": {
+    "variant": "s200",
+    "max_tokens": 200,
+    "overlap_tokens": 30,
+    "contextual_header": true,
+    "n_docs": 10883,
+    "n_chunks": 23351,
+    "chunks_per_doc": 2.146,
+    "macro": {
+      "recall@5": 0.673992,
+      "recall@10": 0.718855,
+      "ndcg@10": 0.617264,
+      "mrr": 0.712657,
+      "candidate_recall@50": 0.755561,
+      "candidate_recall@100": 0.764299,
+      "judged@10": 0.240741
+    },
+    "worst_direction_gap": 0.090087
+  },
+  "s512_header": {
+    "variant": "s512",
+    "max_tokens": 512,
+    "overlap_tokens": 64,
+    "contextual_header": true,
+    "n_docs": 10883,
+    "n_chunks": 11347,
+    "chunks_per_doc": 1.043,
+    "macro": {
+      "recall@5": 0.657093,
+      "recall@10": 0.717893,
+      "ndcg@10": 0.607318,
+      "mrr": 0.701809,
+      "candidate_recall@50": 0.756845,
+      "candidate_recall@100": 0.766961,
+      "judged@10": 0.241574
+    },
+    "worst_direction_gap": 0.098499
+  },
+  "flat350_header": {
+    "variant": "flat350",
+    "max_tokens": 350,
+    "overlap_tokens": 50,
+    "contextual_header": true,
+    "n_docs": 10883,
+    "n_chunks": 13204,
+    "chunks_per_doc": 1.213,
+    "macro": {
+      "recall@5": 0.658731,
+      "recall@10": 0.717973,
+      "ndcg@10": 0.605983,
+      "mrr": 0.69791,
+      "candidate_recall@50": 0.75592,
+      "candidate_recall@100": 0.765109,
+      "judged@10": 0.241944
+    },
+    "worst_direction_gap": 0.098201
+  }
+}

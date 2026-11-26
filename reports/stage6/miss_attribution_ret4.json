@@ -1,0 +1,860 @@
+{
+  "total_queries": 33250,
+  "total_misses": 3347,
+  "miss_rate": 0.100662,
+  "overall_counts": {
+    "unjudged_top_results": 1938,
+    "demoted_by_reranker": 46,
+    "representation_miss": 866,
+    "dropped_by_fusion": 497
+  },
+  "overall_shares": {
+    "unjudged_top_results": 0.579026,
+    "demoted_by_reranker": 0.013744,
+    "representation_miss": 0.258739,
+    "dropped_by_fusion": 0.148491
+  },
+  "by_direction": {
+    "en-en": {
+      "demoted_by_reranker": 10,
+      "unjudged_top_results": 58,
+      "representation_miss": 34,
+      "dropped_by_fusion": 10
+    },
+    "en-kk": {
+      "unjudged_top_results": 698,
+      "representation_miss": 253,
+      "dropped_by_fusion": 150
+    },
+    "en-ru": {
+      "unjudged_top_results": 7,
+      "representation_miss": 4,
+      "demoted_by_reranker": 6,
+      "dropped_by_fusion": 2
+    },
+    "kk-en": {
+      "dropped_by_fusion": 153,
+      "unjudged_top_results": 634,
+      "representation_miss": 374,
+      "demoted_by_reranker": 10
+    },
+    "kk-kk": {
+      "unjudged_top_results": 447,
+      "dropped_by_fusion": 159,
+      "representation_miss": 163
+    },
+    "kk-ru": {
+      "unjudged_top_results": 3,
+      "dropped_by_fusion": 1,
+      "demoted_by_reranker": 6,
+      "representation_miss": 5
+    },
+    "ru-en": {
+      "demoted_by_reranker": 5,
+      "representation_miss": 5,
+      "unjudged_top_results": 8,
+      "dropped_by_fusion": 1
+    },
+    "ru-kk": {
+      "representation_miss": 26,
+      "unjudged_top_results": 83,
+      "dropped_by_fusion": 20
+    },
+    "ru-ru": {
+      "representation_miss": 2,
+      "demoted_by_reranker": 9,
+      "dropped_by_fusion": 1
+    }
+  },
+  "sample_misses": {
+    "unjudged_top_results": [
+      {
+        "query_id": "kazqad/kk/kazqad/kzh1506kzh#505479_1_1_5/mt/en",
+        "direction": "en-kk",
+        "query": "In 1967, what did L.I. Brezhnev declare had been established in the USSR?",
+        "gold_ids": [
+          "kazqad//kk/2185670285664576822"
+        ],
+        "top3_retrieved": [
+          "miracl/en/30727318#3",
+          "miracl/en/359406#5",
+          "miracl/ru/177834#136"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-4192772088857649531",
+        "direction": "en-kk",
+        "query": "where does blood go to from the renal vein",
+        "gold_ids": [
+          "kazqad//kk/8693207841100879845"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/11792569540896171780",
+          "kazqad//en/13112987942816390344",
+          "miracl/en/54176#23"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-3454053240828421765",
+        "direction": "en-kk",
+        "query": "when did michael jackson purchase the beatles catalog",
+        "gold_ids": [
+          "kazqad//kk/1555271796906584573"
+        ],
+        "top3_retrieved": [
+          "miracl/ru/3778750#0",
+          "miracl/ru/2571#33",
+          "miracl/ru/2571#0"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/5477790730771430766",
+        "direction": "en-kk",
+        "query": "when is a presidential election required to take place according to the constitution",
+        "gold_ids": [
+          "kazqad//kk/18264284225378845420"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/17500052575498315215",
+          "kazqad//en/13193880201251888875",
+          "miracl/en/21491579#12"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-129136430609804616",
+        "direction": "en-kk",
+        "query": "where did the saying god willing and the creek don't rise come from",
+        "gold_ids": [
+          "kazqad//kk/3444780874481887947"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/7801158120057637316",
+          "kazqad//en/3568830402016578481",
+          "kazqad//en/13367127072432188546"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/5793373076141178857",
+        "direction": "en-kk",
+        "query": "who played the little girl in miracle on 34th street 1947",
+        "gold_ids": [
+          "kazqad//kk/1079642182585781526"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/1257633020276486218",
+          "kazqad//en/16702235869932177297",
+          "kazqad//kk/11952821572978914484"
+        ]
+      },
+      {
+        "query_id": "kazqad/en/nq/-88720005483927913",
+        "direction": "en-en",
+        "query": "who sings clowns to the left of me jokers to the right",
+        "gold_ids": [
+          "kazqad//en/10047721262177570066"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/16723701674007855489",
+          "kazqad//en/18236374586510003195",
+          "kazqad//kk/1180744923348246644"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/304752648278447120",
+        "direction": "en-kk",
+        "query": "where was baz luhrmann's romeo and juliet set",
+        "gold_ids": [
+          "kazqad//kk/9852734473305870318"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/6954067079070790368",
+          "kazqad//en/12939259062486211901",
+          "kazqad//en/12456233582070765597"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/9160757866228602872",
+        "direction": "en-kk",
+        "query": "who are the ghosts in lord of the rings",
+        "gold_ids": [
+          "kazqad//kk/6707486946421882376"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/1380883932463055694",
+          "kazqad//en/3353707124421968203",
+          "kazqad//en/10986664403278868979"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-3852550188421049640",
+        "direction": "en-kk",
+        "query": "who does cisco turn into in the flash",
+        "gold_ids": [
+          "kazqad//kk/6030804202041041133"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/10762758911976491753",
+          "kazqad//en/5297944980636550229",
+          "kazqad//kk/1273611285818789333"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/1430615032192816846",
+        "direction": "en-kk",
+        "query": "who do members of the house of representatives represent",
+        "gold_ids": [
+          "kazqad//kk/17801918142989783762"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/1812313652777940893",
+          "kazqad//en/15607049037370023965",
+          "miracl/en/48122208#5"
+        ]
+      },
+      {
+        "query_id": "kazqad/kk/kazqad/geo1180geo#13124_18_1_1/mt/en",
+        "direction": "en-kk",
+        "query": "From which countries did Columbus and Magellan set sail on their voyages?",
+        "gold_ids": [
+          "kazqad//kk/7473240193364101542"
+        ],
+        "top3_retrieved": [
+          "miracl/en/5635#18",
+          "kazqad//en/3061501314564682629",
+          "miracl/en/47594693#1"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/771453168413733394",
+        "direction": "en-kk",
+        "query": "who took 19 wickets in a test match",
+        "gold_ids": [
+          "kazqad//kk/10917606839192934009"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/6730066742478328200",
+          "kazqad//en/15251775751331453128",
+          "kazqad//kk/3407738802411226673"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/8163386529442440796",
+        "direction": "en-kk",
+        "query": "where is survivor heros vs hustlers vs healers filmed",
+        "gold_ids": [
+          "kazqad//kk/17301815756535057934"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/12844589142829383276",
+          "kazqad//en/2210713255700862691",
+          "kazqad//en/10381001883586624703"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/4675304891481463762",
+        "direction": "en-kk",
+        "query": "when did beauty and the beast come out on broadway",
+        "gold_ids": [
+          "kazqad//kk/10459970582114794643"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/14598070921072199822",
+          "miracl/en/133462#0",
+          "kazqad//en/1216617110411469734"
+        ]
+      }
+    ],
+    "demoted_by_reranker": [
+      {
+        "query_id": "miracl/en/3028",
+        "direction": "en-en",
+        "query": "What causes the green color of the Statue of Liberty?",
+        "gold_ids": [
+          "miracl/en/1389116#0"
+        ],
+        "top3_retrieved": [
+          "miracl/en/28617#39",
+          "miracl/en/1816287#1",
+          "miracl/en/12460#23"
+        ]
+      },
+      {
+        "query_id": "miracl/en/73",
+        "direction": "en-en",
+        "query": "Did the Stackhouse books get made into a show?",
+        "gold_ids": [
+          "miracl/en/16907086#0"
+        ],
+        "top3_retrieved": [
+          "miracl/en/49859683#5",
+          "miracl/en/53609454#0",
+          "miracl/en/28562235#4"
+        ]
+      },
+      {
+        "query_id": "miracl/en/3781",
+        "direction": "en-en",
+        "query": "What was the largest city in the Gupta Empire?",
+        "gold_ids": [
+          "miracl/en/5509774#9"
+        ],
+        "top3_retrieved": [
+          "miracl/en/2659825#27",
+          "miracl/en/227918#0",
+          "miracl/en/227918#33"
+        ]
+      },
+      {
+        "query_id": "miracl/en/2515",
+        "direction": "en-en",
+        "query": "What kind of housing did the Taensa live in?",
+        "gold_ids": [
+          "miracl/en/3799783#2"
+        ],
+        "top3_retrieved": [
+          "miracl/en/3799783#15",
+          "miracl/en/3799783#14",
+          "miracl/en/3799783#10"
+        ]
+      },
+      {
+        "query_id": "miracl/en/1285",
+        "direction": "en-en",
+        "query": "How many countries are part of the Commonwealth?",
+        "gold_ids": [
+          "miracl/en/14449068#0"
+        ],
+        "top3_retrieved": [
+          "miracl/en/6766#16",
+          "miracl/en/21175158#80",
+          "miracl/en/21175158#0"
+        ]
+      },
+      {
+        "query_id": "miracl/en/2893",
+        "direction": "en-en",
+        "query": "How did the SCOTUS rule in eminent domain?",
+        "gold_ids": [
+          "miracl/en/2100546#8",
+          "miracl/en/34293405#22"
+        ],
+        "top3_retrieved": [
+          "miracl/en/47190704#10",
+          "miracl/en/604273#10",
+          "miracl/en/387617#5"
+        ]
+      },
+      {
+        "query_id": "miracl/en/1932",
+        "direction": "en-en",
+        "query": "When were stradivarius violins made?",
+        "gold_ids": [
+          "miracl/en/620574#32"
+        ],
+        "top3_retrieved": [
+          "miracl/en/153773#0",
+          "miracl/en/1650865#0",
+          "miracl/en/153773#11"
+        ]
+      },
+      {
+        "query_id": "miracl/en/3178",
+        "direction": "en-en",
+        "query": "Can a septic tank explode?",
+        "gold_ids": [
+          "miracl/en/2047817#7"
+        ],
+        "top3_retrieved": [
+          "miracl/en/3022#37",
+          "miracl/en/217773#16",
+          "miracl/en/217773#0"
+        ]
+      },
+      {
+        "query_id": "miracl/ru/5261/mt/en",
+        "direction": "en-ru",
+        "query": "What is the largest city in the state of Texas?",
+        "gold_ids": [
+          "miracl/ru/2138536#0"
+        ],
+        "top3_retrieved": [
+          "miracl/ru/4661198#0",
+          "miracl/ru/4661198#19",
+          "miracl/en/503535#0"
+        ]
+      },
+      {
+        "query_id": "miracl/ru/2559/mt/en",
+        "direction": "en-ru",
+        "query": "How many Orthodox churches are there in Grozny?",
+        "gold_ids": [
+          "miracl/ru/1028#51"
+        ],
+        "top3_retrieved": [
+          "miracl/ru/6362483#14",
+          "miracl/ru/1208916#22",
+          "miracl/ru/6362483#6"
+        ]
+      },
+      {
+        "query_id": "miracl/ru/2111/mt/en",
+        "direction": "en-ru",
+        "query": "When did John Sidney McCain III become a U.S. Senator?",
+        "gold_ids": [
+          "miracl/ru/59085#30"
+        ],
+        "top3_retrieved": [
+          "miracl/ru/1871#39",
+          "miracl/ru/6992428#21",
+          "kazqad//kk/3241638713505419822"
+        ]
+      },
+      {
+        "query_id": "miracl/ru/611/mt/en",
+        "direction": "en-ru",
+        "query": "Was Nikolai Viktorovich Levashov married?",
+        "gold_ids": [
+          "miracl/ru/3268626#3"
+        ],
+        "top3_retrieved": [
+          "miracl/ru/3268626#9",
+          "miracl/ru/3268626#0",
+          "miracl/ru/27024#104"
+        ]
+      },
+      {
+        "query_id": "miracl/en/3572",
+        "direction": "en-en",
+        "query": "Who is the current president of Malaysia?",
+        "gold_ids": [
+          "miracl/en/496731#0"
+        ],
+        "top3_retrieved": [
+          "miracl/en/4190830#0",
+          "miracl/en/523641#0",
+          "miracl/en/15482524#1"
+        ]
+      },
+      {
+        "query_id": "miracl/ru/994/mt/en",
+        "direction": "en-ru",
+        "query": "When was the internal combustion engine invented?",
+        "gold_ids": [
+          "miracl/ru/4391858#6"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/15818401655721584946",
+          "miracl/ru/8192#7",
+          "miracl/ru/8192#3"
+        ]
+      },
+      {
+        "query_id": "miracl/en/2241",
+        "direction": "en-en",
+        "query": "Has the character Danielle \"Dani\" Cage appeared in any Marvel films?",
+        "gold_ids": [
+          "miracl/en/1828447#0"
+        ],
+        "top3_retrieved": [
+          "miracl/en/18487561#0",
+          "miracl/en/719805#0",
+          "miracl/en/18487561#3"
+        ]
+      }
+    ],
+    "representation_miss": [
+      {
+        "query_id": "kazqad/en-kk/nq/2092794989253908588",
+        "direction": "en-kk",
+        "query": "who said i will love him and call him george",
+        "gold_ids": [
+          "kazqad//kk/15505946975854721149"
+        ],
+        "top3_retrieved": [
+          "kazqad//kk/17709620707189570355",
+          "miracl/en/11891#0",
+          "kazqad//en/14383164467861822924"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/441237563640079561",
+        "direction": "en-kk",
+        "query": "whats the record for most wins in a row mlb",
+        "gold_ids": [
+          "kazqad//kk/1718797296858638148"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/1449604897123039359",
+          "kazqad//en/7313764981865692714",
+          "kazqad//en/14279743693485915114"
+        ]
+      },
+      {
+        "query_id": "kazqad/en/nq/-5054798783277976220",
+        "direction": "en-en",
+        "query": "who is the singer of o o jane jana",
+        "gold_ids": [
+          "kazqad//en/12677818840908643433"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/16196622839036228266",
+          "kazqad//en/15547243629314149480",
+          "miracl/en/15586418#6"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-6358547991118343689",
+        "direction": "en-kk",
+        "query": "who is the most decorated marine in history",
+        "gold_ids": [
+          "kazqad//kk/18266877180414732971"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/9336303287357370404",
+          "kazqad//en/8661318740505524894",
+          "kazqad//en/12152845943708828231"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/4958671790126005546",
+        "direction": "en-kk",
+        "query": "tears in heaven was a hit song for which celebrated rock musician",
+        "gold_ids": [
+          "kazqad//kk/1111922062330684696"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/10750862432857239442",
+          "kazqad//en/14235158112913157579",
+          "kazqad//en/1428324863966327356"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/3682824378321878542",
+        "direction": "en-kk",
+        "query": "acids are ionic compounds that relate to which element",
+        "gold_ids": [
+          "kazqad//kk/2857145232131554008"
+        ],
+        "top3_retrieved": [
+          "miracl/en/6301567#0",
+          "kazqad//en/12186462356228810441",
+          "miracl/en/199077#5"
+        ]
+      },
+      {
+        "query_id": "kazqad/kk/kazqad/lit2120lit#489406_4_1_1/mt/en",
+        "direction": "en-kk",
+        "query": "What is the name of the orphan child in the work of S. Muratbekov ?",
+        "gold_ids": [
+          "kazqad//kk/16428151702953936"
+        ],
+        "top3_retrieved": [
+          "miracl/ru/17485#65",
+          "miracl/en/676#11",
+          "miracl/ru/3842754#7"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-4019971967075404306",
+        "direction": "en-kk",
+        "query": "what is the age limit for ies exam",
+        "gold_ids": [
+          "kazqad//kk/10560333605051290142"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/1455873027457986937",
+          "miracl/en/630522#44",
+          "kazqad//en/18322302153258981246"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-1670311118843638561",
+        "direction": "en-kk",
+        "query": "which arc is a line of volcanoes on an oceanic plate",
+        "gold_ids": [
+          "kazqad//kk/2875021275575701002"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/15915775744282350080",
+          "kazqad//en/8990495142361099648",
+          "miracl/en/162404#3"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-2300777724228951614",
+        "direction": "en-kk",
+        "query": "when can you do the thing you gave up for lent",
+        "gold_ids": [
+          "kazqad//kk/8613609039636911419"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/12781467188059960506",
+          "kazqad//en/12251785340226337742",
+          "kazqad//en/3842342238504209646"
+        ]
+      },
+      {
+        "query_id": "kazqad/en/nq/-3336120985660956524",
+        "direction": "en-en",
+        "query": "who played the dj in the movie the warriors",
+        "gold_ids": [
+          "kazqad//en/3724152693827702943"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/10387967223330694719",
+          "kazqad//kk/549209196280644578",
+          "kazqad//en/13690777263475618237"
+        ]
+      },
+      {
+        "query_id": "kazqad/kk/kazqad/kzh2173kzh#665725_52_1_4/mt/en",
+        "direction": "en-kk",
+        "query": "The Battle of Atelach was of great historical significance because:",
+        "gold_ids": [
+          "kazqad//kk/14743342710621314614"
+        ],
+        "top3_retrieved": [
+          "miracl/en/118372#0",
+          "miracl/en/118372#45",
+          "kazqad//kk/12591225171162929498"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/7249459619318618003",
+        "direction": "en-kk",
+        "query": "when did it switch from bc to ad",
+        "gold_ids": [
+          "kazqad//kk/11910684285419826857"
+        ],
+        "top3_retrieved": [
+          "miracl/en/322497#2",
+          "miracl/en/62027#12",
+          "kazqad//kk/1676836851599574763"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-5472954839438284699",
+        "direction": "en-kk",
+        "query": "who came to india from china during the reign of harshavardhana",
+        "gold_ids": [
+          "kazqad//kk/18157995661142475839"
+        ],
+        "top3_retrieved": [
+          "miracl/en/227918#19",
+          "miracl/en/51320#79",
+          "miracl/en/2659825#22"
+        ]
+      },
+      {
+        "query_id": "kazqad/kk/kazqad/bio0552bio#71688_2_1/mt/en",
+        "direction": "en-kk",
+        "query": "What tissue forms bone?",
+        "gold_ids": [
+          "kazqad//kk/6714481848899235364"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/9866333094421628747",
+          "kazqad//en/11575805251851316157",
+          "kazqad//en/13444333314470158015"
+        ]
+      }
+    ],
+    "dropped_by_fusion": [
+      {
+        "query_id": "kazqad/en-kk/nq/-641461028696811844",
+        "direction": "en-kk",
+        "query": "where is the charging bull located in nyc",
+        "gold_ids": [
+          "kazqad//kk/12378074379236739709"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/13619109911259841852",
+          "kazqad//en/3040724222299523227",
+          "kazqad//en/9637222436785423867"
+        ]
+      },
+      {
+        "query_id": "kazqad/kk/kazqad/bio0219bio#85495_3_1_1/mt/en",
+        "direction": "en-kk",
+        "query": "What organ is located in the chest cavity?",
+        "gold_ids": [
+          "kazqad//kk/12909097122702327691"
+        ],
+        "top3_retrieved": [
+          "kazqad//kk/10814182064773487110",
+          "kazqad//kk/2099117688395252993",
+          "miracl/en/455186#6"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-2853063857316496048",
+        "direction": "en-kk",
+        "query": "who was the dad in father knows best",
+        "gold_ids": [
+          "kazqad//kk/5417735932651141636"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/13103726427116470311",
+          "kazqad//en/14688186150523021182",
+          "kazqad//en/7810225765679413992"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-1265502797038831712",
+        "direction": "en-kk",
+        "query": "who plays alex in the big bang theory",
+        "gold_ids": [
+          "kazqad//kk/10895836827856080151"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/1614800097207799417",
+          "kazqad//en/6684029973438254502",
+          "kazqad//en/15070202632038356003"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/3264296508549351455",
+        "direction": "en-kk",
+        "query": "how i met your mother read a magazine meaning",
+        "gold_ids": [
+          "kazqad//kk/9786486294107408232"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/1939396197682526459",
+          "kazqad//en/14434708643989344302",
+          "miracl/en/9181653#0"
+        ]
+      },
+      {
+        "query_id": "kazqad/en/nq/-4934564664192216799",
+        "direction": "en-en",
+        "query": "prayer i believe in one god the father almighty",
+        "gold_ids": [
+          "kazqad//en/4239964397394499028"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/2001947735975680784",
+          "kazqad//en/14261375806464869122",
+          "kazqad//en/7142253492255526157"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/4782126041129612671",
+        "direction": "en-kk",
+        "query": "fist of the blue sky regenesis opening song",
+        "gold_ids": [
+          "kazqad//kk/8001208740394983652"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/1871666553045710489",
+          "kazqad//en/15637106731878058233",
+          "kazqad//kk/4937247331502665108"
+        ]
+      },
+      {
+        "query_id": "kazqad/kk/kazqad/kzh0046kzh#5084_5_1_1/mt/en",
+        "direction": "en-kk",
+        "query": "Who is the activist who organized a boarding school for Kazakh girls in the Irgyz steppe?",
+        "gold_ids": [
+          "kazqad//kk/11083404305811592713"
+        ],
+        "top3_retrieved": [
+          "miracl/ru/7626092#17",
+          "kazqad//kk/15607431689914602945",
+          "miracl/en/52130580#0"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-4328408821599148415",
+        "direction": "en-kk",
+        "query": "who is the model in duran duran rio",
+        "gold_ids": [
+          "kazqad//kk/17754674873770890802"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/3619745223226481400",
+          "miracl/ru/88489#0",
+          "kazqad//en/5664464096978632675"
+        ]
+      },
+      {
+        "query_id": "kazqad/en/nq/-5506386488303873727",
+        "direction": "en-en",
+        "query": "who plays mona lisa on parks and recreation",
+        "gold_ids": [
+          "kazqad//en/15980489298488314058"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/14539701508111149006",
+          "kazqad//en/9945156494141185871",
+          "miracl/en/32336241#0"
+        ]
+      },
+      {
+        "query_id": "kazqad/kk/kazqad/kzh1045kzh#657901_13_1/mt/en",
+        "direction": "en-kk",
+        "query": "In what year did the Tselinograd incident occur?",
+        "gold_ids": [
+          "kazqad//kk/1657390903107202986"
+        ],
+        "top3_retrieved": [
+          "miracl/ru/157226#0",
+          "kazqad//kk/10263749041688388629",
+          "kazqad//en/13554081871240786639"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-5506386488303873727",
+        "direction": "en-kk",
+        "query": "who plays mona lisa on parks and recreation",
+        "gold_ids": [
+          "kazqad//kk/11826556894782941959"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/14539701508111149006",
+          "kazqad//en/9945156494141185871",
+          "miracl/en/32336241#0"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/4733860384284674441",
+        "direction": "en-kk",
+        "query": "who plays mike's mom on stranger things",
+        "gold_ids": [
+          "kazqad//kk/9279819752193303750"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/761365269484953566",
+          "kazqad//kk/9909349354615532878",
+          "kazqad//en/5458106349497312678"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/-4216006325167079674",
+        "direction": "en-kk",
+        "query": "who started the independence movement in the colonies",
+        "gold_ids": [
+          "kazqad//kk/10052148173318432000"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/4687696344650130015",
+          "kazqad//en/12660817379270979428",
+          "miracl/en/5472856#1"
+        ]
+      },
+      {
+        "query_id": "kazqad/en-kk/nq/1610042614581106662",
+        "direction": "en-kk",
+        "query": "what is the purpose of a grease trap",
+        "gold_ids": [
+          "kazqad//kk/16041141518913270620"
+        ],
+        "top3_retrieved": [
+          "kazqad//en/366385288158378728",
+          "miracl/en/5519332#0",
+          "kazqad//en/4685357129927199598"
+        ]
+      }
+    ]
+  }
+}
