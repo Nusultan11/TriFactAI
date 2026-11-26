@@ -779,6 +779,15 @@ def evaluate_entity_linking(
         nil_tp = 0
         tail_total = 0
         tail_correct = 0
+        ambig_total = 0
+        ambig_correct = 0
+        infl_total = 0
+        infl_correct = 0
+        err_cand_miss = 0
+        err_disambig = 0
+        err_false_nil = 0
+        err_false_link = 0
+        lat_ms: list[float] = []
 
         for r in rows:
             surf = str(r["surface"])
@@ -786,8 +795,13 @@ def evaluate_entity_linking(
             nt = str(r.get("ner_type", "PER"))
             gold = r.get("gold_qid")
             gold_sitelinks = r.get("gold_n_sitelinks")
+            is_ambig = bool(r.get("is_ambiguous", False))
+            is_infl = bool(r.get("is_inflected", False))
 
+            t_m0 = time.perf_counter()
             pred_qid, _, ranked_with = linker_with.link_one(surf, ctx, lg, nt)
+            lat_ms.append((time.perf_counter() - t_m0) * 1000.0)
+
             cands_exact = linker_exact_only.generate_candidates(surf, lg, k=candidates_k)
             cands_stem = linker_exact_plus_stem.generate_candidates(surf, lg, k=candidates_k)
 
@@ -799,9 +813,12 @@ def evaluate_entity_linking(
                 if pred_qid is None:
                     acc1_correct += 1
                     nil_tp += 1
+                else:
+                    err_false_link += 1
             else:
                 linkable += 1
-                if any(c.entity.qid == gold for c in ranked_with[:candidates_k]):
+                in_cands = any(c.entity.qid == gold for c in ranked_with[:candidates_k])
+                if in_cands:
                     cand_hit_with += 1
                 if any(c.entity.qid == gold for c in cands_exact[:candidates_k]):
                     cand_hit_exact += 1
@@ -809,14 +826,35 @@ def evaluate_entity_linking(
                     cand_hit_stem += 1
                 if pred_qid == gold:
                     acc1_correct += 1
+                elif not in_cands:
+                    err_cand_miss += 1
+                elif pred_qid is None:
+                    err_false_nil += 1
+                else:
+                    err_disambig += 1
+
                 if gold_sitelinks is not None and int(gold_sitelinks) <= 5:
                     tail_total += 1
                     if pred_qid == gold:
                         tail_correct += 1
+                if is_ambig or len(ranked_with) >= 2:
+                    ambig_total += 1
+                    if pred_qid == gold:
+                        ambig_correct += 1
+                if is_infl:
+                    infl_total += 1
+                    if pred_qid == gold:
+                        infl_correct += 1
 
         rec_with = cand_hit_with / linkable if linkable else 0.0
         rec_exact = cand_hit_exact / linkable if linkable else 0.0
         rec_stem = cand_hit_stem / linkable if linkable else 0.0
+        lat_sorted = sorted(lat_ms)
+        tot_s = sum(lat_ms) / 1000.0
+        p50 = lat_sorted[len(lat_sorted) // 2] if lat_sorted else 0.0
+        p95 = lat_sorted[min(int(len(lat_sorted) * 0.95), len(lat_sorted) - 1)] if lat_sorted else 0.0
+        nil_prec = (nil_tp / nil_preds) if nil_preds > 0 else 1.0
+        nil_rec = (nil_tp / nil_gold) if nil_gold > 0 else None
         results_by_lang[lg] = {
             "n_examples": total,
             "n_linkable": linkable,
@@ -828,8 +866,23 @@ def evaluate_entity_linking(
             "accuracy@1": round(acc1_correct / total, 4) if total else 0.0,
             "nil_rate": round(nil_preds / total, 4) if total else 0.0,
             "nil_accuracy": round(nil_tp / nil_gold, 4) if nil_gold else None,
+            "nil_precision": round(nil_prec, 4),
+            "nil_recall": round(nil_rec, 4) if nil_rec is not None else None,
+            "ambiguous_n": ambig_total,
+            "ambiguous_accuracy@1": round(ambig_correct / ambig_total, 4) if ambig_total else None,
+            "inflected_n": infl_total,
+            "inflected_accuracy@1": round(infl_correct / infl_total, 4) if infl_total else None,
             "tail_n": tail_total,
             "tail_accuracy@1": round(tail_correct / tail_total, 4) if tail_total else None,
+            "errors": {
+                "candidate_miss": err_cand_miss,
+                "disambiguation_error": err_disambig,
+                "false_nil": err_false_nil,
+                "false_link": err_false_link,
+            },
+            "latency_p50_ms": round(p50, 3),
+            "latency_p95_ms": round(p95, 3),
+            "mentions_per_s": round(total / max(tot_s, 1e-6), 1),
         }
 
     return {

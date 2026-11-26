@@ -6,7 +6,7 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 
 | Field | Status |
 |---|---|
-| **Active stage** | **Stage 5 — Extraction: Implemented & Cloud-Validated (`2026-11-26`, `$0` USD on Colab Tesla T4; `5.25 h` Kaggle GPU quota preserved).** All modules (`stats.py`, `eval_ner.py`, `gate.py`, `dates.py`, `linking.py`, `ner.py`, `train_ner.py`, `annotate_corpus.py`), `NER-0`..`NER-5` + HPO + 3-seed comparisons, DATE eval, Wikidata Entity Linking eval, calibration, MLflow Registry (`trifact-ner@champion = NER-1`), and sharded `annotate_corpus` pilot completed. Remaining external boundaries: human-labeled per-language Entity Linking eval sets and full 59.6M-chunk cloud GPU batch annotation (~13.8 T4 GPU-hours). |
+| **Active stage** | **Stage 5 — Extraction: Hardened & Canonical KB/EL Validated (`2026-11-26`, `$0` USD); awaiting Kaggle OAuth refresh to fetch completed `nurs2005/trifact-stage5-final` v2 champion & 3-seed NER-3/NER-4 outputs.** Annotation defaults (`hf`), rejected `NER-5` guard, shard-resume SHA-256 integrity, pilot marker isolation, cloud-only guards, DVC Stage 5 targets, source-stratified `eval_ner`, canonical 5.62M-entity Wikidata SQLite KB, and 900-mention realistic Wikipedia-context EL benchmark + 150-item human review packet are complete. Formal Stage 5 closure remains open pending Kaggle output fetch + fresh-runtime champion recovery check and human EL audit. |
 | **Last completed stage** | Stages 1–3 (closed 2026-11-25 under ADR-0026); Stage 4 — Document Processing Engine (2026-11-20); Stage 5 — Extraction (code, `NER-0`..`NER-5`, calibration, gate, pilot annotation complete 2026-11-26) |
 | **Remote repository** | `origin` → `https://github.com/Nusultan11/TriFactAI` (`main`) |
 | **DVC & Google Drive** | `drive_desktop` default locally ([ADR-0024](architecture/adr/0024-google-drive-storage.md)). All DVC-cached objects across `dvc.lock` (updated `build_eval` frozen outputs pushed 2026-11-25), `data/external.dvc`, `data/review.dvc`, and `data/stage3_teacher.dvc` verified in sync on Drive |
@@ -14,9 +14,10 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 
 ## Open Blockers (User Action, Quota, or Budget Required)
 
-1. **Stage 5 external boundaries (`$0` USD budget & human annotation):**
-   - **Human-labeled Entity Linking reference sets:** Linking was evaluated on a 225/lang KB-title inflected benchmark (`human_verified: false`); per-language human-labeled linking sets remain required for human-verified `accuracy@1` / NIL claims.
-   - **Full-corpus `annotate_corpus` (59.63 M chunks):** Measured T4 fp16 pilot throughput is `1,203.2 chunks/s` (~13.8 T4 GPU-hours for all 59.63 M chunks), exceeding the remaining `5.25 / 30.00 h` free Kaggle GPU quota (resets `2026-11-28 00:00 UTC`) and single free Colab session limits under `cloud.budget_usd: 0`. Run full sharded annotation once Stage 6 finalizes the 35 M chunk subset (`RET-S`) or quota refreshes.
+1. **Stage 5 external boundaries (`$0` USD budget, Kaggle OAuth refresh, & human annotation):**
+   - **Kaggle CLI OAuth token expired (`2026-11-26 09:48 +05:00`, 12 h TTL):** Kaggle 2× T4 kernel `nurs2005/trifact-stage5-final` v2 (canonical `NER-1` champion persistence + SHA-256 `model_meta.json`, source-stratified aligned `NER-0 vs NER-1` on 4,500 sents, DVC `eval_ner` check, 3-seed `NER-4` KazNERD-25 + neural vs. rule DATE paired bootstrap, and 3-seed `NER-3` `xlm-roberta-large`) was pushed and confirmed `RUNNING` (`09:18–09:42 +05:00`) before `~/.kaggle/credentials.json` expired; Colab free T4 is concurrently in `503 Service Unavailable` cooldown. **User action:** run `kaggle auth login`, then `uv run python scripts/fetch_stage5_kaggle.py` to download/verify the champion checkpoint and run E2E annotation throughput with champion + DATE + canonical 5.62M KB.
+   - **Human-labeled Entity Linking reference sets:** Linking was evaluated on an independent 900-mention Wikipedia-context benchmark (`human_verified: false`), and a 150-item stratified human review packet was exported to `data/review/linking_human/to_label.csv` (`50/lang` across ambiguous/inflected/tail/NIL). Human review is required before claiming human-verified linking `accuracy@1`.
+   - **Full-corpus `annotate_corpus` (59.63 M chunks):** Deferred until Stage 6 finalizes chunking (`RET-C`) and the 35 M corpus subset (`RET-S`), avoiding redundant mass annotation (~13.8 T4 GPU-hours at `1,203 chunks/s` without linking, higher with SQLite EL). Retrieval remains independent of NER per ADR-0004.
 2. **Synthetic QA/query volume deviation & cloud GPU quota (approved deviation):**
    - Verified `2026-11-26`: `kaggle quota` reports `5.25 / 30.00` GPU-hours remaining (reset `2026-11-28 00:00 UTC`), `params.yaml: cloud.budget_usd: 0`, Colab compute units `0.00`.
    - Retrieval total (`15.05 M`) and silver NER (`5.17 M`) meet ROADMAP targets; synthetic queries (`101,970` vs `3–5 M`) and synthetic QA (`11,015` / SFT `338,688` vs `1–2 M`) are approved deviations under `$0` budget.
@@ -46,6 +47,25 @@ Read relevant sections before stage work ([AGENTS.md](../AGENTS.md)). Add new en
 - **Document processing (ADR-0021):** worker needs Tesseract 5 binary (`TRIFACT_TESSERACT` on Linux) and ~2.1 GB RAM/parser process with Docling; scans/tables take 2–9 s/page on CPU → separate load-test scenario in Stage 9. Verify synthetic benchmark transfer on `real_docs` (≥50 files, Stage 10).
 - `chunking.variants` are chosen in Stage 6; `chunk_corpus` currently chunks flat, while `DocumentChunker` respects sections.
 - `dvc.yaml` lists `build_eval` outputs individually (`data/eval/{ner,qa,retrieval,nli,review}`) because `data/eval/docproc` belongs to `build_docproc`.
+
+---
+
+## Stage 5 — Extraction · Finalization Audit & Canonical KB/EL (2026-11-26)
+
+- **Annotation & DVC hardening (`62384dd`):**
+  - Switched `annotate_corpus` default backend from rejected `onnx` to eligible `hf` champion (`params.yaml: ner.backend: hf`); `OnnxNERExtractor` now raises `RuntimeError` on `eligible: false` / failed `ner5_report.json` parity gate unless `--allow-unverified-onnx` is explicitly passed.
+  - Prevented silent omission of Entity Linking (`--kb-db` required unless `--no-linking`) and calibration (`calibration.json` required unless `--allow-uncalibrated`); enforced ADR-0025 cloud-only guard in both `train_ner.py` and `annotate_corpus.py`.
+  - Implemented cryptographic shard-resume integrity (`compute_shard_fingerprint` binding input SHA-256, model/KB/calibration fingerprints, config, output SHA-256, and row count) and `.PILOT.json` isolation so limited `--limit-chunks` runs never write `.SUCCESS.json` or mark full shards complete. Added regression tests for interrupted `.tmp`, corrupted Parquet, changed model/KB/input, pilot isolation, rejected ONNX refusal, and cloud guard.
+  - Fixed `eval_ner` CLI to load `--model models/ner` directly for DVC (`dvc.yaml` updated with full Stage 5 deps/params/outs) and fixed `load_eval_ner_rows` to perform proportional source-stratified sampling (`stratify_by_source=True`), resolving the earlier first-1,000 slice bias (`kk` was 100% `kaznerd`, `ru`/`en` were 100% `wikiann`).
+- **Canonical Wikidata SQLite KB (`data/task/kb/kb_index.sqlite`, archived on Drive):**
+  - Streamed all 211 canonical `entities-*.parquet` shards (`core_only=True`, `min_sitelinks=2`) + `137,291` `kkwiki` title aliases: **5,618,048** typed PER/ORG/LOC entities, **11,092,797** aliases, built in **129.97 s**, peak RSS **1,307.5 MB**, size **1.35 GB** (`label_kk 2.51%`, `label_ru 26.74%`, `label_en 95.36%`).
+- **Independent Realistic Context-Based Entity Linking Benchmark (`reports/stage5/linking_canonical_report.json`, `human_verified: false`):**
+  - Extracted **900 naturally occurring Wikipedia-context mentions** (`300/lang`: 80 ambiguous, 80 inflected, 50 tail `≤ 5` sitelinks, 30 general, 60 genuine out-of-KB NIL) from `data/raw/wikipedia_wikitext` and exported a 150-item human review packet (`data/review/linking_human/to_label.csv`):
+    - `kk`: `candidate_recall@20 = 0.8375` (**`+16.25 pp`** from Kazakh suffix stripping `0.6042 → 0.7667`), `accuracy@1 = 0.7667` (`ambiguous 0.8016`, `inflected 0.6333`, `tail 0.7500`), `nil_rate = 0.1700` (`P=0.6667 / R=0.5667`), `p50 = 2.12 ms` (`198.6 mentions/s`).
+    - `ru`: `candidate_recall@20 = 0.6958`, `accuracy@1 = 0.6600` (`ambiguous 0.7021`, `inflected 0.4605`, `tail 0.4340`), `nil_rate = 0.2900` (`P=0.5057 / R=0.7333`), `p50 = 4.96 ms` (`116.5 mentions/s`).
+    - `en`: `candidate_recall@20 = 0.7417`, `accuracy@1 = 0.6833` (`ambiguous 0.6397`, `inflected 0.3902`, `tail 0.6892`), `nil_rate = 0.2300` (`P=0.6232 / R=0.7167`), `p50 = 14.45 ms` (`67.0 mentions/s`).
+    - Error analysis: `candidate_miss` (`39 kk / 73 ru / 62 en`, mostly piped paraphrases/demonyms and Russian complex inflections) dominates `disambiguation_error` (`5 kk / 13 ru / 16 en`), confirming candidate generation is the primary bottleneck.
+- **Cloud GPU Finalization (`nurs2005/trifact-stage5-final` v2 on Kaggle 2× T4):** Pushed and verified `RUNNING`; retrieval blocked on expired local Kaggle OAuth token (`kaggle auth login` → `uv run python scripts/fetch_stage5_kaggle.py`).
 
 ---
 
