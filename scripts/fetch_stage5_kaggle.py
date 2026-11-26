@@ -67,7 +67,12 @@ def main() -> int:
     print(f"Verified champion checkpoint ({len(meta['files_sha256'])} files SHA-256 OK).")
 
     if args.model_dest.exists():
-        shutil.rmtree(args.model_dest)
+        import datetime
+
+        ts = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+        backup_dir = args.model_dest.with_name(f"{args.model_dest.name}.bak_{ts}")
+        shutil.move(str(args.model_dest), str(backup_dir))
+        print(f"Preserved previous model directory at {backup_dir}")
     shutil.copytree(champ_src, args.model_dest)
     print(f"Installed verified champion into {args.model_dest}")
 
@@ -75,7 +80,12 @@ def main() -> int:
         args.drive_dest.mkdir(parents=True, exist_ok=True)
         drive_champ = args.drive_dest / "models" / "ner_champion"
         if drive_champ.exists():
-            shutil.rmtree(drive_champ)
+            import datetime
+
+            ts = datetime.datetime.now(datetime.UTC).strftime("%Y%m%d_%H%M%S")
+            drive_bak = drive_champ.with_name(f"{drive_champ.name}.bak_{ts}")
+            shutil.move(str(drive_champ), str(drive_bak))
+            print(f"Preserved previous Drive champion at {drive_bak}")
         shutil.copytree(champ_src, drive_champ)
         summary_src = args.out / "stage5_final_summary.json"
         if summary_src.is_file():

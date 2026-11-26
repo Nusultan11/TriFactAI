@@ -2801,3 +2801,152 @@ stages:
       hash: md5
       md5: 7c4a5346189bae02313ecb92ffa8a604
       size: 751
+  train_ner:
+    cmd: python -m trifact.training.train_ner --exp NER-1 --calibrate --out 
+      models/ner
+    deps:
+    - path: configs/labels.yaml
+      hash: md5
+      md5: dd3e7293f54661d32bca362738ce5465
+      size: 3562
+    - path: data/task/ner
+      hash: md5
+      md5: 66fe40d01c3a1b02e766c327fd8f83e6.dir
+      size: 453442050
+      nfiles: 18
+    - path: src/trifact/evaluation/eval_ner.py
+      hash: md5
+      md5: 6e260e9a5ad3567fac1223645213cbae
+      size: 29751
+    - path: src/trifact/evaluation/stats.py
+      hash: md5
+      md5: f05ee7373df57048d847151446028034
+      size: 15233
+    - path: src/trifact/extraction/ner.py
+      hash: md5
+      md5: f0e04d33530469570ffcdd0d7337cb4c
+      size: 35819
+    - path: src/trifact/training/train_ner.py
+      hash: md5
+      md5: 7da0b52fc9eb25747e58159bf87cad9b
+      size: 35830
+    params:
+      params.yaml:
+        ner:
+          base_model: FacebookAI/xlm-roberta-base
+          backend: hf
+          labels: configs/labels.yaml
+          calibration_min_precision: 0.85
+          silver:
+            min_tokens: 5
+            max_tokens: 80
+            capital_filter: true
+            gazetteer_min_count: 3
+            gazetteer_min_share: 0.9
+          curriculum:
+          - silver
+          - gold
+          epochs: 5
+          lr: 4.45e-05
+          batch_size: 32
+          max_length: 256
+          seeds:
+          - 42
+          - 43
+          - 44
+        seed: 42
+    outs:
+    - path: models/ner
+      hash: md5
+      md5: cfa77e7eaeee8f5c5edb15f0b5f102cb.dir
+      size: 1127000307
+      nfiles: 6
+  eval_ner:
+    cmd: python -m trifact.evaluation.eval_ner --model models/ner --eval-dir 
+      data/eval/ner --train-dir data/task/ner --out reports/ner.json 
+      --per-example reports/ner_per_example.jsonl --save-preds 
+      reports/ner_preds.jsonl
+    deps:
+    - path: data/eval/ner
+      hash: md5
+      md5: 3a67e4db21dbef4856bf9f6f274ce46b.dir
+      size: 5372317
+      nfiles: 6
+    - path: data/task/ner
+      hash: md5
+      md5: 66fe40d01c3a1b02e766c327fd8f83e6.dir
+      size: 453442050
+      nfiles: 18
+    - path: models/ner
+      hash: md5
+      md5: cfa77e7eaeee8f5c5edb15f0b5f102cb.dir
+      size: 1127000307
+      nfiles: 6
+    - path: src/trifact/evaluation/eval_ner.py
+      hash: md5
+      md5: 6e260e9a5ad3567fac1223645213cbae
+      size: 29751
+    - path: src/trifact/evaluation/gate.py
+      hash: md5
+      md5: 6bbb69f4dcbbbb03199bd94640458db6
+      size: 8120
+    - path: src/trifact/evaluation/stats.py
+      hash: md5
+      md5: f05ee7373df57048d847151446028034
+      size: 15233
+    - path: src/trifact/extraction/ner.py
+      hash: md5
+      md5: f0e04d33530469570ffcdd0d7337cb4c
+      size: 35819
+    params:
+      params.yaml:
+        evaluation:
+          bootstrap_samples: 1000
+          ci: 0.95
+          human_verified_min: 3500
+          review_per_kind: 500
+          real_docs_min: 50
+          autonomous_validation:
+            protocol: ADR-0026
+            quality_items: 1500
+            ner_items: 600
+            eval_items: 3500
+            require_report_approval: true
+        ner:
+          base_model: FacebookAI/xlm-roberta-base
+          backend: hf
+          labels: configs/labels.yaml
+          calibration_min_precision: 0.85
+          silver:
+            min_tokens: 5
+            max_tokens: 80
+            capital_filter: true
+            gazetteer_min_count: 3
+            gazetteer_min_share: 0.9
+          curriculum:
+          - silver
+          - gold
+          epochs: 5
+          lr: 4.45e-05
+          batch_size: 32
+          max_length: 256
+          seeds:
+          - 42
+          - 43
+          - 44
+        promotion:
+          ner_kk_f1_min_gain: 0.03
+          ner_other_max_drop: 0.01
+          retrieval_no_direction_worse: true
+          faithfulness_min: 0.85
+          worst_direction_max_gap: 0.1
+          verification_contradicted_precision_min: 0.9
+          verification_ece_max: 0.05
+          e2e_p95_latency_s: 6.0
+          e2e_injection_no_worse: true
+        seed: 42
+    outs:
+    - path: reports/ner.json
+      hash: md5
+      md5: 2715bbb6fe3ce295552d47ec26851617
+      size: 10792
