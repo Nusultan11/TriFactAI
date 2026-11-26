@@ -225,20 +225,25 @@ stages:
 
   # ------------------------------------------------ stage 5: extraction
   train_ner:
-    cmd: python -m trifact.training.train_ner
-    deps: [src/trifact/training/train_ner.py, data/task/ner]
-    params: [ner]
-    outs: [models/ner]
+    cmd: python -m trifact.training.train_ner --exp NER-1 --calibrate --out models/ner
+    deps: [src/trifact/training/train_ner.py, src/trifact/extraction/ner.py, src/trifact/evaluation/eval_ner.py,
+           src/trifact/evaluation/stats.py, configs/labels.yaml, data/task/ner]
+    params: [ner, seed]
+    outs: [{models/ner: {persist: true}}]
 
   eval_ner:
-    cmd: python -m trifact.evaluation.eval_ner
-    deps: [src/trifact/evaluation/eval_ner.py, models/ner, data/eval]
+    cmd: python -m trifact.evaluation.eval_ner --model models/ner --eval-dir data/eval/ner --train-dir data/task/ner --out reports/ner.json --per-example reports/ner_per_example.jsonl --save-preds reports/ner_preds.jsonl
+    deps: [src/trifact/evaluation/eval_ner.py, src/trifact/evaluation/stats.py, src/trifact/evaluation/gate.py,
+           src/trifact/extraction/ner.py, models/ner, data/eval/ner, data/task/ner]
+    params: [ner, evaluation, promotion, seed]
     metrics: [{reports/ner.json: {cache: false}}]
 
   annotate_corpus:
-    cmd: python -m trifact.batch.annotate_corpus
-    deps: [src/trifact/batch/annotate_corpus.py, models/ner, data/task/chunks, data/task/kb]
-    outs: [data/task/annotations]
+    cmd: python -m trifact.batch.annotate_corpus --input data/task/chunks --output data/task/annotations --model models/ner --backend hf --kb-db data/task/kb/kb_index.sqlite
+    deps: [src/trifact/batch/annotate_corpus.py, src/trifact/extraction/ner.py, src/trifact/extraction/dates.py,
+           src/trifact/extraction/linking.py, models/ner, data/task/chunks, data/task/kb]
+    params: [ner, linking]
+    outs: [{data/task/annotations: {persist: true}}]
 
   # ------------------------------------------------ stage 6: retrieval
   train_retriever:

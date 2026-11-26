@@ -362,7 +362,9 @@ docproc:                    # stage 4, architecture §7.1, ADR-0021
 
 ner:
   base_model: FacebookAI/xlm-roberta-base
+  backend: hf               # eligible champion backend (NER-5 ONNX int8 rejected on EN parity > 0.5 pp)
   labels: configs/labels.yaml
+  calibration_min_precision: 0.85
   silver:                   # ADR-0015, trifact.data.build_ner
     min_tokens: 5
     max_tokens: 80
@@ -371,14 +373,16 @@ ner:
     gazetteer_min_share: 0.9  # ... with >= 90% one type
   curriculum: [silver, gold]
   epochs: 5
-  lr: 3.0e-5
+  lr: 4.45e-5               # Optuna HPO winner (stage 5, 2026-11-25)
   batch_size: 32
   max_length: 256
   seeds: [42, 43, 44]
 
 linking:
   kb_min_labels: 1          # entity kept if it has a label in at least one of kk/ru/en
+  kb_index: data/task/kb/kb_index.sqlite
   candidates_k: 20
+  nil_threshold: 0.35
 
 retrieval:
   embedder: BAAI/bge-m3

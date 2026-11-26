@@ -385,14 +385,17 @@ def train_one_stage(
 
             if step_i % grad_accum == 0 or b_start + batch_size >= len(bucketed):
                 if use_scaler:
+                    scale_before = scaler.get_scale()
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                     scaler.step(optimizer)
                     scaler.update()
+                    if scaler.get_scale() >= scale_before:
+                        scheduler.step()
                 else:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                     optimizer.step()
-                scheduler.step()
+                    scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
 
         # Validation evaluation (strict entity F1 per language)
@@ -569,6 +572,12 @@ def run_ner5_optimization(
         ox_f1[lg] = strict_entity_metrics(yt, yp_ox)["micro"]["f1"]
 
     gate = evaluate_ner5_optimization_gate(pt_f1, ox_f1, max_drop_pp=0.5)
+    # Persist eligibility flag in ner_onnx_meta.json so rejected artifacts are never loaded in prod
+    meta_path = out_dir / "ner_onnx_meta.json"
+    if meta_path.is_file():
+        meta_obj = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta_obj["eligible"] = bool(gate["passed"])
+        meta_path.write_text(json.dumps(meta_obj, indent=2) + "\n", encoding="utf-8", newline="\n")
     return {
         "export": export_info,
         "pytorch_cpu_chunks_per_s": round(len(eval_rows) / max(pt_secs, 1e-6), 2),
@@ -606,9 +615,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--n-trials", type=int, default=10)
     ap.add_argument("--hpo-storage", type=str, default=None)
     ap.add_argument("--max-vocab-size", type=int, default=80000)
+    ap.add_argument(
+        "--allow-local-pilot", action="store_true", help="Allow bounded local execution outside cloud"
+    )
     args = ap.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    from trifact.batch.annotate_corpus import is_cloud_runtime
+
+    if not is_cloud_runtime() and not args.allow_local_pilot:
+        raise RuntimeError(
+            "Refusing to run NER training on local PC (ADR-0025 cloud-only compute policy). "
+            "Run on Colab/Kaggle or pass --allow-local-pilot for tiny local smoke checks."
+        )
+
     import torch
     from transformers import AutoModelForTokenClassification, AutoTokenizer
 

@@ -297,6 +297,7 @@ class TokenClassificationExtractor:
         temperatures: dict[str, float] | None = None,
         confidence_thresholds: dict[str, float] | None = None,
         fp16: bool = False,
+        require_calibrated: bool = False,
     ) -> None:
         import torch
         from transformers import AutoModelForTokenClassification, AutoTokenizer
@@ -310,6 +311,13 @@ class TokenClassificationExtractor:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.fp16 = fp16 and self.device.startswith("cuda")
 
+        meta_file = self.model_path / "model_meta.json"
+        self.model_meta: dict[str, Any] = (
+            json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.is_file() else {}
+        )
+        if self.model_meta.get("eligible") is False:
+            raise RuntimeError(f"Refusing to load ineligible model checkpoint at {self.model_path}")
+
         self.tokenizer = AutoTokenizer.from_pretrained(str(model_path), use_fast=True)
         self.model = AutoModelForTokenClassification.from_pretrained(str(model_path))
         self.model.to(self.device)
@@ -320,11 +328,20 @@ class TokenClassificationExtractor:
 
         # Load calibration.json if present alongside model checkpoint
         cal_file = self.model_path / "calibration.json"
-        if cal_file.is_file() and not temperatures:
+        self.calibrated = False
+        if cal_file.is_file():
             cal = json.loads(cal_file.read_text(encoding="utf-8"))
-            self.temperatures = {str(k): float(v) for k, v in cal.get("temperatures", {}).items()}
+            if not temperatures:
+                self.temperatures = {str(k): float(v) for k, v in cal.get("temperatures", {}).items()}
             if not confidence_thresholds:
                 self.confidence_thresholds = {str(k): float(v) for k, v in cal.get("thresholds", {}).items()}
+            self.calibrated = True
+        elif temperatures is not None and confidence_thresholds is not None:
+            self.calibrated = True
+        elif require_calibrated:
+            raise FileNotFoundError(
+                f"Required calibration.json missing at {cal_file}; run calibration or pass require_calibrated=False"
+            )
 
     def predict_word_logits(self, sentences_tokens: Sequence[Sequence[str]]) -> list[np.ndarray]:
         """Predict per-word logits for a list of word-tokenized sentences using length-sorted batching."""
@@ -655,6 +672,7 @@ class OnnxNERExtractor:
         providers: Sequence[str] | None = None,
         temperatures: dict[str, float] | None = None,
         confidence_thresholds: dict[str, float] | None = None,
+        allow_unverified: bool = False,
     ) -> None:
         import onnxruntime as ort
         from transformers import AutoTokenizer
@@ -663,8 +681,23 @@ class OnnxNERExtractor:
         self.version = version
         self.max_length = max_length
         self.batch_size = batch_size
-        self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_dir), use_fast=True)
         meta = json.loads((self.model_dir / "ner_onnx_meta.json").read_text(encoding="utf-8"))
+        # Prevent rejected NER-5 optimization artifacts from being loaded in production (ADR-0009)
+        if not allow_unverified:
+            if meta.get("eligible") is False:
+                raise RuntimeError(
+                    f"Refusing to load rejected NER-5 ONNX artifact at {self.model_dir} "
+                    "(failed <= 0.5 pp F1 parity gate). Use eligible HF champion or pass allow_unverified=True."
+                )
+            rep_file = self.model_dir / "ner5_report.json"
+            if rep_file.is_file():
+                rep = json.loads(rep_file.read_text(encoding="utf-8"))
+                if rep.get("parity_gate", {}).get("passed") is False:
+                    raise RuntimeError(
+                        f"Refusing to load rejected NER-5 ONNX artifact at {self.model_dir} "
+                        "(ner5_report.json parity_gate.passed=False)."
+                    )
+        self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_dir), use_fast=True)
         self.id2label = {int(k): str(v) for k, v in meta["id2label"].items()}
 
         remap_path = self.model_dir / "vocab_remap.json"

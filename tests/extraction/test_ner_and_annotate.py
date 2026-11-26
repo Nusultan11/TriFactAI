@@ -194,6 +194,114 @@ def test_annotate_corpus_sharded_and_idempotent(tmp_path: Path) -> None:
         "Астанада 2024 жылы үлкен конференция өтті.",
     )
 
-    # Idempotent rerun skips finished shard
+    # Idempotent rerun skips finished shard (verified SHA-256 + fingerprint + row count)
     s2 = run_annotate_corpus(tmp_path / "chunks", out_dir, extractor, linker, shard_spec="0/2")
     assert s2["shards_skipped"] == 1
+
+    # 1. Corrupted output Parquet -> must re-run (not skip!)
+    out_pq.write_bytes(b"corrupted-bytes")
+    s3 = run_annotate_corpus(tmp_path / "chunks", out_dir, extractor, linker, shard_spec="0/2")
+    assert s3["shards_skipped"] == 0
+    assert pl.read_parquet(out_pq).height == 2
+
+    # 2. Changed model fingerprint -> must re-run
+    s4 = run_annotate_corpus(
+        tmp_path / "chunks", out_dir, extractor, linker, shard_spec="0/2", model_fingerprint="new-model-sha"
+    )
+    assert s4["shards_skipped"] == 0
+
+    # 3. Changed KB fingerprint -> must re-run
+    s5 = run_annotate_corpus(
+        tmp_path / "chunks",
+        out_dir,
+        extractor,
+        linker,
+        shard_spec="0/2",
+        model_fingerprint="new-model-sha",
+        kb_fingerprint="new-kb-sha",
+    )
+    assert s5["shards_skipped"] == 0
+
+    # 4. Changed input shard -> must re-run
+    pq.write_table(
+        pa.table(
+            {
+                "chunk_id": ["doc0#0", "doc0#1"],
+                "doc_id": ["doc0", "doc0"],
+                "source": ["wikipedia", "wikipedia"],
+                "lang": ["kk", "kk"],
+                "ordinal": [0, 1],
+                "char_start": [0, 0],
+                "char_end": [40, 40],
+                "text": [
+                    "Астанада 2024 жылы үлкен конференция өтті.",
+                    "Астанада 2025 жылы жаңа форум өтті.",
+                ],
+            },
+            schema=schema,
+        ),
+        in_dir / "part-00000.parquet",
+    )
+    s6 = run_annotate_corpus(
+        tmp_path / "chunks",
+        out_dir,
+        extractor,
+        linker,
+        shard_spec="0/2",
+        model_fingerprint="new-model-sha",
+        kb_fingerprint="new-kb-sha",
+    )
+    assert s6["shards_skipped"] == 0
+    assert s6["total_chunks"] == 2
+
+    # 5. Limited pilot run NEVER emits .SUCCESS.json and NEVER makes a full run skip
+    pilot_out = tmp_path / "annotations_pilot"
+    sp = run_annotate_corpus(
+        tmp_path / "chunks", pilot_out, extractor, linker, shard_spec="0/2", limit_chunks_per_shard=1
+    )
+    assert sp["partial"] is True
+    assert sp["total_chunks"] == 1
+    assert not (pilot_out / "wikipedia" / "kk" / "part-00000.parquet.SUCCESS.json").exists()
+    assert (pilot_out / "wikipedia" / "kk" / "part-00000.parquet.PILOT.json").is_file()
+    # Leftover interrupted temp file is cleaned up and full run processes all 2 chunks
+    (pilot_out / "wikipedia" / "kk" / "part-00000.parquet.tmp").write_bytes(b"interrupted")
+    sf = run_annotate_corpus(tmp_path / "chunks", pilot_out, extractor, linker, shard_spec="0/2")
+    assert sf["shards_skipped"] == 0
+    assert sf["partial"] is False
+    assert sf["total_chunks"] == 2
+    assert (pilot_out / "wikipedia" / "kk" / "part-00000.parquet.SUCCESS.json").is_file()
+
+
+def test_rejected_ner5_onnx_and_cloud_guard(tmp_path: Path, monkeypatch: object) -> None:
+    import json
+
+    import pytest
+
+    from trifact.batch import annotate_corpus
+    from trifact.evaluation.eval_ner import load_eval_ner_rows
+    from trifact.extraction.ner import OnnxNERExtractor
+
+    # Rejected ONNX artifact must raise RuntimeError by default
+    bad_onnx = tmp_path / "bad_onnx"
+    bad_onnx.mkdir()
+    (bad_onnx / "ner_onnx_meta.json").write_text(
+        json.dumps({"id2label": {"0": "O"}, "eligible": False}), encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="rejected NER-5"):
+        OnnxNERExtractor(bad_onnx)
+
+    # Cloud-only guard refuses local execution when not in cloud runtime
+    monkeypatch.setattr(annotate_corpus, "is_cloud_runtime", lambda: False)  # type: ignore[attr-defined]
+    with pytest.raises(RuntimeError, match="cloud-only"):
+        annotate_corpus.main(["--input", str(tmp_path), "--output", str(tmp_path / "out")])
+
+    # Stratified eval loader preserves all sources per language
+    real_eval = Path("data/eval/ner")
+    if (real_eval / "frozen.json").is_file():
+        rows = load_eval_ner_rows(real_eval, limit_per_lang=300, stratify_by_source=True, seed=42)
+        by_lg_src: dict[str, set[str]] = {}
+        for r in rows:
+            by_lg_src.setdefault(r["lang"], set()).add(r["source"])
+        assert by_lg_src["kk"] == {"kaznerd", "wikiann"}
+        assert by_lg_src["ru"] == {"nerel", "wikiann", "wikineural"}
+        assert by_lg_src["en"] == {"wikiann", "wikineural"}

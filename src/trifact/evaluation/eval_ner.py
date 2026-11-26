@@ -559,8 +559,14 @@ def load_eval_ner_rows(
     langs: Sequence[str] = ("kk", "ru", "en"),
     verify_frozen: bool = True,
     limit_per_lang: int | None = None,
+    stratify_by_source: bool = True,
+    seed: int = 42,
 ) -> list[dict[str, Any]]:
-    """Load frozen NER test rows from ``data/eval/ner``."""
+    """Load frozen NER test rows from ``data/eval/ner``.
+
+    When ``limit_per_lang`` is set and ``stratify_by_source=True`` (default), samples
+    proportionally across all sources within each language so no source is omitted.
+    """
     if verify_frozen:
         verify_frozen_eval(eval_dir)
     rows: list[dict[str, Any]] = []
@@ -569,8 +575,23 @@ def load_eval_ner_rows(
         if not files:
             continue
         df = pl.concat([pl.read_parquet(fp) for fp in files])
-        if limit_per_lang is not None:
-            df = df.head(limit_per_lang)
+        if limit_per_lang is not None and df.height > limit_per_lang:
+            if stratify_by_source and "source" in df.columns:
+                sources = sorted(df["source"].unique().to_list())
+                parts: list[pl.DataFrame] = []
+                remaining = limit_per_lang
+                for idx, src in enumerate(sources):
+                    sub = df.filter(pl.col("source") == src)
+                    if idx == len(sources) - 1:
+                        take = min(remaining, sub.height)
+                    else:
+                        take = max(1, min(sub.height, round(limit_per_lang * sub.height / df.height)))
+                        take = min(take, remaining - (len(sources) - idx - 1))
+                    parts.append(sub.sample(n=take, seed=seed, shuffle=True))
+                    remaining -= take
+                df = pl.concat(parts)
+            else:
+                df = df.head(limit_per_lang)
         rows.extend(df.to_dicts())
     return rows
 
@@ -579,11 +600,27 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--eval-dir", type=Path, default=ROOT / "data" / "eval" / "ner")
     ap.add_argument("--train-dir", type=Path, default=ROOT / "data" / "task" / "ner")
-    ap.add_argument("--preds", type=Path, help="JSONL file with {sent_id, pred_tags}")
-    ap.add_argument("--baseline-preds", type=Path, help="Optional baseline JSONL for paired bootstrap")
+    ap.add_argument(
+        "--model",
+        type=Path,
+        default=ROOT / "models" / "ner",
+        help="Model directory (used when --preds is omitted)",
+    )
+    ap.add_argument("--backend", choices=["hf", "onnx", "gliner"], default="hf")
+    ap.add_argument(
+        "--preds", type=Path, default=None, help="Precomputed JSONL file with {sent_id, pred_tags}"
+    )
+    ap.add_argument(
+        "--save-preds", type=Path, default=None, help="Optional path to save model predictions JSONL"
+    )
+    ap.add_argument(
+        "--baseline-preds", type=Path, default=None, help="Optional baseline JSONL for paired bootstrap"
+    )
     ap.add_argument("--out", type=Path, default=ROOT / "reports" / "ner.json")
     ap.add_argument("--per-example", type=Path, default=None)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--batch-size", type=int, default=64)
+    ap.add_argument("--fp16", action="store_true")
     ap.add_argument("--no-verify-frozen", action="store_true")
     args = ap.parse_args(argv)
 
@@ -597,19 +634,53 @@ def main(argv: list[str] | None = None) -> int:
         args.eval_dir,
         verify_frozen=not args.no_verify_frozen,
         limit_per_lang=args.limit,
+        stratify_by_source=True,
+        seed=seed,
     )
-    if not args.preds or not args.preds.is_file():
-        raise FileNotFoundError(f"Prediction file required via --preds: {args.preds}")
 
-    pred_map: dict[str, list[str]] = {}
-    with args.preds.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            obj = json.loads(line)
-            pred_map[str(obj["sent_id"])] = list(obj["pred_tags"])
+    if args.preds is not None:
+        if not args.preds.is_file():
+            raise FileNotFoundError(f"Prediction file not found: {args.preds}")
+        pred_map: dict[str, list[str]] = {}
+        with args.preds.open("r", encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                obj = json.loads(line)
+                pred_map[str(obj["sent_id"])] = list(obj["pred_tags"])
+        preds = [pred_map[str(r["sent_id"])] for r in rows]
+    else:
+        from trifact.extraction.ner import GLiNERExtractor, OnnxNERExtractor, TokenClassificationExtractor
 
-    preds = [pred_map[str(r["sent_id"])] for r in rows]
+        toks_list = [r["tokens"] for r in rows]
+        langs_list = [str(r["lang"]) for r in rows]
+        if args.backend == "gliner":
+            ext_g = GLiNERExtractor()
+            preds = ext_g.predict_tags(toks_list, batch_size=args.batch_size)
+        elif args.backend == "onnx":
+            if not args.model.is_dir():
+                raise FileNotFoundError(f"ONNX model directory not found: {args.model}")
+            ext_o = OnnxNERExtractor(args.model, batch_size=args.batch_size)
+            preds, _ = ext_o.predict_tags(toks_list, langs=langs_list)
+        else:
+            model_dir = args.model / "best" if (args.model / "best").is_dir() else args.model
+            if not model_dir.is_dir():
+                raise FileNotFoundError(
+                    f"HF model directory not found: {model_dir} (pass --preds or --model)"
+                )
+            ext_h = TokenClassificationExtractor(
+                model_dir,
+                batch_size=args.batch_size,
+                max_length=int(params["ner"]["max_length"]),
+                fp16=args.fp16,
+            )
+            preds, _ = ext_h.predict_tags(toks_list, langs=langs_list)
+        if args.save_preds is not None:
+            args.save_preds.parent.mkdir(parents=True, exist_ok=True)
+            with args.save_preds.open("w", encoding="utf-8", newline="\n") as f:
+                for r, p in zip(rows, preds, strict=True):
+                    f.write(json.dumps({"sent_id": r["sent_id"], "pred_tags": p}, ensure_ascii=False) + "\n")
+
     seen = extract_seen_surfaces(args.train_dir) if args.train_dir.is_dir() else None
     report = evaluate_ner_predictions(
         rows,
@@ -622,6 +693,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.baseline_preds and args.baseline_preds.is_file():
+        from trifact.evaluation.gate import evaluate_ner_gate
+
         base_map: dict[str, list[str]] = {}
         with args.baseline_preds.open("r", encoding="utf-8") as f:
             for line in f:
@@ -630,7 +703,7 @@ def main(argv: list[str] | None = None) -> int:
                 obj = json.loads(line)
                 base_map[str(obj["sent_id"])] = list(obj["pred_tags"])
         base_preds = [base_map[str(r["sent_id"])] for r in rows]
-        report["comparison_vs_baseline"] = compare_ner_systems(
+        comp = compare_ner_systems(
             rows,
             [base_preds],
             [preds],
@@ -638,6 +711,8 @@ def main(argv: list[str] | None = None) -> int:
             ci=float(ev["ci"]),
             seed=seed,
         )
+        report["comparison_vs_baseline"] = comp
+        report["gate"] = evaluate_ner_gate(comp["paired_diff_by_lang"], params["promotion"])
 
     report["elapsed_s"] = round(time.perf_counter() - t0, 2)
     args.out.parent.mkdir(parents=True, exist_ok=True)
