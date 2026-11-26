@@ -266,15 +266,19 @@ stages:
 
   # ------------------------------------------------ stage 7: generation (cloud GPU, ADR-0012)
   train_llm:
-    cmd: python -m trifact.training.train_llm
-    deps: [src/trifact/training/train_llm.py, data/task/sft]
-    params: [llm]
-    outs: [models/llm_adapter]
+    cmd: python -m trifact.training.train_llm --sft-dir data/task/sft --out models/llm_adapter --report reports/train_llm.json
+    deps: [src/trifact/training/train_llm.py, src/trifact/generation/prompt.py,
+           configs/prompts/grounded_answer.md, data/task/sft]
+    params: [llm, sft, cloud.budget_usd, seed]
+    outs: [{models/llm_adapter: {persist: true}}]
 
   eval_generation:
-    cmd: python -m trifact.evaluation.eval_generation
-    deps: [src/trifact/evaluation/eval_generation.py, models/llm_adapter, data/eval]
-    params: [verification]
+    cmd: python -m trifact.evaluation.eval_generation --eval-dir data/eval/qa --out reports/generation.json --per-example reports/generation_per_example.jsonl
+    deps: [src/trifact/evaluation/eval_generation.py, src/trifact/evaluation/stats.py,
+           src/trifact/generation/prompt.py, src/trifact/generation/llm_client.py,
+           src/trifact/verification/claims.py, src/trifact/verification/nli.py,
+           configs/prompts/grounded_answer.md, data/eval/qa]
+    params: [llm, sft.distractors, verification, evaluation, promotion, seed]
     metrics: [{reports/generation.json: {cache: false}}]
 
   # ------------------------------------------------ stage 8: verification

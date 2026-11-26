@@ -328,9 +328,101 @@ def rollback_retrieval_with_qdrant(
     return res
 
 
+def evaluate_generation_gate(
+    comparison: dict[str, Any],
+    candidate_report: dict[str, Any],
+    promotion_cfg: dict[str, Any],
+    *,
+    regression_report: dict[str, Any] | None = None,
+    candidate_name: str = "challenger",
+    baseline_name: str = "champion",
+) -> dict[str, Any]:
+    """Check Generation promotion gate against ``params.yaml: promotion`` (ADR-0009, ADR-0022).
+
+    Rules (architecture §10, ROADMAP 7):
+    - Per-language ``faithfulness >= promotion.faithfulness_min`` (0.85).
+    - Per-language ``answer_f1`` AND ``faithfulness`` beat best baseline with 95% cluster paired
+      bootstrap CI lower bound > 0.
+    - Adapter regression suite (ROADMAP 7.3) must pass when provided.
+    """
+    faith_min = float(promotion_cfg.get("faithfulness_min", 0.85))
+    by_lang_cmp = comparison.get("by_lang") or {}
+    by_lang_cand = candidate_report.get("by_lang") or {}
+
+    checks: dict[str, dict[str, Any]] = {}
+    reasons: list[str] = []
+
+    for lg in ("kk", "ru", "en"):
+        cmp_lg = by_lang_cmp.get(lg)
+        cand_lg = by_lang_cand.get(lg)
+        if cmp_lg is None or cand_lg is None:
+            checks[lg] = {"passed": False, "reason": f"missing {lg} metrics or comparison"}
+            reasons.append(f"missing {lg} metrics or comparison")
+            continue
+
+        faith_val = cand_lg.get("faithfulness")
+        faith_floor_ok = faith_val is not None and float(faith_val) >= faith_min
+
+        f1_c = cmp_lg.get("answer_f1") or {}
+        f1_diff = float(f1_c.get("diff", 0.0))
+        f1_lo = float(f1_c.get("ci_low", 0.0))
+        f1_hi = float(f1_c.get("ci_high", 0.0))
+        f1_beats = f1_diff > 0.0 and f1_lo > 0.0
+
+        fa_c = cmp_lg.get("faithfulness") or {}
+        fa_diff = float(fa_c.get("diff", 0.0))
+        fa_lo = float(fa_c.get("ci_low", 0.0))
+        fa_hi = float(fa_c.get("ci_high", 0.0))
+        fa_beats = fa_diff > 0.0 and fa_lo > 0.0
+
+        ok = faith_floor_ok and f1_beats and fa_beats
+        checks[lg] = {
+            "passed": ok,
+            "faithfulness": faith_val,
+            "faithfulness_min": faith_min,
+            "faithfulness_floor_ok": faith_floor_ok,
+            "answer_f1_diff": round(f1_diff, 6),
+            "answer_f1_ci": [round(f1_lo, 6), round(f1_hi, 6)],
+            "answer_f1_beats_baseline": f1_beats,
+            "faithfulness_diff": round(fa_diff, 6),
+            "faithfulness_ci": [round(fa_lo, 6), round(fa_hi, 6)],
+            "faithfulness_beats_baseline": fa_beats,
+        }
+        if not faith_floor_ok:
+            reasons.append(f"{lg} faithfulness {faith_val} < faithfulness_min={faith_min:.2f}")
+        if not f1_beats:
+            reasons.append(
+                f"{lg} answer_f1 diff {f1_diff:+.4f} CI [{f1_lo:+.4f}, {f1_hi:+.4f}] did not beat baseline"
+            )
+        if not fa_beats:
+            reasons.append(
+                f"{lg} faithfulness diff {fa_diff:+.4f} CI [{fa_lo:+.4f}, {fa_hi:+.4f}] did not beat baseline"
+            )
+
+    reg_ok = True
+    if regression_report is not None:
+        reg_ok = bool(regression_report.get("passed", False))
+        if not reg_ok:
+            reasons.extend(regression_report.get("reasons") or ["adapter regression suite failed"])
+
+    passed = all(c["passed"] for c in checks.values()) and reg_ok
+    return {
+        "component": "generation",
+        "candidate": candidate_name,
+        "baseline": baseline_name,
+        "passed": passed,
+        "decision": "promote" if passed else "reject_keep_champion",
+        "checks": {
+            "by_lang": checks,
+            "adapter_regressions": {"passed": reg_ok, "detail": regression_report},
+        },
+        "reasons": reasons,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--component", choices=["ner", "retrieval", "reranker"], default="ner")
+    ap.add_argument("--component", choices=["ner", "retrieval", "reranker", "generation"], default="ner")
     ap.add_argument("--report", type=Path, default=ROOT / "reports" / "ner.json")
     ap.add_argument("--out", type=Path, default=ROOT / "reports" / "gate.json")
     ap.add_argument("--candidate", default="challenger")
@@ -345,6 +437,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.component == "ner":
         comp = rep.get("comparison_vs_baseline", {}).get("paired_diff_by_lang", {})
         verdict = evaluate_ner_gate(comp, params["promotion"], args.candidate, args.baseline)
+    elif args.component == "generation":
+        comp = rep.get("comparison_vs_baseline", {})
+        reg = rep.get("adapter_regressions")
+        verdict = evaluate_generation_gate(
+            comp,
+            rep,
+            params["promotion"],
+            regression_report=reg,
+            candidate_name=args.candidate,
+            baseline_name=args.baseline,
+        )
     else:
         comp = rep.get("comparison_vs_baseline", {})
         verdict = evaluate_retrieval_gate(

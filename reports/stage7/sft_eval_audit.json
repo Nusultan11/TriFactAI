@@ -1,0 +1,453 @@
+{
+  "frozen_qa_eval": {
+    "verified": true,
+    "fingerprint": "50c36e0c78cba1bacc5e5df71c417704",
+    "rows": 32427,
+    "unique_contexts": 16777,
+    "shards": {
+      "en/test-00000.parquet": {
+        "expected": "8eae28298d8b5385b47aa114c6ff8ef931fcfed7aaa236a1a965dcf0235ee4d8",
+        "actual": "8eae28298d8b5385b47aa114c6ff8ef931fcfed7aaa236a1a965dcf0235ee4d8",
+        "ok": true
+      },
+      "kk/test-00000.parquet": {
+        "expected": "14ae313ec64cd50b473eb91e10edd931332cb240381edddd147f0abf568345cf",
+        "actual": "14ae313ec64cd50b473eb91e10edd931332cb240381edddd147f0abf568345cf",
+        "ok": true
+      },
+      "ru/test-00000.parquet": {
+        "expected": "3b0207193b8c7bc0b9c56d81b5d788024b8eacdf7c738f1b8bd162f17318c4b8",
+        "actual": "3b0207193b8c7bc0b9c56d81b5d788024b8eacdf7c738f1b8bd162f17318c4b8",
+        "ok": true
+      }
+    },
+    "lengths": {
+      "q_chars_p50": 50.0,
+      "q_chars_p95": 93.0,
+      "ctx_chars_p50": 639.0,
+      "ctx_chars_p95": 1251.0,
+      "ctx_chars_max": 4608
+    },
+    "by_lang_source_config_answerable": [
+      {
+        "lang": "en",
+        "source": "kazqad",
+        "config": "nq-original-en",
+        "answerable": true,
+        "len": 6898
+      },
+      {
+        "lang": "en",
+        "source": "squad_v2",
+        "config": "squad_v2",
+        "answerable": false,
+        "len": 5945
+      },
+      {
+        "lang": "en",
+        "source": "squad_v2",
+        "config": "squad_v2",
+        "answerable": true,
+        "len": 5928
+      },
+      {
+        "lang": "kk",
+        "source": "kazqad",
+        "config": "kazqad",
+        "answerable": true,
+        "len": 2713
+      },
+      {
+        "lang": "kk",
+        "source": "kazqad",
+        "config": "nq-translate-kk",
+        "answerable": true,
+        "len": 6196
+      },
+      {
+        "lang": "ru",
+        "source": "sberquad",
+        "config": "sberquad",
+        "answerable": false,
+        "len": 1
+      },
+      {
+        "lang": "ru",
+        "source": "sberquad",
+        "config": "sberquad",
+        "answerable": true,
+        "len": 4746
+      }
+    ]
+  },
+  "sft_dataset": {
+    "fingerprint": "156ff5dd1aba179cb9752a4af810ba3b",
+    "release": false,
+    "licenses": [
+      {
+        "source": "fineweb2_kk",
+        "license": "ODC-By-1.0",
+        "use": "allowed",
+        "release": true
+      },
+      {
+        "source": "kazqad",
+        "license": "CC-BY-SA-4.0",
+        "use": "allowed",
+        "release": true
+      },
+      {
+        "source": "multidomain_kk",
+        "license": "Apache-2.0",
+        "use": "allowed",
+        "release": false
+      },
+      {
+        "source": "qwen3.5-35b-a3b",
+        "license": "Apache-2.0",
+        "use": "allowed",
+        "release": true
+      },
+      {
+        "source": "sberquad",
+        "license": "unknown",
+        "use": "research_only",
+        "release": false
+      },
+      {
+        "source": "squad_v2",
+        "license": "CC-BY-SA-4.0",
+        "use": "allowed",
+        "release": true
+      },
+      {
+        "source": "wikipedia",
+        "license": "CC-BY-SA-3.0 AND GFDL",
+        "use": "allowed",
+        "release": true
+      },
+      {
+        "source": "nllb-200",
+        "license": "CC-BY-NC-4.0",
+        "use": "research_only",
+        "release": false
+      }
+    ],
+    "checks": {
+      "total": 338688,
+      "prompt_chars_p50": 3291.0,
+      "prompt_chars_p95": 5089.0,
+      "prompt_chars_p99": 5991.0,
+      "prompt_chars_max": 28127,
+      "answer_chars_p50": 34.0,
+      "answer_chars_p95": 106.0,
+      "avg_evidence_chunks": 3.0901065287226,
+      "min_evidence_chunks": 1,
+      "max_evidence_chunks": 4,
+      "answerable_with_citation": 287885,
+      "total_answerable_and_xling": 287885,
+      "unanswerable_empty_gold": 50803,
+      "total_unanswerable": 50803
+    },
+    "by_lang": [
+      {
+        "lang": "en",
+        "len": 164377
+      },
+      {
+        "lang": "kk",
+        "len": 101604
+      },
+      {
+        "lang": "ru",
+        "len": 72707
+      }
+    ],
+    "by_type": [
+      {
+        "type": "answerable",
+        "len": 203213
+      },
+      {
+        "type": "cross_lingual",
+        "len": 84672
+      },
+      {
+        "type": "unanswerable",
+        "len": 50803
+      }
+    ],
+    "by_origin": [
+      {
+        "origin": "gold",
+        "len": 246951
+      },
+      {
+        "origin": "mt_query",
+        "len": 82885
+      },
+      {
+        "origin": "synthetic",
+        "len": 8852
+      }
+    ],
+    "by_split_lang_type_origin": [
+      {
+        "split": "train",
+        "lang": "en",
+        "type": "answerable",
+        "origin": "gold",
+        "len": 94727
+      },
+      {
+        "split": "train",
+        "lang": "en",
+        "type": "cross_lingual",
+        "origin": "mt_query",
+        "len": 18851
+      },
+      {
+        "split": "train",
+        "lang": "en",
+        "type": "cross_lingual",
+        "origin": "synthetic",
+        "len": 869
+      },
+      {
+        "split": "train",
+        "lang": "en",
+        "type": "unanswerable",
+        "origin": "gold",
+        "len": 31484
+      },
+      {
+        "split": "train",
+        "lang": "en",
+        "type": "unanswerable",
+        "origin": "synthetic",
+        "len": 70
+      },
+      {
+        "split": "train",
+        "lang": "kk",
+        "type": "answerable",
+        "origin": "gold",
+        "len": 48197
+      },
+      {
+        "split": "train",
+        "lang": "kk",
+        "type": "answerable",
+        "origin": "synthetic",
+        "len": 6124
+      },
+      {
+        "split": "train",
+        "lang": "kk",
+        "type": "cross_lingual",
+        "origin": "mt_query",
+        "len": 22552
+      },
+      {
+        "split": "train",
+        "lang": "kk",
+        "type": "cross_lingual",
+        "origin": "synthetic",
+        "len": 25
+      },
+      {
+        "split": "train",
+        "lang": "kk",
+        "type": "unanswerable",
+        "origin": "gold",
+        "len": 13265
+      },
+      {
+        "split": "train",
+        "lang": "kk",
+        "type": "unanswerable",
+        "origin": "synthetic",
+        "len": 225
+      },
+      {
+        "split": "train",
+        "lang": "ru",
+        "type": "answerable",
+        "origin": "gold",
+        "len": 31248
+      },
+      {
+        "split": "train",
+        "lang": "ru",
+        "type": "answerable",
+        "origin": "synthetic",
+        "len": 281
+      },
+      {
+        "split": "train",
+        "lang": "ru",
+        "type": "cross_lingual",
+        "origin": "mt_query",
+        "len": 32341
+      },
+      {
+        "split": "train",
+        "lang": "ru",
+        "type": "cross_lingual",
+        "origin": "synthetic",
+        "len": 792
+      },
+      {
+        "split": "train",
+        "lang": "ru",
+        "type": "unanswerable",
+        "origin": "synthetic",
+        "len": 46
+      },
+      {
+        "split": "validation",
+        "lang": "en",
+        "type": "answerable",
+        "origin": "gold",
+        "len": 12081
+      },
+      {
+        "split": "validation",
+        "lang": "en",
+        "type": "cross_lingual",
+        "origin": "mt_query",
+        "len": 2281
+      },
+      {
+        "split": "validation",
+        "lang": "en",
+        "type": "cross_lingual",
+        "origin": "synthetic",
+        "len": 51
+      },
+      {
+        "split": "validation",
+        "lang": "en",
+        "type": "unanswerable",
+        "origin": "gold",
+        "len": 3962
+      },
+      {
+        "split": "validation",
+        "lang": "en",
+        "type": "unanswerable",
+        "origin": "synthetic",
+        "len": 1
+      },
+      {
+        "split": "validation",
+        "lang": "kk",
+        "type": "answerable",
+        "origin": "gold",
+        "len": 6352
+      },
+      {
+        "split": "validation",
+        "lang": "kk",
+        "type": "answerable",
+        "origin": "synthetic",
+        "len": 290
+      },
+      {
+        "split": "validation",
+        "lang": "kk",
+        "type": "cross_lingual",
+        "origin": "mt_query",
+        "len": 2820
+      },
+      {
+        "split": "validation",
+        "lang": "kk",
+        "type": "cross_lingual",
+        "origin": "synthetic",
+        "len": 4
+      },
+      {
+        "split": "validation",
+        "lang": "kk",
+        "type": "unanswerable",
+        "origin": "gold",
+        "len": 1738
+      },
+      {
+        "split": "validation",
+        "lang": "kk",
+        "type": "unanswerable",
+        "origin": "synthetic",
+        "len": 12
+      },
+      {
+        "split": "validation",
+        "lang": "ru",
+        "type": "answerable",
+        "origin": "gold",
+        "len": 3897
+      },
+      {
+        "split": "validation",
+        "lang": "ru",
+        "type": "answerable",
+        "origin": "synthetic",
+        "len": 16
+      },
+      {
+        "split": "validation",
+        "lang": "ru",
+        "type": "cross_lingual",
+        "origin": "mt_query",
+        "len": 4040
+      },
+      {
+        "split": "validation",
+        "lang": "ru",
+        "type": "cross_lingual",
+        "origin": "synthetic",
+        "len": 46
+      }
+    ],
+    "cross_lingual_directions": [
+      {
+        "answer_lang": "en",
+        "evidence_lang": "kk",
+        "len": 2327
+      },
+      {
+        "answer_lang": "en",
+        "evidence_lang": "ru",
+        "len": 19725
+      },
+      {
+        "answer_lang": "kk",
+        "evidence_lang": "en",
+        "len": 15772
+      },
+      {
+        "answer_lang": "kk",
+        "evidence_lang": "ru",
+        "len": 9629
+      },
+      {
+        "answer_lang": "ru",
+        "evidence_lang": "en",
+        "len": 35143
+      },
+      {
+        "answer_lang": "ru",
+        "evidence_lang": "kk",
+        "len": 2076
+      }
+    ],
+    "findings": [
+      "ru_unanswerable_underrepresented: only 46 ru unanswerable examples (all synthetic, 0 gold) vs 35,517 en and 15,240 kk; train_llm.py must support per-language-balanced unanswerable sampling.",
+      "eval_qa_unanswerable_gap: frozen eval/qa has 5,945 en unanswerable (SQuAD v2) but 0 kk and 1 ru unanswerable; eval_generation.py supplements refusal eval with distractor-only unanswerable probes (explicitly tagged).",
+      "sft_release_false: inherits release=false from sberquad, nllb-200, and multidomain_kk; adapters trained on full SFT inherit research-only restriction unless trained on release=true subset.",
+      "zero_eval_leakage: verified via reports/eval_leakage.json (0 unintended overlaps across all 7 sets)."
+    ]
+  },
+  "eval_leakage_verified": true
+}
