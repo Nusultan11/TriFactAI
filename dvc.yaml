@@ -198,14 +198,14 @@ stages:
 
   # ------------------------------------------------ corpus index
   embed_corpus:
-    cmd: python -m trifact.batch.embed_corpus
-    deps: [src/trifact/batch/embed_corpus.py, data/task/chunks]
-    params: [retrieval.embedder]
-    outs: [data/task/vectors]
+    cmd: python -m trifact.batch.embed_corpus --contextual-header --apply-downstream-filter
+    deps: [src/trifact/batch/embed_corpus.py, src/trifact/retrieval/embedder.py, data/task/chunks]
+    params: [retrieval.embedder, curation.downstream]
+    outs: [{data/task/vectors: {persist: true}}]
 
   index_corpus:
     cmd: python -m trifact.batch.index_corpus
-    deps: [src/trifact/batch/index_corpus.py, data/task/vectors]
+    deps: [src/trifact/batch/index_corpus.py, src/trifact/retrieval/store.py, data/task/vectors]
     params: [retrieval.corpus_index]
     metrics: [{reports/index.json: {cache: false}}]
 
@@ -247,20 +247,21 @@ stages:
 
   # ------------------------------------------------ stage 6: retrieval
   train_retriever:
-    cmd: python -m trifact.training.train_retriever
-    deps: [src/trifact/training/train_retriever.py, data/task/retrieval]
-    params: [retrieval]
-    outs: [models/retriever]
+    cmd: python -m trifact.training.train_retriever --out models/retriever
+    deps: [src/trifact/training/train_retriever.py, src/trifact/retrieval/embedder.py, data/task/retrieval]
+    params: [retrieval, seed]
+    outs: [{models/retriever: {persist: true}}]
 
   train_reranker:
-    cmd: python -m trifact.training.train_reranker
-    deps: [src/trifact/training/train_reranker.py, data/task/retrieval]
-    params: [retrieval]
-    outs: [models/reranker]
+    cmd: python -m trifact.training.train_reranker --out models/reranker
+    deps: [src/trifact/training/train_reranker.py, src/trifact/retrieval/reranker.py, data/task/retrieval]
+    params: [retrieval, seed]
+    outs: [{models/reranker: {persist: true}}]
 
   eval_retrieval:
-    cmd: python -m trifact.evaluation.eval_retrieval
-    deps: [src/trifact/evaluation/eval_retrieval.py, models/retriever, models/reranker, data/eval, reports/index.json]
+    cmd: python -m trifact.evaluation.eval_retrieval --eval-dir data/eval/retrieval --out reports/retrieval.json
+    deps: [src/trifact/evaluation/eval_retrieval.py, src/trifact/evaluation/stats.py, src/trifact/retrieval, data/eval/retrieval]
+    params: [retrieval, evaluation, promotion, seed]
     metrics: [{reports/retrieval.json: {cache: false}}]
 
   # ------------------------------------------------ stage 7: generation (cloud GPU, ADR-0012)

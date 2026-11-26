@@ -21,7 +21,9 @@ import statistics
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
+
+T = TypeVar("T")
 
 
 def bootstrap_ci(xs: Sequence[float], n: int = 1000, ci: float = 0.95, seed: int = 42) -> tuple[float, float]:
@@ -54,7 +56,7 @@ def _percentiles(values: list[float], ci: float) -> tuple[float, float]:
     return float(s[lo_idx]), float(s[hi_idx])
 
 
-def cluster_bootstrap_ci[T](
+def cluster_bootstrap_ci(  # noqa: UP047
     items: Sequence[T],
     cluster_ids: Sequence[str],
     metric_fn: Callable[[Sequence[T]], float],
@@ -90,7 +92,7 @@ def cluster_bootstrap_ci[T](
     }
 
 
-def cluster_paired_bootstrap[T](
+def cluster_paired_bootstrap(  # noqa: UP047
     items_a: Sequence[T],
     items_b: Sequence[T],
     cluster_ids: Sequence[str],
@@ -159,7 +161,7 @@ def cluster_paired_bootstrap[T](
     }
 
 
-def single_system_multi_seed_bootstrap[T](
+def single_system_multi_seed_bootstrap(  # noqa: UP047
     seeds_items: Sequence[Sequence[T]],
     cluster_ids: Sequence[str],
     metric_fn: Callable[[Sequence[T]], float],
@@ -210,7 +212,7 @@ def single_system_multi_seed_bootstrap[T](
     }
 
 
-def multi_seed_cluster_bootstrap[T](
+def multi_seed_cluster_bootstrap(  # noqa: UP047
     seeds_a: Sequence[Sequence[T]],
     seeds_b: Sequence[Sequence[T]],
     cluster_ids: Sequence[str],
