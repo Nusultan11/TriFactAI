@@ -194,9 +194,143 @@ def rollback_mlflow_alias(
     return {"model_name": model_name, "alias": alias, "version": str(mv.version)}
 
 
+def evaluate_retrieval_gate(
+    comparison: dict[str, Any],
+    candidate_report: dict[str, Any],
+    promotion_cfg: dict[str, Any],
+    candidate_name: str = "challenger",
+    baseline_name: str = "champion",
+    component: str = "retrieval",
+) -> dict[str, Any]:
+    """Check Retrieval / Reranker promotion gate against ``params.yaml: promotion``.
+
+    Rules (architecture §10, ADR-0009, ADR-0022):
+    - Macro 9-direction mean nDCG@10 gain > 0 with 95% cluster paired bootstrap CI lower bound > 0.
+    - When ``retrieval_no_direction_worse`` is True: no statistically significant regression on any
+      of the 9 directions (no direction with 95% CI upper bound < 0.0).
+    - Cross-lingual fairness: ``worst_direction_gap <= worst_direction_max_gap`` (or documented when
+      evaluated against cross-lingual pool difficulty).
+    """
+    no_dir_worse = bool(promotion_cfg.get("retrieval_no_direction_worse", True))
+    max_gap = float(promotion_cfg.get("worst_direction_max_gap", 0.10))
+
+    reasons: list[str] = []
+    macro = comparison.get("macro") or {}
+    macro_diff = float(macro.get("diff", 0.0))
+    macro_ci_lo = float(macro.get("ci_low", 0.0))
+    macro_ci_hi = float(macro.get("ci_high", 0.0))
+    macro_ok = macro_diff > 0.0 and macro_ci_lo > 0.0
+    if not macro_ok:
+        reasons.append(
+            f"macro nDCG@10 diff {macro_diff:+.4f} CI [{macro_ci_lo:+.4f}, {macro_ci_hi:+.4f}] failed diff>0 & CI>0"
+        )
+
+    dir_checks: dict[str, dict[str, Any]] = {}
+    by_dir = comparison.get("by_direction") or {}
+    regressed_dirs: list[str] = []
+    for d, entry in sorted(by_dir.items()):
+        diff = float(entry["diff"])
+        ci_lo = float(entry["ci_low"])
+        ci_hi = float(entry["ci_high"])
+        # Statistically significant regression: entire 95% CI is strictly below 0
+        sig_regression = ci_hi < 0.0
+        ok = (not sig_regression) if no_dir_worse else True
+        dir_checks[d] = {
+            "diff": round(diff, 6),
+            "ci_low": round(ci_lo, 6),
+            "ci_high": round(ci_hi, 6),
+            "significant_regression": sig_regression,
+            "passed": ok,
+        }
+        if not ok:
+            regressed_dirs.append(d)
+            reasons.append(f"direction {d} regressed: diff {diff:+.4f} CI [{ci_lo:+.4f}, {ci_hi:+.4f}]")
+
+    dirs_ok = len(regressed_dirs) == 0 and len(by_dir) >= 9
+    if len(by_dir) < 9:
+        reasons.append(f"expected 9 directions in comparison, got {len(by_dir)}")
+
+    worst_gap = float(candidate_report.get("worst_direction_gap", 1.0))
+    gap_ok = worst_gap <= max_gap
+    if not gap_ok:
+        reasons.append(f"worst_direction_gap {worst_gap:.4f} exceeded worst_direction_max_gap={max_gap:.4f}")
+
+    passed = macro_ok and dirs_ok and gap_ok
+    return {
+        "component": component,
+        "candidate": candidate_name,
+        "baseline": baseline_name,
+        "passed": passed,
+        "decision": "promote" if passed else "reject_keep_champion",
+        "checks": {
+            "macro_ndcg10": {
+                "passed": macro_ok,
+                "diff": round(macro_diff, 6),
+                "ci_low": round(macro_ci_lo, 6),
+                "ci_high": round(macro_ci_hi, 6),
+            },
+            "no_direction_worse": {
+                "passed": dirs_ok,
+                "n_directions": len(by_dir),
+                "regressed": regressed_dirs,
+                "by_direction": dir_checks,
+            },
+            "worst_direction_gap": {
+                "passed": gap_ok,
+                "gap": round(worst_gap, 6),
+                "max_gap": max_gap,
+                "worst_direction": candidate_report.get("worst_direction", ""),
+            },
+        },
+        "reasons": reasons,
+    }
+
+
+def promote_retrieval_with_qdrant(
+    model_name: str,
+    model_uri: str,
+    gate_verdict: dict[str, Any],
+    *,
+    store: Any | None = None,
+    qdrant_alias: str | None = None,
+    target_collection: str | None = None,
+    tracking_uri: str | None = None,
+    tags: dict[str, str] | None = None,
+    bootstrap_champion_if_none: bool = False,
+) -> dict[str, Any]:
+    """Promote retrieval model in MLflow AND switch Qdrant collection alias atomically (ADR-0009, ADR-0013)."""
+    res = register_and_promote_mlflow(
+        model_name=model_name,
+        model_uri=model_uri,
+        gate_verdict=gate_verdict,
+        tracking_uri=tracking_uri,
+        tags=tags,
+        bootstrap_champion_if_none=bootstrap_champion_if_none,
+    )
+    if res["promoted"] and store is not None and qdrant_alias and target_collection:
+        res["qdrant_alias"] = store.switch_alias(qdrant_alias, target_collection)
+    return res
+
+
+def rollback_retrieval_with_qdrant(
+    model_name: str,
+    target_version: str,
+    *,
+    store: Any | None = None,
+    qdrant_alias: str | None = None,
+    previous_collection: str | None = None,
+    tracking_uri: str | None = None,
+) -> dict[str, Any]:
+    """Atomically roll back both MLflow ``champion`` alias and Qdrant collection alias."""
+    res = rollback_mlflow_alias(model_name, target_version, alias="champion", tracking_uri=tracking_uri)
+    if store is not None and qdrant_alias and previous_collection:
+        res["qdrant_alias"] = store.switch_alias(qdrant_alias, previous_collection)
+    return res
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--component", choices=["ner"], default="ner")
+    ap.add_argument("--component", choices=["ner", "retrieval", "reranker"], default="ner")
     ap.add_argument("--report", type=Path, default=ROOT / "reports" / "ner.json")
     ap.add_argument("--out", type=Path, default=ROOT / "reports" / "gate.json")
     ap.add_argument("--candidate", default="challenger")
@@ -208,8 +342,14 @@ def main(argv: list[str] | None = None) -> int:
     if not args.report.is_file():
         raise FileNotFoundError(f"Report not found: {args.report}")
     rep = json.loads(args.report.read_text(encoding="utf-8"))
-    comp = rep.get("comparison_vs_baseline", {}).get("paired_diff_by_lang", {})
-    verdict = evaluate_ner_gate(comp, params["promotion"], args.candidate, args.baseline)
+    if args.component == "ner":
+        comp = rep.get("comparison_vs_baseline", {}).get("paired_diff_by_lang", {})
+        verdict = evaluate_ner_gate(comp, params["promotion"], args.candidate, args.baseline)
+    else:
+        comp = rep.get("comparison_vs_baseline", {})
+        verdict = evaluate_retrieval_gate(
+            comp, rep, params["promotion"], args.candidate, args.baseline, component=args.component
+        )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
         json.dumps(verdict, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
